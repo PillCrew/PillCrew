@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────
+#  Safety net: this repo intentionally contains ONLY the public
+#  showcase (README + docs). If any project/source files are ever
+#  dropped into this folder, they will NOT be committed.
+# ─────────────────────────────────────────────────────────────
+
+# Ignore everything by default
+*
+
+# ...except the public showcase files
+!.gitignore
+!README.md
+!LICENSE
+!SECURITY.md
+!CONTRIBUTING.md
+!CODE_OF_CONDUCT.md
+!docs/
+!docs/**
+!.github/
+!.github/**
+!assets/
+!assets/**
+!scripts/
+!scripts/**
+
+# The PillCrew desktop app (Pilly) lives here
+!pillcrew-desktop/
+!pillcrew-desktop/**
+
+# Never commit local/secret files even if explicitly placed here
+.env
+.env.*
+*.local
+*.log
+.DS_Store
+
+# ...but DO ship the safe example config of the app
+!pillcrew-desktop/.env.example

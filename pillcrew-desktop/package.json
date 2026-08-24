@@ -1,0 +1,45 @@
+{
+  "name": "pilly-desktop",
+  "productName": "Pilly",
+  "version": "1.0.1",
+  "description": "Pilly - a tiny green pill AI friend that lives in your Windows taskbar. Free AI chat, live Solana coin checks, meme brain.",
+  "main": "main.js",
+  "author": "PillCrew",
+  "license": "MIT",
+  "homepage": "https://pillcrew.fun",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PillCrew/PillCrew"
+  },
+  "scripts": {
+    "start": "electron .",
+    "icon": "node scripts/gen-icon.js",
+    "postinstall": "node scripts/gen-icon.js",
+    "test": "node --test src/*.test.js",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "fun.pillcrew.pilly",
+    "productName": "Pilly",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**",
+      "renderer/**",
+      "assets/**"
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "assets/pilly.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Pilly"
+    }
+  }
+}

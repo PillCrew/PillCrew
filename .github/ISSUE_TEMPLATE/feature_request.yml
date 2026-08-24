@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an idea for PillCrew
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are very welcome! Describe the feature and why it's useful.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Describe the feature.
+      placeholder: "e.g. A 'top gainers 1h' filter on Trending…"
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is it useful?
+      description: What problem does it solve for you?
+  - type: textarea
+    id: example
+    attributes:
+      label: Example (optional)
+      description: A small scenario showing how you'd use it.

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pilly</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="bar">
+    <div class="pill-avatar" id="pillAvatar">
+      <i class="eye l"></i><i class="eye r"></i><i class="mouth"></i>
+    </div>
+    <div class="bar-id">
+      <strong>Pilly</strong>
+      <small><span class="dot"></span> in your taskbar</small>
+    </div>
+    <div class="bar-actions">
+      <button id="trendBtn" title="Trending now">🔥</button>
+      <button id="gearBtn" title="Settings">⚙️</button>
+      <button id="minBtn" title="Hide">-</button>
+      <button id="quitBtn" title="Quit">✕</button>
+    </div>
+  </header>
+
+  <main id="messages" class="messages">
+    <div class="msg bot">
+      <div class="bubble">Yo. I'm Pilly - the pill living in your taskbar. Tap the tray icon anytime. Paste a <em>Solana token address</em> (or a pump.fun link) and I'll pull its live data and give you a pro read. Try <em>🔥 trending</em>, <em>meme this</em>, <em>caption this</em> - or just talk.</div>
+    </div>
+  </main>
+
+  <div class="chips" id="chips">
+    <button class="chip" data-action="trending">🔥 trending</button>
+    <button class="chip" data-task="rewrite">🎭 meme this</button>
+    <button class="chip" data-task="caption">🖼️ caption</button>
+    <button class="chip" data-task="name">🏷️ name it</button>
+    <button class="chip" data-task="react">⚡ react</button>
+    <button class="chip" data-task="roast">🔥 roast</button>
+  </div>
+
+  <form id="chatForm" class="inputbar">
+    <input id="input" type="text" placeholder="Paste a token address, ask, or meme…" autocomplete="off" />
+    <button type="submit" id="sendBtn" title="Send">➤</button>
+  </form>
+
+  <!-- Settings panel -->
+  <div id="settings" class="settings hidden">
+    <div class="settings-head">
+      <strong>⚙️ Pilly API settings</strong>
+      <button id="settingsClose" title="Close">✕</button>
+    </div>
+    <div class="settings-body">
+      <p class="hint">Add your own AI endpoints (any chat-completions API). Tiers are tried in order until one answers.</p>
+      <div id="tierRows"></div>
+      <label class="row">
+        <span>Temperature</span>
+        <input id="setTemp" type="number" step="0.1" min="0" max="2" />
+      </label>
+      <label class="row">
+        <span>Max tokens</span>
+        <input id="setTokens" type="number" min="50" max="2000" />
+      </label>
+      <label class="row toggle">
+        <span>Fallback to pillcrew.fun</span>
+        <input id="setSite" type="checkbox" />
+      </label>
+      <div class="settings-actions">
+        <button id="testBtn" class="ghost">Test connection</button>
+        <button id="saveBtn" class="primary">Save</button>
+      </div>
+      <div id="settingsStatus" class="status"></div>
+
+      <details class="guide">
+        <summary>📚 Which API works for which AI?</summary>
+        <div class="guide-body">
+          <p>Pilly speaks any <b>OpenAI-compatible</b> chat-completions API. Paste the endpoint into <b>API URL</b>, the key into <b>API key</b>, and the model name (optional) into <b>Model</b>. Tiers are tried in order - tier 1 first.</p>
+          <div class="prov-list">
+            <div class="prov">
+              <div class="prov-head"><span class="prov-name">OpenRouter</span><span class="prov-tag">free models</span></div>
+              <code class="prov-url">https://openrouter.ai/api/v1/chat/completions</code>
+              <div class="prov-meta"><b>Key:</b> openrouter.ai → Keys</div>
+              <div class="prov-meta"><b>Model (required):</b> OpenRouter rejects requests without one. Free models end with <code>:free</code>, e.g. <code>meta-llama/llama-3.3-70b-instruct:free</code> - paste that into the Model field.</div>
+            </div>
+            <div class="prov">
+              <div class="prov-head"><span class="prov-name">Groq</span><span class="prov-tag">free tier</span></div>
+              <code class="prov-url">https://api.groq.com/openai/v1/chat/completions</code>
+              <div class="prov-meta"><b>Key:</b> console.groq.com → API Keys</div>
+              <div class="prov-meta"><b>Models:</b> very fast, generous limits. e.g. <code>llama-3.3-70b-versatile</code>.</div>
+            </div>
+            <div class="prov">
+              <div class="prov-head"><span class="prov-name">Cerebras</span><span class="prov-tag">free tier</span></div>
+              <code class="prov-url">https://api.cerebras.ai/v1/chat/completions</code>
+              <div class="prov-meta"><b>Key:</b> cloud.cerebras.ai → API Keys</div>
+              <div class="prov-meta"><b>Models:</b> fast inference. e.g. <code>llama-3.3-70b</code>.</div>
+            </div>
+            <div class="prov">
+              <div class="prov-head"><span class="prov-name">NVIDIA NIM</span><span class="prov-tag">free credits</span></div>
+              <code class="prov-url">https://integrate.api.nvidia.com/v1/chat/completions</code>
+              <div class="prov-meta"><b>Key:</b> build.nvidia.com → API</div>
+              <div class="prov-meta"><b>Models:</b> strong open models. e.g. <code>meta/llama-3.3-70b-instruct</code>.</div>
+            </div>
+            <div class="prov">
+              <div class="prov-head"><span class="prov-name">DeepSeek</span><span class="prov-tag">cheap</span></div>
+              <code class="prov-url">https://api.deepseek.com/chat/completions</code>
+              <div class="prov-meta"><b>Key:</b> platform.deepseek.com → API Keys</div>
+              <div class="prov-meta"><b>Models:</b> strong reasoning. e.g. <code>deepseek-chat</code>.</div>
+            </div>
+            <div class="prov">
+              <div class="prov-head"><span class="prov-name">Together AI</span><span class="prov-tag">cheap</span></div>
+              <code class="prov-url">https://api.together.xyz/v1/chat/completions</code>
+              <div class="prov-meta"><b>Key:</b> api.together.xyz → API Keys</div>
+              <div class="prov-meta"><b>Models:</b> many open models. e.g. <code>meta-llama/Llama-3.3-70B-Instruct-Turbo</code>.</div>
+            </div>
+            <div class="prov">
+              <div class="prov-head"><span class="prov-name">Mistral</span><span class="prov-tag">free tier</span></div>
+              <code class="prov-url">https://api.mistral.ai/v1/chat/completions</code>
+              <div class="prov-meta"><b>Key:</b> console.mistral.ai → API Keys</div>
+              <div class="prov-meta"><b>Models:</b> e.g. <code>mistral-small-latest</code>.</div>
+            </div>
+            <div class="prov">
+              <div class="prov-head"><span class="prov-name">Any OpenAI endpoint</span><span class="prov-tag">local too</span></div>
+              <code class="prov-url">https://…/v1/chat/completions</code>
+              <div class="prov-meta"><b>Key:</b> -</div>
+              <div class="prov-meta"><b>Models:</b> works with anything OpenAI-compatible, including local servers like Ollama / LM Studio on <code>http://localhost:11434/v1</code>.</div>
+            </div>
+          </div>
+          <p style="margin-top: 9px;">💡 Tip: most providers (OpenRouter, Groq, NVIDIA, Together, Mistral...) <b>require a model</b> - paste one from the list above. Auth is <code>Bearer &lt;key&gt;</code>. Press <b>Test connection</b> to confirm before saving.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

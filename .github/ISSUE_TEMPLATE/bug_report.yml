@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a problem on pillcrew.fun
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please fill in as much as you can. Never include private keys, wallet addresses of others, or API keys.
+  - type: dropdown
+    id: page
+    attributes:
+      label: Where did it happen?
+      options:
+        - Trending
+        - Crew Verdict
+        - Chart
+        - Callouts
+        - Watchlist / Alerts
+        - Chat / Agents
+        - Portfolio
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly.
+      placeholder: "e.g. Prices froze on the Trending table after 2 minutes…"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: "e.g. Prices should keep updating every few seconds."
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Go to …\n2. Click …\n3. See error"
+  - type: input
+    id: device
+    attributes:
+      label: Device & browser
+      placeholder: "e.g. iPhone 15 / Safari, or Windows / Chrome 125"
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot (optional)
+      description: You can attach an image after submitting.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checks
+      options:
+        - label: I have not included any private keys or API secrets.
+          required: true
