@@ -234,7 +234,7 @@ async function fetchTrendingTop(limit = 8) {
     }
   }
   const lines = list.map((c, i) =>
-    `${i + 1}. ${c.name}${c.symbol ? ` (${c.symbol})` : ""} ${fmtUsd(c.price)}${c.change24h != null ? ` ${fmtPct(c.change24h)}` : ""}${c.volume24h != null ? ` vol ${fmtUsd(c.volume24h)}` : ""}`
+    `${i + 1}. ${c.name}${c.symbol ? ` (${c.symbol})` : ""} ${fmtUsd(c.price)}${c.change24h != null ? ` ${fmtPct(c.change24h)}` : ""}${c.volume24h != null ? ` vol ${fmtUsd(c.volume24h)}` : ""}${c.liquidityUsd != null ? ` liq ${fmtUsd(c.liquidityUsd)}` : ""}`
   );
   return {
     list,

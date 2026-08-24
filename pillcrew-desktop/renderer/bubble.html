@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pilly joke</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .bubble {
+      position: absolute;
+      left: 50%;
+      bottom: 4px;
+      transform: translateX(-50%);
+      background: #10150f;
+      border: 1px solid #2c3d31;
+      color: #e8f0e9;
+      font-size: calc(9px * var(--bs, 1));
+      line-height: 1.35;
+      padding: calc(6px * var(--bs, 1)) calc(8px * var(--bs, 1));
+      border-radius: calc(9px * var(--bs, 1));
+      max-width: calc(150px * var(--bs, 1));
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+    }
+    .bubble::after {
+      content: "";
+      position: absolute;
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 7px solid transparent;
+      border-top-color: #10150f;
+      border-bottom: 0;
+    }
+    .bubble.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="bubble" id="bubble"></div>
+  <script>
+    const bubble = document.getElementById("bubble");
+    function applyBubble(pet) {
+      const s = pet && pet.bubbleSize === "sm" ? 0.85 : pet && pet.bubbleSize === "lg" ? 1.15 : 1;
+      document.documentElement.style.setProperty("--bs", s);
+    }
+    if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyBubble);
+    if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyBubble);
+    if (window.pilly && window.pilly.onPetJoke) {
+      window.pilly.onPetJoke((text) => {
+        bubble.textContent = text;
+        bubble.classList.remove("show");
+        void bubble.offsetWidth; // restart the fade
+        bubble.classList.add("show");
+      });
+    }
+  </script>
+</body>
+</html>

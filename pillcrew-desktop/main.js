@@ -1,7 +1,7 @@
 // Pilly - a tiny green pill AI friend that lives in your Windows taskbar.
 // Click the pill in the system tray to summon the chat (free AI, meme brain).
 const {
-  app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, globalShortcut, screen,
+  app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, globalShortcut, screen, shell,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -35,12 +35,30 @@ function aiOpts() {
     tiers: s.tiers,
     temperature: s.temperature,
     maxTokens: s.maxTokens,
-    useSiteFallback: s.useSiteFallback,
   };
+}
+
+function petOpts() {
+  const s = SETTINGS.effective(userDataDir());
+  return (s && s.pet) || { theme: "green", size: "md", bubbles: true, bubbleSize: "md" };
+}
+
+function applyPetSettings() {
+  const pet = petOpts();
+  if (petWin && !petWin.isDestroyed()) petWin.webContents.send("pet:settings", pet);
+  if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:settings", pet);
 }
 
 let tray = null;
 let win = null;
+let petWin = null;
+let petTimer = null;
+let petActive = false;
+let petDir = 1;
+let petX = 0;
+let petState = "walk";
+let petStateEnd = 0;
+let petLastState = "";
 let iconFrames = [];
 let trayTimer = null;
 let trayFrame = 0;
@@ -125,6 +143,195 @@ function toggleWindow() {
   w.focus();
 }
 
+// ---- Taskbar pet: a tiny pill that walks along the taskbar ----
+const PET_W = 60;
+const PET_H = 64; // tall enough that a hop (up to ~21px above the pill top at lg scale) never clips
+
+function createPetWindow() {
+  petWin = new BrowserWindow({
+    width: PET_W,
+    height: PET_H,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    focusable: false,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  petWin.setAlwaysOnTop(true, "screen-saver");
+  petWin.loadFile(path.join(__dirname, "renderer", "pet.html"));
+  petWin.on("closed", () => { petWin = null; });
+}
+
+function startPet() {
+  if (petActive) return;
+  petActive = true;
+  createPetWindow();
+  const area = screen.getPrimaryDisplay().workArea;
+  petX = Math.floor(area.x + area.width * 0.4);
+  petDir = 1;
+  petState = "walk";
+  petStateEnd = Date.now() + 4000 + Math.random() * 4000;
+  const y = area.y + area.height - PET_H - 2;
+  petWin.setPosition(petX, y);
+  petTimer = setInterval(() => {
+    if (!petWin || petWin.isDestroyed()) { stopPet(); return; }
+    const now = Date.now();
+    if (now >= petStateEnd) {
+      const plan = randomPetState();
+      petState = plan.mode;
+      petStateEnd = now + plan.ms;
+    }
+    if (petState === "walk") {
+      petX += petDir * 2;
+      if (petX <= area.x) { petX = area.x; petDir = 1; }
+      if (petX >= area.x + area.width - PET_W) { petX = area.x + area.width - PET_W; petDir = -1; }
+    }
+    if (petState !== petLastState) {
+      petLastState = petState;
+      petWin.webContents.send("pet:state", petState);
+    }
+    petWin.setPosition(petX, y);
+    petWin.webContents.send("pet:dir", petDir);
+    const cur = screen.getCursorScreenPoint();
+    // Aim the pupils at the pill's center, not the window's center.
+    petWin.webContents.send("pet:cursor", { x: cur.x - (petX + PET_W / 2), y: cur.y - (y + PET_H - 22.5) });
+    if (bubbleWin && !bubbleWin.isDestroyed() && bubbleWin.isVisible()) positionBubble();
+  }, 24);
+  // First joke after a few seconds, then every 2-3 minutes.
+  if (petOpts().bubbles) {
+    setTimeout(() => { if (petActive) { petJokeTick(); scheduleNextJoke(); } }, 8000);
+  }
+}
+
+function stopPet() {
+  petActive = false;
+  if (petTimer) { clearInterval(petTimer); petTimer = null; }
+  if (petJokeTimer) { clearInterval(petJokeTimer); petJokeTimer = null; }
+  if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null; }
+  if (petWin && !petWin.isDestroyed()) petWin.destroy();
+  petWin = null;
+  if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.destroy();
+  bubbleWin = null;
+}
+
+// ---- Pet jokes: AI-generated (offline list as a fallback) ----
+const PET_JOKES = [
+  "why did the memecoin cross the road? to get to the other pump.",
+  "buy high, sell never. the solana way.",
+  "my portfolio is 90% hopium and 10% cope.",
+  "when the chart goes up but your wallet says nope.",
+  "rug pulls are just aggressive exits, bro.",
+  "solana is fast, but my money leaves faster.",
+  "dev said no rugs. dev lied. again.",
+  "the only green candle in my life is the one i held too long.",
+  "pump it, dump it, love it, never leave it.",
+  "my stop loss is a meme. literally.",
+  "solana block time: 400ms. my gains: gone in 1.",
+  "i don't need a roadmap, i need a rocket.",
+];
+let bubbleWin = null;
+let bubbleTimer = null;
+let petJokeTimer = null;
+
+function ensureBubbleWin() {
+  if (bubbleWin && !bubbleWin.isDestroyed()) return bubbleWin;
+  bubbleWin = new BrowserWindow({
+    width: 180,
+    height: 130,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    hasShadow: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  bubbleWin.setAlwaysOnTop(true, "screen-saver");
+  bubbleWin.setIgnoreMouseEvents(true, { forward: true });
+  bubbleWin.loadFile(path.join(__dirname, "renderer", "bubble.html"));
+  bubbleWin.on("closed", () => { bubbleWin = null; });
+  return bubbleWin;
+}
+
+function positionBubble() {
+  if (!bubbleWin || bubbleWin.isDestroyed() || !petWin || petWin.isDestroyed()) return;
+  const [px, py] = petWin.getPosition();
+  const pet = petOpts();
+  const ps = pet.size === "sm" ? 0.85 : pet.size === "lg" ? 1.2 : 1;
+  // Pill top within the PET_H-tall pet window (pill is 23px tall, 11px from the bottom).
+  const pillTop = PET_H - 11 - 23 * ps;
+  // Bubble window is 130px tall and the bubble sits 4px above its bottom;
+  // keep the bubble ~12px above the pill top for every pill size.
+  const y = py + pillTop - 12 - 126;
+  bubbleWin.setPosition(Math.round(px - 60), Math.round(y));
+}
+
+function showPetJoke(text) {
+  if (!petActive) return;
+  const b = ensureBubbleWin();
+  b.webContents.send("pet:joke", text);
+  positionBubble();
+  b.showInactive();
+  if (bubbleTimer) clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => {
+    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.hide();
+  }, 9000);
+}
+
+function localPetJoke() {
+  return PET_JOKES[Math.floor(Math.random() * PET_JOKES.length)];
+}
+
+// Decide what Pilly does next: pause in place, do a little hop, or keep walking.
+function randomPetState() {
+  const r = Math.random();
+  if (r < 0.3) return { mode: "pause", ms: 1800 + Math.random() * 2200 };
+  if (r < 0.45) return { mode: "hop", ms: 900 + Math.random() * 600 };
+  return { mode: "walk", ms: 4000 + Math.random() * 6000 };
+}
+
+async function petJokeTick() {
+  if (!petActive || !petOpts().bubbles) return;
+  let joke = localPetJoke();
+  try {
+    const r = await AI.respond(
+      "tell me a very short funny joke about solana pump.fun memecoins, one line, under 10 words",
+      { task: "", ai: aiOpts() }
+    );
+    if (r && r.reply) {
+      const j = String(r.reply).trim();
+      if (j.length > 4) {
+        joke = j.length > 70 ? j.slice(0, 70).replace(/\s+\S*$/, "") + "…" : j;
+      }
+    }
+  } catch (e) { /* keep the local joke */ }
+  if (petActive) showPetJoke(joke);
+}
+
+// Schedule the next joke 2-3 minutes after the current one.
+function scheduleNextJoke() {
+  if (!petActive || !petOpts().bubbles) return;
+  const delay = 120000 + Math.floor(Math.random() * 60000);
+  petJokeTimer = setTimeout(() => {
+    if (!petActive || !petOpts().bubbles) return;
+    petJokeTick();
+    scheduleNextJoke();
+  }, delay);
+}
+
 function startTrayAnim() {
   if (trayTimer || iconFrames.length < 2) return;
   trayTimer = setInterval(() => {
@@ -134,14 +341,14 @@ function startTrayAnim() {
 }
 
 function createTray() {
-  iconFrames = loadFrames();
+  if (!iconFrames.length) iconFrames = loadFrames();
   tray = new Tray(iconFrames[0] || nativeImage.createEmpty());
   tray.setToolTip("Pilly - tap to chat");
 
   const menu = Menu.buildFromTemplate([
-    { label: "💬 Open chat", click: () => toggleWindow() },
+    { label: "Open chat", click: () => toggleWindow() },
     {
-      label: "🎭 Meme mode",
+      label: "Meme mode",
       click: () => {
         const w = ensureWindow();
         if (w && !w.isDestroyed()) w.webContents.send("pilly:suggest", "meme");
@@ -183,7 +390,11 @@ ipcMain.handle("pilly:meme", () => PILLY.MEME_PROMPTS);
 
 // ---- IPC: settings (own AI API) ----
 ipcMain.handle("pilly:settings:get", () => SETTINGS.effective(userDataDir()));
-ipcMain.handle("pilly:settings:save", (event, s) => SETTINGS.save(userDataDir(), s));
+ipcMain.handle("pilly:settings:save", (event, s) => {
+  const r = SETTINGS.save(userDataDir(), s);
+  applyPetSettings();
+  return r;
+});
 ipcMain.handle("pilly:settings:test", async (event, s) => {
   const saved = s && Array.isArray(s.tiers) ? s : SETTINGS.effective(userDataDir());
   const tiers = (saved.tiers || []).filter((t) => t && t.url);
@@ -273,18 +484,47 @@ ipcMain.handle("pilly:coin", async (event, mint) => {
 });
 ipcMain.handle("pilly:trending", async () => {
   try {
-    return await COINS.fetchTrendingTop(8);
+    return await COINS.fetchTrendingTop(10);
   } catch (e) {
     return { list: [], context: "trending unavailable" };
   }
 });
 
+// ---- IPC: taskbar pet ----
+ipcMain.handle("pilly:pet:toggle", () => {
+  if (petActive) stopPet();
+  else startPet();
+  return { active: petActive };
+});
+ipcMain.handle("pilly:pet:settings", () => petOpts());
+ipcMain.handle("pilly:pet:apply", (event, pet) => {
+  const p = Object.assign({}, petOpts(), pet || {});
+  if (petWin && !petWin.isDestroyed()) petWin.webContents.send("pet:settings", p);
+  if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:settings", p);
+  return { ok: true };
+});
+ipcMain.handle("pilly:open-chat", () => {
+  toggleWindow();
+  return { ok: true };
+});
+ipcMain.handle("pilly:github", () => {
+  shell.openExternal("https://github.com/PillCrew/PillCrew");
+  return { ok: true };
+});
+ipcMain.handle("pilly:version", () => app.getVersion());
+ipcMain.handle("pilly:quit", () => {
+  isQuitting = true;
+  app.quit();
+  return { ok: true };
+});
+
 app.whenReady().then(() => {
   app.setAppUserModelId("fun.pillcrew.pilly");
+  iconFrames = loadFrames();
   createWindow();
   createTray();
   globalShortcut.register("CommandOrControl+Shift+P", () => toggleWindow());
 });
 
 app.on("window-all-closed", () => { /* stay alive in the tray */ });
-app.on("before-quit", () => { isQuitting = true; });
+app.on("before-quit", () => { isQuitting = true; stopPet(); });

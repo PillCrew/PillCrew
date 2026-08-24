@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' data:; connect-src 'self' https:" />
   <title>Pilly</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -17,8 +18,7 @@
     </div>
     <div class="bar-actions">
       <button id="trendBtn" title="Trending now">🔥</button>
-      <button id="gearBtn" title="Settings">⚙️</button>
-      <button id="minBtn" title="Hide">-</button>
+      <button id="gearBtn" title="Settings">⚙️</button>      <button id="petBtn" title="Let Pilly walk on the taskbar">🐾</button>      <button id="clearBtn" title="Clear chat">🧹</button>      <button id="gitBtn" title="PillCrew on GitHub">🐙</button>      <button id="minBtn" title="Hide">-</button>
       <button id="quitBtn" title="Quit">✕</button>
     </div>
   </header>
@@ -29,8 +29,11 @@
     </div>
   </main>
 
+  <button id="scrollDown" class="scroll-down" title="Jump to latest" hidden>↓</button>
+
   <div class="chips" id="chips">
     <button class="chip" data-action="trending">🔥 trending</button>
+    <button class="chip" data-action="pick">🎲 pick a coin</button>
     <button class="chip" data-task="rewrite">🎭 meme this</button>
     <button class="chip" data-task="caption">🖼️ caption</button>
     <button class="chip" data-task="name">🏷️ name it</button>
@@ -59,10 +62,6 @@
       <label class="row">
         <span>Max tokens</span>
         <input id="setTokens" type="number" min="50" max="2000" />
-      </label>
-      <label class="row toggle">
-        <span>Fallback to pillcrew.fun</span>
-        <input id="setSite" type="checkbox" />
       </label>
       <div class="settings-actions">
         <button id="testBtn" class="ghost">Test connection</button>
@@ -127,7 +126,39 @@
           <p style="margin-top: 9px;">💡 Tip: most providers (OpenRouter, Groq, NVIDIA, Together, Mistral...) <b>require a model</b> - paste one from the list above. Auth is <code>Bearer &lt;key&gt;</code>. Press <b>Test connection</b> to confirm before saving.</p>
         </div>
       </details>
+
+      <div class="pet-block">
+        <div class="pet-title">🫧 Pet</div>
+        <label class="row"><span>Color</span>
+          <select id="petTheme">
+            <option value="green">Green</option>
+            <option value="blue">Blue</option>
+            <option value="purple">Purple</option>
+            <option value="pink">Pink</option>
+            <option value="orange">Orange</option>
+          </select>
+        </label>
+        <label class="row"><span>Pill size</span>
+          <select id="petSize">
+            <option value="sm">Small</option>
+            <option value="md">Medium</option>
+            <option value="lg">Large</option>
+          </select>
+        </label>
+        <label class="row"><span>Bubble size</span>
+          <select id="petBubbleSize">
+            <option value="sm">Small</option>
+            <option value="md">Medium</option>
+            <option value="lg">Large</option>
+          </select>
+        </label>
+        <label class="row toggle">
+          <span>Joke bubbles</span>
+          <input id="petBubbles" type="checkbox" />
+        </label>
+      </div>
     </div>
+    <div class="settings-foot">Pilly v<span id="appVersion">1.0.2</span> · PillCrew</div>
   </div>
 
   <script src="renderer.js"></script>

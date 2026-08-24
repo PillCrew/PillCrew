@@ -14,7 +14,12 @@ const DEFAULT_SETTINGS = {
   ],
   temperature: 0.8,
   maxTokens: 240,
-  useSiteFallback: true,
+  pet: {
+    theme: "green",
+    size: "md",
+    bubbles: true,
+    bubbleSize: "md",
+  },
 };
 
 let cache = null;
@@ -56,7 +61,12 @@ function save(userDataDir, settings) {
     })),
     temperature: Number.isFinite(Number(settings.temperature)) ? Number(settings.temperature) : 0.8,
     maxTokens: Number.isFinite(Number(settings.maxTokens)) ? Number(settings.maxTokens) : 240,
-    useSiteFallback: settings.useSiteFallback !== false,
+    pet: {
+      theme: String((settings.pet && settings.pet.theme) || "green"),
+      size: String((settings.pet && settings.pet.size) || "md"),
+      bubbles: !settings.pet || settings.pet.bubbles !== false,
+      bubbleSize: String((settings.pet && settings.pet.bubbleSize) || "md"),
+    },
   };
   try {
     fs.mkdirSync(userDataDir, { recursive: true });

@@ -1,35 +1,110 @@
 ```text
-██████╗ ██╗██╗     ██╗      ██████╗██████╗ ███████╗██╗    ██╗
-██╔══██╗██║██║     ██║     ██╔════╝██╔══██╗██╔════╝██║    ██║
-██████╔╝██║██║     ██║     ██║     ██████╔╝█████╗  ██║ █╗ ██║
-██╔═══╝ ██║██║     ██║     ██║     ██╔══██╗██╔══╝  ██║███╗██║
-██║     ██║███████╗███████╗╚██████╗██║  ██║███████╗╚███╔███╔╝
-╚═╝     ╚═╝╚══════╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚══════╝ ╚══╝╚══╝
+██████╗ ██╗██╗     ██╗     ██╗   ██╗
+██╔══██╗██║██║     ██║     ╚██╗ ██╔╝
+██████╔╝██║██║     ██║      ╚████╔╝
+██╔═══╝ ██║██║     ██║       ╚██╔╝
+██║     ██║███████╗███████╗   ██║
+╚═╝     ╚═╝╚══════╝╚══════╝   ╚═╝
 ```
 
 <div align="center">
 
-# PillCrew
+# 🫧 Pilly - the pill that lives in your taskbar
 
-**A trading desk staffed by ten AI specialists. Not one bot. A crew.**
+**A tiny green pill AI friend for Windows. Click it, chat with it, ask it about Solana - it answers like a sharp, terminally-online friend.**
 
-Live market intelligence · Crew verdicts · Smart alerts · Instant analysis
+Live coin checks · 🔥 Trending · 🎲 Pick a coin · Meme brain · Free AI
 
-[![pillcrew.fun](https://img.shields.io/website?url=https%3A%2F%2Fpillcrew.fun&label=pillcrew.fun&style=flat-square&color=4caf50)](https://pillcrew.fun)
+[![Release](https://img.shields.io/github/v/release/PillCrew/PillCrew?style=flat-square&color=4caf50)](https://github.com/PillCrew/PillCrew/releases)
 [![License](https://img.shields.io/badge/License-MIT-4caf50?style=flat-square)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-4caf50?style=flat-square)](CONTRIBUTING.md)
+
+<video src="assets/pilly-demo.mp4" controls loop muted width="100%"></video>
+*Pilly in action - walking the taskbar, pulling live coin data and roasting your picks.*
 
 </div>
 
 ---
 
-## Overview
+## What is Pilly?
+
+Pilly is a **standalone Windows desktop app** that sits quietly in your **system
+tray** as a little animated pill. Tap it (or hit **Ctrl+Shift+P**) and a small
+chat window pops up right above the tray. Paste a Solana token address, get a
+live read, meme it, roast it - or just talk. It even **walks along your
+taskbar** and drops a joke every few minutes.
+
+| | |
+| --- | --- |
+| ![Pilly chat](assets/pilly-chat.png) | ![Pilly coin analysis](assets/pilly-coin.png) |
+| ![Pilly settings](assets/pilly-settings.png) | ![Pilly on the taskbar](assets/pilly-pet.png) |
+
+---
+
+## What it does
+
+- **Lives in the system tray** - an animated pill icon (3-frame blink) and a
+  global hotkey (**Ctrl+Shift+P**) that summons the window from anywhere.
+- **Taskbar pet** - Pilly can **walk along your taskbar**, pause, hop, and
+  follow your cursor with its eyes. Pick a color (green, blue, purple, pink,
+  orange) and a size - it updates live.
+- **Live Solana coin checks** - paste a token address or a `pump.fun` link and
+  Pilly pulls live price, market cap, volume, liquidity, age, buy/sell counts
+  and an organic-score read from the public pump.fun / DexScreener / Jupiter
+  APIs - then gives a trained pro read (I BUY / TRIM / hold / SELL with the
+  real numbers).
+- **🔥 Trending** - the top 10 movers on Solana right now, pulled from
+  GeckoTerminal's public feed, no API key needed.
+- **🎲 Pick a coin** - Pilly rolls a random coin from the live trending feed,
+  pulls its full snapshot and tells you if it's a buy - with a roast.
+- **Meme lab** - rewrite, caption, name, react to or roast any coin, in Pilly's
+  voice. One click from the chips under the input.
+- **Bring your own AI** - Pilly runs on **free AI tiers out of the box**, and
+  you can plug in your own keys for OpenRouter, Groq, Cerebras, NVIDIA NIM,
+  DeepSeek, Together, Mistral - or any OpenAI-compatible endpoint (even a local
+  Ollama server). Tiers are tried in order until one answers.
+
+---
+
+## Quick start
+
+```bash
+cd pillcrew-desktop
+npm install
+npm start
+```
+
+Build a Windows installer with:
+
+```bash
+npm run dist
+```
+
+No API keys are required to try it - free tiers are the default. To add your
+own providers, open **⚙️ settings** in the app or edit `.env` (see
+[`.env.example`](pillcrew-desktop/.env.example)).
+
+> **No secrets live in this repo.** Real keys belong in a local `.env` (which
+> is git-ignored), never in the repository.
+
+Full docs for the desktop app: [pillcrew-desktop/README.md](pillcrew-desktop/README.md)
+
+---
+
+<div align="center">
+
+# PillCrew - the web platform
+
+</div>
+
+**A trading desk staffed by ten AI specialists. Not one bot. A crew.**
 
 PillCrew is a free web platform that gives you a **team of ten specialized AI
 agents** for analyzing Solana memecoins. Paste any token and receive instant
 analysis in the style of each agent, from aggressive momentum calls to
-rigorous risk management, all backed by live market data that refreshes in
-real time across the entire application.
+rigorous risk management, all backed by live market data.
+
+[![pillcrew.fun](https://img.shields.io/website?url=https%3A%2F%2Fpillcrew.fun&label=pillcrew.fun&style=flat-square&color=4caf50)](https://pillcrew.fun)
 
 > **Disclaimer:** PillCrew is a beta product for entertainment and education
 > only. It does not provide financial advice (NFA). Memecoins are highly
@@ -110,64 +185,6 @@ live stats attached.
 | ![Trending on Solana](assets/trending.png) | ![Chat with an agent](assets/chat.png) |
 | ![Live callouts](assets/callouts.png) | ![Watchlist](assets/watchlist.png) |
 | ![Docs](assets/docs.png) | |
-
----
-
-## 🫧 Pilly Desktop - the app that lives in your taskbar
-
-Pilly is a **standalone desktop app** (Windows) for the same PillCrew
-philosophy - but it sits quietly in your **system tray** as a little animated
-pill, ready on one hotkey. No browser tabs, no alt-tabbing. Paste a Solana
-token address, get a live read, meme it, roast it, or just talk.
-
-| | |
-| --- | --- |
-| ![Pilly chat](assets/pilly-chat.png) | ![Pilly coin analysis](assets/pilly-coin.png) |
-| ![Pilly settings](assets/pilly-settings.png) | ![Pilly icon](assets/pilly-app.png) |
-
-### What it does
-
-- **Lives in the system tray** with an animated pill icon (3-frame blink) and
-  a global hotkey (**Ctrl+Shift+P**) that summons the window from anywhere.
-- **Live Solana coin checks** - paste a token address or a `pump.fun` link and
-  Pilly pulls live price, market cap, volume, liquidity, age, buy/sell counts
-  and an organic-score read from the public pump.fun / DexScreener / Jupiter
-  APIs.
-- **🔥 Trending** - the top movers on Solana right now, pulled from
-  GeckoTerminal's public feed, no API key needed.
-- **Meme lab** - rewrite, caption, name, react to or roast any coin, in Pilly's
-  voice.
-- **Trained AI read** - Pilly is primed to read the tape honestly: it says
-  "no tape" when there is no volume, buys small dips, trims at 10-15% and gets
-  out on big reversals - no lies, no guessing.
-- **Bring your own AI** - Pilly runs on **free AI tiers out of the box**, and
-  you can plug in your own keys for OpenRouter, Groq, Cerebras, NVIDIA NIM,
-  DeepSeek, Together, Mistral - or any OpenAI-compatible endpoint (even a local
-  Ollama server). Tiers are tried in order until one answers.
-
-### Quick start
-
-```bash
-cd pillcrew-desktop
-npm install
-npm start
-```
-
-Build a Windows installer with:
-
-```bash
-npm run dist
-```
-
-No API keys are required to try it - free tiers are the default, with an
-optional fallback to the pillcrew.fun web API. To add your own providers, open
-**⚙️ settings** in the app or edit `.env` (see
-[`.env.example`](pillcrew-desktop/.env.example)).
-
-> **No secrets live in this repo.** Real keys belong in a local `.env` (which
-> is git-ignored), never in the repository.
-
-Full docs for the desktop app: [pillcrew-desktop/README.md](pillcrew-desktop/README.md)
 
 ---
 
@@ -262,8 +279,8 @@ No. The platform works without sign-up.
 Only to execute swaps; all analysis is wallet-free.
 
 **Is this financial advice?**
-No. The platform is for education and entertainment only. Always conduct your
-own research before trading.
+No. Pilly and PillCrew are for education and entertainment only. Always
+conduct your own research before trading.
 
 ---
 

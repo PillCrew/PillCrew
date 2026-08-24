@@ -1,11 +1,9 @@
 // src/ai.js - Pilly's free AI brain.
 //
-// Two ways to talk:
-//   A) PILLY_API_URL set -> route through the PillCrew web API (its own
-//      free pipeline). Needs no keys here.
-//   B) Direct tier chain -> tries PILLY_TIER1_URL .. PILLY_TIER5_URL in order
-//      (cheapest/free first) until one answers. Fully generic: the endpoints
-//      and models come from .env, so no provider names live in code.
+// Pilly talks to any OpenAI-compatible chat-completions API through a chain
+// of tiers (PILLY_TIER1_URL .. PILLY_TIER5_URL), tried in order, cheapest/free
+// first, until one answers. Fully generic: endpoints and models come from .env
+// or the in-app settings, so no provider names live in code.
 //
 // Every reply is clamped short (meme-native, screenshot-sized).
 
@@ -73,29 +71,6 @@ async function fetchJson(url, options, ms = 25000) {
   }
 }
 
-// Route through the PillCrew web API as a fallback (its free pipeline).
-// Uses the site's Meme Alchemist agent - Pilly's own persona comes from the
-// direct tiers; this is just a safety net when no local keys are configured.
-async function viaSite(messages, system) {
-  const base = (process.env.PILLY_API_URL || "").replace(/\/+$/, "");
-  const key = process.env.PILLY_API_KEY || "";
-  if (!base) return null;
-  const history = messages.map((m) => ({
-    role: m.role === "assistant" ? "assistant" : "user",
-    content: String(m.content || ""),
-  }));
-  const res = await fetchJson(`${base}/api/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(key ? { Authorization: `Bearer ${key}` } : {}),
-    },
-    body: JSON.stringify({ history, agentId: "meme" }),
-  });
-  if (!res) return null;
-  return res.content || res.reply || res.message || null;
-}
-
 // Direct tier chain - free/cheap first, first success wins.
 async function viaTiers(messages, system, opts = {}) {
   const tiers = getTiers(opts.tiers);
@@ -139,7 +114,7 @@ async function viaTiers(messages, system, opts = {}) {
  * @param {string} [opts.task] "" | "rewrite" | "caption" | "name" | "react" | "roast" | "coin" | "trending"
  * @param {Array}  [opts.history] previous [{role, content}] (max ~12)
  * @param {string} [opts.coinContext] live coin snapshot (COIN MODE)
- * @param {object} [opts.ai] settings: { tiers, temperature, maxTokens, useSiteFallback }
+ * @param {object} [opts.ai] settings: { tiers, temperature, maxTokens }
  * @returns {Promise<{reply: string, error?: string}>}
  */
 async function respond(text, opts = {}) {
@@ -150,12 +125,7 @@ async function respond(text, opts = {}) {
   const system = PILLY.systemPrompt(task, coinContext);
   const messages = [...history.slice(-12), { role: "user", content: text }];
 
-  // Direct tiers FIRST - they carry Pilly's OWN persona (short, meme-native).
-  // The web API is only a fallback when no local keys are configured.
-  let reply = await viaTiers(messages, system, opts.ai || {});
-  const useSite = !opts.ai || opts.ai.useSiteFallback !== false;
-  if (!reply && useSite) reply = await viaSite(messages, system);
-
+  const reply = await viaTiers(messages, system, opts.ai || {});
   if (!reply) {
     return { error: "Pilly couldn't reach any AI right now. Add your API in settings (⚙️) and try again." };
   }

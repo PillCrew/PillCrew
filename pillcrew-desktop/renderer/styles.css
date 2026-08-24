@@ -15,6 +15,7 @@
 
 html, body { height: 100%; }
 body {
+  position: relative;
   background: var(--bg);
   color: var(--text);
   font-family: "Segoe UI", system-ui, sans-serif;
@@ -41,8 +42,8 @@ body {
   width: 34px;
   height: 20px;
   border-radius: 999px;
-  background: linear-gradient(135deg, #22c55e, #6366f1);
-  box-shadow: 0 2px 10px rgba(34, 197, 94, 0.45);
+  background: linear-gradient(135deg, var(--c1, #22c55e), var(--c3, #6366f1));
+  box-shadow: 0 2px 10px var(--glow, rgba(34, 197, 94, 0.45));
   animation: pillBob 2.4s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -79,6 +80,7 @@ body {
   width: 26px; height: 26px; cursor: pointer; border-radius: var(--radius);
 }
 .bar-actions button:hover { background: var(--panel-2); color: var(--text); }
+.bar-actions button.active { background: rgba(34, 197, 94, 0.18); color: var(--green); }
 
 /* ---- Messages ---- */
 .messages {
@@ -240,6 +242,30 @@ body {
 .tr-chg.down { color: var(--red); }
 .tr-vol { color: var(--dim); font-variant-numeric: tabular-nums; }
 
+/* ---- Scrollbars ---- */
+.messages::-webkit-scrollbar, .settings::-webkit-scrollbar { width: 8px; }
+.messages::-webkit-scrollbar-track, .settings::-webkit-scrollbar-track { background: transparent; }
+.messages::-webkit-scrollbar-thumb, .settings::-webkit-scrollbar-thumb { background: #223026; }
+.messages::-webkit-scrollbar-thumb:hover, .settings::-webkit-scrollbar-thumb:hover { background: #2e4134; }
+
+/* ---- Jump-to-latest button ---- */
+.scroll-down {
+  position: absolute;
+  right: 12px;
+  bottom: 66px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--dim);
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.scroll-down:hover { color: var(--green); border-color: rgba(34, 197, 94, 0.5); }
+
 /* ---- Settings panel ---- */
 .settings {
   position: absolute;
@@ -250,6 +276,7 @@ body {
   flex-direction: column;
   padding: 14px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .settings.hidden { display: none; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -259,7 +286,7 @@ body {
 .settings .hint { color: var(--dim); font-size: 11px; margin-bottom: 10px; line-height: 1.45; }
 .tier { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin-bottom: 8px; background: var(--panel); }
 .tier-title { font-size: 10.5px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
-.tier input, .settings .row input[type="number"] {
+.tier input {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -301,6 +328,30 @@ body {
 .settings .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-size: 12px; }
 .settings .row input { width: 90px; flex-shrink: 0; margin: 0; }
 .settings .row.toggle input { width: auto; }
+.settings .row select {
+  width: 110px;
+  flex-shrink: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+}
+.settings .row select:focus { border-color: rgba(34, 197, 94, 0.55); }
+.pet-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 14px 0 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
 .settings-actions { display: flex; gap: 8px; margin-top: 10px; }
 .settings-actions button {
   flex: 1;
@@ -317,6 +368,14 @@ body {
 .settings .status { margin-top: 8px; font-size: 11.5px; min-height: 15px; }
 .settings .status.ok { color: var(--green); }
 .settings .status.err { color: #fca5a5; }
+.settings-foot {
+  margin-top: auto;
+  flex-shrink: 0;
+  padding-top: 12px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--dim);
+}
 
 /* ---- API guide ---- */
 .settings .guide { margin-top: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }

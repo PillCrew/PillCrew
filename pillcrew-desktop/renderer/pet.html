@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pilly pet</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+      cursor: pointer;
+    }
+    .scene {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transform: scale(var(--ps, 1));
+      transform-origin: 50% 100%;
+    }
+    /* Direction flip (1 = right, -1 = left) applied to the whole pill */
+    .pill {
+      --dir: 1;
+      position: absolute;
+      left: 50%;
+      bottom: 11px;
+      width: 40px;
+      height: 23px;
+      transform: translateX(-50%) scaleX(var(--dir));
+      transition: transform 0.18s ease;
+    }
+    .body {
+      width: 100%;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--c1, #22c55e), var(--c2, #34d399) 55%, var(--c3, #6366f1));
+      box-shadow: 0 6px 16px var(--glow, rgba(34, 197, 94, 0.45)), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+      position: relative;
+      animation: walk 0.5s ease-in-out infinite;
+    }
+    .eye {
+      position: absolute;
+      top: 6px;
+      width: 6px;
+      height: 7px;
+      border-radius: 50%;
+      background: #0b0f0d;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .eye.l { left: 8px; }
+    .eye.r { right: 8px; }
+    .eye b {
+      width: 2px;
+      height: 3px;
+      border-radius: 50%;
+      background: #fff;
+      transform: translate(var(--px, 0px), var(--py, 0px));
+      transition: transform 0.12s ease;
+    }
+    .mouth {
+      position: absolute;
+      bottom: 3px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 10px;
+      height: 3px;
+      border-radius: 0 0 10px 10px;
+      background: #0b0f0d;
+    }
+    .shadow {
+      position: absolute;
+      bottom: 2px;
+      left: 50%;
+      width: 34px;
+      height: 7px;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 50%;
+      animation: shadow 0.5s ease-in-out infinite;
+    }
+    @keyframes walk {
+      0%, 100% { transform: translateY(0) scaleY(1) scaleX(1); }
+      40% { transform: translateY(-3px) scaleY(1.06) scaleX(0.96); }
+      60% { transform: translateY(-5px) scaleY(1.08) scaleX(0.94); }
+    }
+    @keyframes shadow {
+      0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.5; }
+      40% { transform: translateX(-50%) scale(0.85); opacity: 0.35; }
+      60% { transform: translateX(-50%) scale(0.7); opacity: 0.3; }
+    }
+    /* Behavior states: pause in place, or do a hop */
+    .scene.pause .body { animation: none; }
+    .scene.hop .body { animation: hop 0.8s ease; }
+    .scene.hop .shadow { animation: hopShadow 0.8s ease; }
+    @keyframes hop {
+      0% { transform: translateY(0) scale(1, 1); }
+      30% { transform: translateY(-13px) scale(1.1, 0.9); }
+      55% { transform: translateY(-16px) scale(1.15, 0.85); }
+      100% { transform: translateY(0) scale(1, 1); }
+    }
+    @keyframes hopShadow {
+      0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.5; }
+      40% { transform: translateX(-50%) scale(0.55); opacity: 0.25; }
+    }
+  </style>
+</head>
+<body>
+  <div class="scene">
+    <div class="pill" id="pill">
+      <div class="body">
+        <i class="eye l"><b></b></i>
+        <i class="eye r"><b></b></i>
+        <i class="mouth"></i>
+      </div>
+    </div>
+    <div class="shadow"></div>
+  </div>
+  <script>
+    const THEMES = {
+      green: { c1: "#22c55e", c2: "#34d399", c3: "#6366f1", glow: "rgba(34,197,94,0.45)" },
+      blue: { c1: "#3b82f6", c2: "#38bdf8", c3: "#8b5cf6", glow: "rgba(59,130,246,0.45)" },
+      purple: { c1: "#8b5cf6", c2: "#a78bfa", c3: "#ec4899", glow: "rgba(139,92,246,0.45)" },
+      pink: { c1: "#ec4899", c2: "#f472b6", c3: "#fbbf24", glow: "rgba(236,72,153,0.45)" },
+      orange: { c1: "#f97316", c2: "#fbbf24", c3: "#ef4444", glow: "rgba(249,115,22,0.45)" },
+    };
+    function applyPetSettings(pet) {
+      const t = (pet && THEMES[pet.theme]) || THEMES.green;
+      const rs = document.documentElement.style;
+      rs.setProperty("--c1", t.c1);
+      rs.setProperty("--c2", t.c2);
+      rs.setProperty("--c3", t.c3);
+      rs.setProperty("--glow", t.glow);
+      const scale = pet && pet.size === "sm" ? 0.85 : pet && pet.size === "lg" ? 1.2 : 1;
+      rs.setProperty("--ps", scale);
+    }
+    if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyPetSettings);
+    if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyPetSettings);
+
+    // Face the direction Pilly is walking.
+    const pill = document.getElementById("pill");
+    let petDirNow = 1;
+    if (window.pilly && window.pilly.onPetDir) {
+      window.pilly.onPetDir((d) => {
+        petDirNow = d === -1 ? -1 : 1;
+        pill.style.setProperty("--dir", petDirNow);
+      });
+    }
+    // Eyes follow the mouse cursor. The pill is mirrored when walking left,
+    // so the horizontal offset is flipped to keep the look correct. The pupil
+    // is 2x3 inside a 6x7 eye - clamped to +/-1.2px so it always stays inside.
+    if (window.pilly && window.pilly.onPetCursor) {
+      window.pilly.onPetCursor((pos) => {
+        const dx = Math.max(-1.2, Math.min(1.2, (pos.x / 120) * 1.2)) * petDirNow;
+        const dy = Math.max(-1.2, Math.min(1.2, (pos.y / 120) * 1.2));
+        document.documentElement.style.setProperty("--px", dx + "px");
+        document.documentElement.style.setProperty("--py", dy + "px");
+      });
+    }
+    // Behavior: pause or hop.
+    if (window.pilly && window.pilly.onPetState) {
+      window.pilly.onPetState((s) => {
+        const scene = document.querySelector(".scene");
+        scene.classList.remove("hop", "pause");
+        if (s === "hop") { void scene.offsetWidth; scene.classList.add("hop"); }
+        else if (s === "pause") scene.classList.add("pause");
+      });
+    }
+    // Single click opens the chat, double click stops the walk.
+    if (window.pilly) {
+      pill.addEventListener("click", () => window.pilly.openChat());
+      pill.addEventListener("dblclick", () => window.pilly.petToggle());
+    }
+  </script>
+</body>
+</html>

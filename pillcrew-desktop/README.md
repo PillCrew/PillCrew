@@ -10,7 +10,7 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 
 - **Sits in the system tray** - a little green pill with eyes, gently bobbing.
 - **One click = chat** - a small frameless window pops up right above the tray icon.
-- **Free AI** - talks through your own API settings (⚙️ in the chat: paste any chat-completions endpoint, key and model - e.g. OpenRouter - with a one-click test) or the PillCrew web fallback.
+- **Free AI** - talks through your own API settings (⚙️ in the chat: paste any chat-completions endpoint and key, pick a free model with one click, test, done).
 - **Live Solana data (pro)** - paste a token address or a pump.fun/jup.ag link and Pilly pulls live data from free APIs (pump.fun, DexScreener, GeckoTerminal, Jupiter intel): price, mcap, volume, liquidity, 24h change, age, buy/sell txns, organic score, verification, holder/audit flags - then gives a trained pro read (I BUY / TRIM / hold / SELL with the real numbers).
 - **🔥 Trending** - one click pulls the hottest Solana coins right now (GeckoTerminal trending) with real volume/change and a short rundown.
 - **Meme brain** - detects what you want and switches mode:
@@ -40,15 +40,9 @@ npm start
 
 ### Config (`.env`)
 
-Give Pilly **one** of these:
+Pilly talks to any OpenAI-compatible chat-completions API. Put one (or several
+as fallbacks) in `.env`:
 
-**Option A - PillCrew web fallback (optional, no key needed):**
-```
-PILLY_API_URL=https://pillcrew.fun
-```
-> This routes through the PillCrew web API - a convenient zero-config fallback. For full control and reliability, use Option B with your own keys.
-
-**Option B - direct free-tier chain** (generic, no names in code) - **the reliable path.**
 ```
 PILLY_TIER1_URL=https://...chat/completions
 PILLY_TIER1_KEY=...
@@ -56,11 +50,15 @@ PILLY_TIER1_MODEL=...
 PILLY_TIER2_URL=...
 ...
 ```
-> 💡 Put any OpenAI-compatible endpoint into `PILLY_TIER1_URL`, its key into `PILLY_TIER1_KEY` and the model into `PILLY_TIER1_MODEL`. Add more tiers as fallbacks.
+> 💡 Put any endpoint into `PILLY_TIER1_URL`, its key into `PILLY_TIER1_KEY` and
+> its model into `PILLY_TIER1_MODEL` (most providers require one). Add more tiers
+> as fallbacks - they are tried in order, cheapest/free first.
 
-Tiers are tried in order until one answers (cheapest/free first). Tune with `PILLY_TEMPERATURE` and `PILLY_MAX_TOKENS`.
+Tune with `PILLY_TEMPERATURE` and `PILLY_MAX_TOKENS`.
 
-**Or set it all in the app** - click ⚙️ in the chat window: 3 API slots (URL / key / model), temperature, site-fallback toggle and a **Test connection** button. Saved on disk, no file edits.
+**Or set it all in the app** - click ⚙️ in the chat window: 3 API slots
+(URL / key / model), **Find free models**, a **Test connection** button and
+temperature. Saved on disk, no file edits.
 
 ### Which API for which AI (chat-completions format)
 
