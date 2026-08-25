@@ -220,7 +220,7 @@ async function fetchTrendingTop(limit = 8) {
     const a = p?.attributes || {};
     const base = a.base_token || {};
     const quote = a.quote_token || {};
-    const addr = base.address || p?.relationships?.base_token?.data?.id;
+    const addr = String(base.address || p?.relationships?.base_token?.data?.id || "").replace(/^solana_/, "");
     const name = a.name || "";
     const sym = (base.symbol || name.split("/")[0] || "").slice(0, 12);
     const price = Number(a.base_token_price_usd);
@@ -229,12 +229,38 @@ async function fetchTrendingTop(limit = 8) {
       : null;
     const vol = a.volume_usd && a.volume_usd.h24 != null ? Number(a.volume_usd.h24) : null;
     const liq = Number(a.reserve_in_usd) || null;
+    const mcap = a.market_cap_usd != null ? Number(a.market_cap_usd) : null;
     if (addr && isFinite(price) && price > 0) {
-      list.push({ mint: addr, name: name.split("/")[0] || sym, symbol: sym, price, change24h: chg, volume24h: vol, liquidityUsd: liq });
+      list.push({ mint: addr, name: name.split("/")[0] || sym, symbol: sym, price, change24h: chg, volume24h: vol, liquidityUsd: liq, mcap });
     }
   }
+  // GeckoTerminal doesn't report mcap for every pool (e.g. fresh bonding-curve
+  // coins), so fill the gaps with one DexScreener batch call.
+  const missing = list.filter((c) => c.mcap == null).map((c) => c.mint);
+  if (missing.length) {
+    for (let i = 0; i < missing.length; i += 30) {
+      const j = await fetchJson(`https://api.dexscreener.com/latest/dex/tokens/${missing.slice(i, i + 30).join(",")}`, 12000);
+      const pairs = Array.isArray(j && j.pairs) ? j.pairs : [];
+      for (const p of pairs) {
+        const mint = p && p.baseToken && p.baseToken.address;
+        if (!mint) continue;
+        const mc = p.marketCap != null ? Number(p.marketCap) : null;
+        if (mc == null || !isFinite(mc) || mc <= 0) continue;
+        const item = list.find((c) => c.mint === mint);
+        if (item && item.mcap == null) item.mcap = mc;
+      }
+    }
+  }
+  // Last resort: pump.fun knows EVERY coin on its bonding curve (DexScreener
+  // only lists graduated AMM pairs), so fill the remaining mcap gaps from it.
+  await Promise.all(
+    list.filter((c) => c.mcap == null).map(async (c) => {
+      const pump = await fromPump(c.mint);
+      if (pump && pump.mcap) c.mcap = pump.mcap;
+    })
+  );
   const lines = list.map((c, i) =>
-    `${i + 1}. ${c.name}${c.symbol ? ` (${c.symbol})` : ""} ${fmtUsd(c.price)}${c.change24h != null ? ` ${fmtPct(c.change24h)}` : ""}${c.volume24h != null ? ` vol ${fmtUsd(c.volume24h)}` : ""}${c.liquidityUsd != null ? ` liq ${fmtUsd(c.liquidityUsd)}` : ""}`
+    `${i + 1}. ${c.name}${c.symbol ? ` (${c.symbol})` : ""} ${fmtUsd(c.price)}${c.change24h != null ? ` ${fmtPct(c.change24h)}` : ""}${c.mcap != null ? ` mcap ${fmtUsd(c.mcap)}` : ""}${c.volume24h != null ? ` vol ${fmtUsd(c.volume24h)}` : ""}${c.liquidityUsd != null ? ` liq ${fmtUsd(c.liquidityUsd)}` : ""}`
   );
   return {
     list,
@@ -242,4 +268,176 @@ async function fetchTrendingTop(limit = 8) {
   };
 }
 
-module.exports = { detectMint, fetchCoinContext, fetchTrendingTop, fmtUsd, fmtPct };
+/**
+ * Solana wallet portfolio check: SOL balance + held tokens with live prices.
+ * Free: public RPC for balances + DexScreener batch for prices. No keys.
+ * @returns {Promise<{wallet, sol, solUsd, tokens, totalUsd, context, ok:true} | null>}
+ */
+const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+
+async function rpcCall(method, params) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 9000);
+  try {
+    const res = await fetch(SOLANA_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": UA },
+      signal: ctrl.signal,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// base58 -> bytes (null if any char isn't base58).
+function b58ToBytes(s) {
+  const A = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  let num = 0n;
+  for (const ch of s) {
+    const v = A.indexOf(ch);
+    if (v < 0) return null;
+    num = num * 58n + BigInt(v);
+  }
+  let hex = num.toString(16);
+  if (hex.length % 2) hex = "0" + hex;
+  const bytes = Buffer.from(hex, "hex");
+  // Leading '1' characters encode leading zero bytes.
+  let lead = 0;
+  while (lead < s.length && s[lead] === "1") lead++;
+  return Buffer.concat([Buffer.alloc(lead), bytes]);
+}
+
+// A valid Solana pubkey is exactly 32 bytes.
+function isPubkey(s) {
+  if (!s || typeof s !== "string" || s.length < 32 || s.length > 44) return false;
+  const b = b58ToBytes(s);
+  return !!b && b.length === 32;
+}
+
+async function fetchWalletPortfolio(address) {
+  const addr = String(address || "").trim();
+  if (!isPubkey(addr)) return null;
+
+  const bal = await rpcCall("getBalance", [addr]);
+  const lamports = Number(bal && bal.result && bal.result.value);
+  const sol = isFinite(lamports) ? lamports / 1e9 : 0;
+
+  // Tokens can live in either the legacy SPL Token program OR Token-2022
+  // (pump.fun coins use both) - query both and merge by mint.
+  const holdings = [];
+  const seen = new Set();
+  for (const program of [TOKEN_PROGRAM, TOKEN_2022_PROGRAM]) {
+    const ta = await rpcCall("getTokenAccountsByOwner", [addr, { programId: program }, { encoding: "jsonParsed" }]);
+    const accounts = Array.isArray(ta && ta.result && ta.result.value) ? ta.result.value : [];
+    for (const item of accounts) {
+      const info = item && item.account && item.account.data && item.account.data.parsed && item.account.data.parsed.info;
+      if (!info || !info.mint) continue;
+      const ui = Number(info.tokenAmount && info.tokenAmount.uiAmount);
+      if (!isFinite(ui) || ui <= 0) continue;
+      if (seen.has(info.mint)) continue;
+      seen.add(info.mint);
+      holdings.push({ mint: info.mint, amount: ui });
+    }
+  }
+
+  // Live prices: query EACH mint individually - the batch endpoint caps at 30
+  // pairs TOTAL, so a wallet with several tokens silently loses its most
+  // liquid pairs (a wallet's BATON once priced 2.5x too high off a $2.7K pair).
+  const mints = [SOL_MINT, ...holdings.map((h) => h.mint)].slice(0, 12);
+  const priceMap = new Map();
+  await Promise.all(
+    mints.map(async (mint) => {
+      const j = await fetchJson(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, 12000);
+      const pairs = Array.isArray(j && j.pairs) ? j.pairs : [];
+      for (const p of pairs) {
+        const rec = (tok) => {
+          if (!tok || !tok.address) return;
+          const price = Number(p.priceUsd);
+          if (!isFinite(price) || price <= 0) return;
+          // Use the MOST-LIQUID pair as the source of truth - a thin pair can
+          // carry a wildly inflated price (a $2.7K-liquidity pair once priced a
+          // wallet's BATON 2.5x too high).
+          const liq = Number(p.liquidity && p.liquidity.usd) || 0;
+          const cur = priceMap.get(tok.address);
+          if (cur && (cur.liquidity || 0) >= liq) return;
+          priceMap.set(tok.address, {
+            price,
+            liquidity: liq,
+            name: tok.name || "",
+            symbol: (tok.symbol || "").slice(0, 12),
+            change24h: p.priceChange && p.priceChange.h24 != null ? Number(p.priceChange.h24) : null,
+            volume24h: p.volume && p.volume.h24 != null ? Number(p.volume.h24) : null,
+          });
+        };
+        rec(p.baseToken);
+        rec(p.quoteToken);
+      }
+    })
+  );
+  // Fallback: pump.fun prices for mints DexScreener didn't know.
+  for (const h of holdings) {
+    if (priceMap.has(h.mint)) continue;
+    const pump = await fromPump(h.mint);
+    if (pump && pump.price) {
+      priceMap.set(h.mint, { price: pump.price, name: pump.name, symbol: pump.symbol, change24h: null, volume24h: pump.volume24h || null });
+    }
+  }
+
+  const solPrice = priceMap.get(SOL_MINT) ? priceMap.get(SOL_MINT).price : null;
+  const solUsd = solPrice ? sol * solPrice : 0;
+  const tokens = [];
+  for (const h of holdings) {
+    const pm = priceMap.get(h.mint);
+    const usd = pm ? h.amount * pm.price : null;
+    if (pm && usd != null && usd < 0.01) continue; // skip dust we can price
+    tokens.push({
+      mint: h.mint,
+      name: (pm && pm.name) || h.mint.slice(0, 6),
+      symbol: (pm && pm.symbol) || "",
+      amount: h.amount,
+      price: pm ? pm.price : null,
+      usd,
+      change24h: pm ? pm.change24h : null,
+      volume24h: pm ? pm.volume24h : null,
+    });
+  }
+  // Priced holdings first (by USD), unpriced at the bottom.
+  tokens.sort((a, b) => (b.usd == null ? -1 : b.usd) - (a.usd == null ? -1 : a.usd));
+  const top = tokens.slice(0, 10);
+  const pricedUsd = top.reduce((s, t) => s + (t.usd != null ? t.usd : 0), 0);
+  const totalUsd = solUsd + pricedUsd;
+  // Weighted 24h change of the priced holdings.
+  let change24h = null;
+  {
+    const wsum = top.reduce((s, t) => s + (t.usd != null && t.change24h != null ? t.usd : 0), 0);
+    if (wsum > 0) {
+      change24h = top.reduce((s, t) => s + (t.usd != null && t.change24h != null ? t.change24h * (t.usd / wsum) : 0), 0);
+    }
+  }
+
+  const lines = [];
+  lines.push(`Wallet ${addr.slice(0, 5)}…${addr.slice(-4)}`);
+  lines.push(`SOL ${sol.toFixed(4)}${solUsd > 0 ? ` (${fmtUsd(solUsd)})` : ""}`);
+  if (top.length) {
+    lines.push(`Holdings ${top.length} token${top.length === 1 ? "" : "s"} · est ${fmtUsd(totalUsd)}${change24h != null ? ` · 24h ${fmtPct(change24h)}` : ""}`);
+    top.forEach((t, i) => {
+      const amt = t.amount >= 1000 ? t.amount.toLocaleString(undefined, { maximumFractionDigits: 0 }) : t.amount.toFixed(4);
+      const val = t.usd != null ? fmtUsd(t.usd) : "no price";
+      lines.push(`${i + 1}. ${t.name}${t.symbol ? ` (${t.symbol})` : ""} ${amt} · ${val}${t.change24h != null ? ` ${fmtPct(t.change24h)}` : ""}`);
+    });
+  } else {
+    lines.push("No tokens held - just SOL.");
+  }
+
+  return { wallet: addr, sol, solUsd, tokens: top, totalUsd, change24h, context: lines.join("\n"), ok: true };
+}
+
+module.exports = { detectMint, fetchCoinContext, fetchTrendingTop, fetchWalletPortfolio, isPubkey, fmtUsd, fmtPct };

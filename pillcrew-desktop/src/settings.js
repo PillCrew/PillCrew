@@ -19,6 +19,9 @@ const DEFAULT_SETTINGS = {
     size: "md",
     bubbles: true,
     bubbleSize: "md",
+    walkMode: "taskbar",
+    stopFreq: "normal",
+    questions: true,
   },
 };
 
@@ -66,6 +69,9 @@ function save(userDataDir, settings) {
       size: String((settings.pet && settings.pet.size) || "md"),
       bubbles: !settings.pet || settings.pet.bubbles !== false,
       bubbleSize: String((settings.pet && settings.pet.bubbleSize) || "md"),
+      walkMode: String((settings.pet && settings.pet.walkMode) || "taskbar"),
+      stopFreq: String((settings.pet && settings.pet.stopFreq) || "normal"),
+      questions: !settings.pet || settings.pet.questions !== false,
     },
   };
   try {

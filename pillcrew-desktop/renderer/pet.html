@@ -95,6 +95,7 @@
     }
     /* Behavior states: pause in place, or do a hop */
     .scene.pause .body { animation: none; }
+    .scene.pause .shadow, .scene.drag .shadow { animation: none; }
     .scene.hop .body { animation: hop 0.8s ease; }
     .scene.hop .shadow { animation: hopShadow 0.8s ease; }
     @keyframes hop {
@@ -107,6 +108,20 @@
       0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.5; }
       40% { transform: translateX(-50%) scale(0.55); opacity: 0.25; }
     }
+    /* Annoyed while being dragged */
+    .scene.drag .eye::before {
+      content: "";
+      position: absolute;
+      top: -5px;
+      left: -1px;
+      width: 9px;
+      height: 2px;
+      background: #0b0f0d;
+      border-radius: 2px;
+    }
+    .scene.drag .eye.l::before { transform: rotate(20deg); }
+    .scene.drag .eye.r::before { transform: rotate(-20deg); }
+    .scene.drag .mouth { border-radius: 10px 10px 0 0; }
   </style>
 </head>
 <body>
@@ -137,6 +152,8 @@
       rs.setProperty("--glow", t.glow);
       const scale = pet && pet.size === "sm" ? 0.85 : pet && pet.size === "lg" ? 1.2 : 1;
       rs.setProperty("--ps", scale);
+      // Whole-monitor mode lets the user grab Pilly and drag it anywhere.
+      enableDrag(pet && pet.walkMode === "screen");
     }
     if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyPetSettings);
     if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyPetSettings);
@@ -170,11 +187,60 @@
         else if (s === "pause") scene.classList.add("pause");
       });
     }
-    // Single click opens the chat, double click stops the walk.
+    // Single click opens the chat. (No double-click action anymore - rapid
+    // clicks used to toggle the walk off and make Pilly disappear.)
     if (window.pilly) {
-      pill.addEventListener("click", () => window.pilly.openChat());
-      pill.addEventListener("dblclick", () => window.pilly.petToggle());
+      pill.addEventListener("click", () => {
+        if (moved > 6) return; // it was a drag, not a click
+        window.pilly.openChat();
+      });
     }
+    // Drag Pilly around the monitor (whole-monitor mode only). Mouse deltas are
+    // forwarded to main, which moves the pet window while pausing its walk.
+    // While being dragged Pilly looks annoyed (eyebrows + frown) and complains.
+    let canDrag = false;
+    let dragging = false;
+    let lastX = 0, lastY = 0, moved = 0, dragReacted = false;
+    const sceneEl = document.querySelector(".scene");
+    function enableDrag(on) {
+      canDrag = !!on;
+      document.body.style.cursor = canDrag ? "grab" : "pointer";
+    }
+    document.addEventListener("mousedown", (e) => {
+      if (!canDrag) return;
+      dragging = true;
+      moved = 0;
+      dragReacted = false;
+      lastX = e.screenX;
+      lastY = e.screenY;
+      document.body.style.cursor = "grabbing";
+      if (window.pilly) window.pilly.petDrag({ mode: "start" });
+      e.preventDefault();
+    });
+    document.addEventListener("mousemove", (e) => {
+      if (!dragging || !canDrag) return;
+      const dx = e.screenX - lastX;
+      const dy = e.screenY - lastY;
+      lastX = e.screenX;
+      lastY = e.screenY;
+      moved += Math.abs(dx) + Math.abs(dy);
+      if (window.pilly) window.pilly.petDrag({ mode: "move", dx, dy });
+      // Only act annoyed after a REAL drag - a plain click must not trigger
+      // the "put me down!" reaction.
+      if (!dragReacted && moved > 12) {
+        dragReacted = true;
+        sceneEl.classList.add("drag");
+        if (window.pilly) window.pilly.petReact("dragstart");
+      }
+    });
+    document.addEventListener("mouseup", () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.cursor = canDrag ? "grab" : "pointer";
+      sceneEl.classList.remove("drag");
+      if (window.pilly) window.pilly.petDrag({ mode: "end" });
+      if (dragReacted && window.pilly) window.pilly.petReact("dragend");
+    });
   </script>
 </body>
 </html>

@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("pilly", {
   chat: (payload) => ipcRenderer.invoke("pilly:chat", payload),
   memePrompts: () => ipcRenderer.invoke("pilly:meme"),
+  detectTask: (text) => ipcRenderer.invoke("pilly:detect-task", text),
   onSuggest: (cb) => {
     ipcRenderer.on("pilly:suggest", (e, type) => cb(type));
   },
@@ -14,6 +15,7 @@ contextBridge.exposeInMainWorld("pilly", {
   settingsModels: (t) => ipcRenderer.invoke("pilly:settings:models", t),
   // live Solana data
   coin: (mint) => ipcRenderer.invoke("pilly:coin", mint),
+  wallet: (address) => ipcRenderer.invoke("pilly:wallet", address),
   trending: () => ipcRenderer.invoke("pilly:trending"),
   // taskbar pet
   petToggle: () => ipcRenderer.invoke("pilly:pet:toggle"),
@@ -28,4 +30,7 @@ contextBridge.exposeInMainWorld("pilly", {
   petSettings: () => ipcRenderer.invoke("pilly:pet:settings"),
   petApply: (pet) => ipcRenderer.invoke("pilly:pet:apply", pet),
   onPetSettings: (cb) => { ipcRenderer.on("pet:settings", (e, s) => cb(s)); },
+  petDrag: (p) => ipcRenderer.send("pet:drag", p),
+  petReact: (kind) => ipcRenderer.send("pet:react", kind),
+  onQuestion: (cb) => { ipcRenderer.on("pilly:question", (e, t) => cb(t)); },
 });

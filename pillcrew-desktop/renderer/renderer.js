@@ -16,6 +16,9 @@
   const petSize = document.getElementById("petSize");
   const petBubbles = document.getElementById("petBubbles");
   const petBubbleSize = document.getElementById("petBubbleSize");
+  const petWalkMode = document.getElementById("petWalkMode");
+  const petStopFreq = document.getElementById("petStopFreq");
+  const petQuestions = document.getElementById("petQuestions");
   const settingsStatus = document.getElementById("settingsStatus");
 
   const history = []; // [{ role, content }] for context (capped)
@@ -24,6 +27,18 @@
 
   // Free-text questions that should pull the live trending feed instead of a generic reply.
   const TRENDING_INTENT = /(trending|what'?s hot|hot right now|top (coins|tokens)|what (should|can|do) i (buy|check|pick|watch)|co (kupić|kupic|polecasz|poleci|poleć|słuchać|slychac|jest (gorące|gorace))|pick (a )?(coin|token|winner)|losuj|roast (the )?(list|trending)|daj (mi )?trend)/i;
+
+  // Meme prompt prefixes (synced from pilly.js via IPC at startup).
+  const MEME_PREFIX = {
+    rewrite: "meme this: ",
+    caption: "caption this: ",
+    name: "give me an absurd name for this: ",
+    react: "react to this: ",
+    roast: "roast this lightly: ",
+  };
+  window.pilly.memePrompts().then((p) => {
+    if (p) Object.assign(MEME_PREFIX, p);
+  }).catch(() => {});
 
   // ---- helpers ----
   function isNearBottom() {
@@ -40,7 +55,8 @@
     const m = document.createElement("div");
     m.className = className;
     messagesEl.appendChild(m);
-    scrollToBottom();
+    scrollToBottom(true); // coin/trending cards are Pilly's output - follow them
+    persistChat();
     return m;
   }
 
@@ -52,7 +68,11 @@
     b.innerHTML = html;
     m.appendChild(b);
     messagesEl.appendChild(m);
-    scrollToBottom();
+    // A new Pilly reply always brings the view to the latest message (the
+    // scroll-down button still jumps you back when reading older history).
+    if (role.indexOf("bot") === 0) scrollToBottom(true);
+    else scrollToBottom();
+    persistChat();
     return m;
   }
 
@@ -68,9 +88,37 @@
     return m;
   }
 
+  // Keep the conversation across minimize / restarts - the tray window can be
+  // recreated by the OS, but the chat should never start empty.
+  const CHAT_KEY = "pilly_chat_history_v1";
+  function persistChat() {
+    try {
+      const msgs = Array.from(messagesEl.querySelectorAll(".msg")).map((m) => m.outerHTML);
+      localStorage.setItem(CHAT_KEY, JSON.stringify(msgs));
+    } catch (e) { /* ignore */ }
+  }
+  function restoreChat() {
+    try {
+      const raw = localStorage.getItem(CHAT_KEY);
+      if (!raw) return false;
+      const msgs = JSON.parse(raw);
+      if (!Array.isArray(msgs) || !msgs.length) return false;
+      messagesEl.innerHTML = msgs.join("");
+      // Restored coin images get the same broken-image cleanup as fresh ones.
+      messagesEl.querySelectorAll(".cc-img").forEach((img) =>
+        img.addEventListener("error", () => img.remove(), { once: true })
+      );
+      scrollToBottom(true);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function clearChat() {
     messagesEl.querySelectorAll(".msg").forEach((m) => m.remove());
     history.length = 0;
+    try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* ignore */ }
     addMsg("bot", WELCOME_HTML);
     scrollDownBtn.hidden = true;
     input.focus();
@@ -116,18 +164,16 @@
   };
   const fmtPct = (v) => (v == null || !isFinite(Number(v)) ? "" : `${v >= 0 ? "▲ +" : "▼ "}${Math.abs(v).toFixed(1)}%`);
 
-  // Solana mint detection (bare address or pump.fun/jup link).
+  // Solana mint detection (bare address or pump.fun/jup link). Same leniency as
+  // the web platform: any alphanumeric 32-44 char run counts as a candidate so
+  // valid addresses that don't look base58-strict (all-lowercase, unusual
+  // letters) still get tried - and fail gracefully if they aren't real coins.
   function detectMint(text) {
     const s = String(text || "");
-    const link = s.match(/https?:\/\/[^\s]+?\/(?:coin|tokens?|token)\/([1-9A-HJ-NP-Za-km-z]{32,44})/i);
+    const link = s.match(/https?:\/\/[^\s]+?\/(?:coin|tokens?|token)\/([A-Za-z0-9]{32,44})/i);
     if (link) return link[1];
-    const bare = s.match(/\b([1-9A-HJ-NP-Za-km-z]{32,44})\b/);
-    if (bare) {
-      const m = bare[1];
-      if (m.endsWith("pump") || m === "So11111111111111111111111111111111111111112") return m;
-      if (/[a-z]/.test(m) && /[A-Z]/.test(m)) return m;
-    }
-    return null;
+    const bare = s.match(/\b([A-Za-z0-9]{32,44})\b/);
+    return bare ? bare[1] : null;
   }
 
   function addCoinCard(coin) {
@@ -154,9 +200,28 @@
     const card = addEl("msg bot");
     const rows = list.slice(0, 10).map((c, i) => {
       const up = c.change24h == null || c.change24h >= 0;
-      return `<div class="tr-row"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(c.name)}${c.symbol ? ` <em>${escapeHtml(c.symbol)}</em>` : ""}</span><span class="tr-price">${c.price != null ? fmtUsd(c.price) : "-"}</span><span class="tr-chg ${up ? "up" : "down"}">${fmtPct(c.change24h)}</span><span class="tr-vol">${c.volume24h != null ? fmtUsd(c.volume24h) : ""}</span></div>`;
+      return `<div class="tr-row"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(c.name)}${c.symbol ? ` <em>${escapeHtml(c.symbol)}</em>` : ""}</span><span class="tr-price">${c.price != null ? fmtUsd(c.price) : "-"}</span><span class="tr-chg ${up ? "up" : "down"}">${fmtPct(c.change24h)}</span><span class="tr-mcap">${c.mcap != null ? fmtUsd(c.mcap) : "-"}${c.volume24h != null ? `<small>vol ${fmtUsd(c.volume24h)}</small>` : ""}</span></div>`;
     }).join("");
-    card.innerHTML = `<div class="trend-card"><div class="tr-head">🔥 Trending on Solana</div>${rows}</div>`;
+    card.innerHTML = `<div class="trend-card"><div class="tr-head">🔥 Trending on Solana</div><div class="tr-headrow"><span class="tr-rank">#</span><span class="tr-name">Coin</span><span class="tr-price">Price</span><span class="tr-chg">24h</span><span class="tr-mcap">Mkt Cap<small>vol</small></span></div>${rows}</div>`;
+  }
+
+  function addWalletCard(w) {
+    const card = addEl("msg bot");
+    const short = `${String(w.wallet || "").slice(0, 6)}…${String(w.wallet || "").slice(-4)}`;
+    const chg = w.change24h != null
+      ? ` · <b class="${w.change24h >= 0 ? "up" : "down"}">${fmtPct(w.change24h)}</b>`
+      : "";
+    const rows = (w.tokens || []).slice(0, 8).map((t, i) => {
+      const up = t.change24h == null || t.change24h >= 0;
+      return `<div class="tr-row"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(t.name)}${t.symbol ? ` <em>${escapeHtml(t.symbol)}</em>` : ""}</span><span class="tr-price">${t.price != null ? fmtUsd(t.price) : "—"}</span><span class="tr-chg ${up ? "up" : "down"}">${t.change24h != null ? fmtPct(t.change24h) : ""}</span><span class="tr-vol">${t.usd != null ? fmtUsd(t.usd) : "no price"}</span></div>`;
+    }).join("");
+    const solRow = w.sol > 0
+      ? `<div class="tr-row"><span class="tr-rank">◎</span><span class="tr-name">SOL</span><span class="tr-price">${w.sol.toFixed(4)}</span><span class="tr-chg"></span><span class="tr-vol">${w.solUsd > 0 ? fmtUsd(w.solUsd) : ""}</span></div>`
+      : "";
+    const note = (w.tokens || []).length
+      ? `<div class="tr-note">est total <b>${fmtUsd(w.totalUsd)}</b></div>`
+      : `<div class="tr-note">no tokens - just SOL (est ${fmtUsd(w.totalUsd)})</div>`;
+    card.innerHTML = `<div class="trend-card"><div class="tr-head">💼 wallet ${escapeHtml(short)}${chg}</div>${solRow}${rows}${note}</div>`;
   }
 
   async function send(text, task) {
@@ -168,10 +233,25 @@
     // Asked about trending / what to buy? Pull the live feed instead of a generic joke.
     let coinContext = "";
     let effectiveTask = task || "";
+    let aiText = trimmed;
     const mint = detectMint(trimmed);
     if (!task && !mint && TRENDING_INTENT.test(trimmed)) {
       await runTrending(trimmed);
       return;
+    }
+    // Free-text meme requests ("roast me", "caption this: X") get their task
+    // detected client-side so the right Pilly brief is used.
+    if (!effectiveTask && !mint) {
+      const d = await window.pilly.detectTask(trimmed);
+      if (d && d.task) {
+        effectiveTask = d.task;
+        const low = trimmed.toLowerCase();
+        const idx = low.indexOf(d.prefix.toLowerCase());
+        if (idx >= 0) {
+          const rest = trimmed.slice(idx + d.prefix.length).replace(/^[\s:;,.!?\-–—()]+/, "").trim();
+          if (rest) aiText = rest;
+        }
+      }
     }
     if (mint) {
       effectiveTask = "coin";
@@ -184,11 +264,23 @@
           addCoinCard(data.coin);
           coinContext = data.context;
         } else {
-          addMsg("bot err", "Couldn't pull live data for that token - double-check the address.");
+          // Not a token mint - it might be a wallet address. Check the
+          // portfolio instead of giving up.
+          const w = await window.pilly.wallet(mint);
+          typing.remove();
+          if (w && w.ok) {
+            effectiveTask = "wallet";
+            addWalletCard(w);
+            coinContext = w.context;
+          } else {
+            addMsg("bot err", "Couldn't pull live data for that token - double-check the address.");
+            return;
+          }
         }
       } catch (e) {
         typing.remove();
         addMsg("bot err", "Pilly couldn't reach the market data APIs.");
+        return;
       } finally {
         setThinking(false);
       }
@@ -197,7 +289,7 @@
     const typing = addTyping();
     setThinking(true);
     try {
-      const res = await window.pilly.chat({ text: trimmed, task: effectiveTask, history, coinContext });
+      const res = await window.pilly.chat({ text: aiText, task: effectiveTask, history, coinContext });
       typing.remove();
       if (res && res.reply) {
         addMsg("bot", escapeHtml(res.reply));
@@ -298,9 +390,13 @@
     if (!chip) return;
     if (chip.dataset.action === "trending") { showTrending(); return; }
     if (chip.dataset.action === "pick") { pickCoin(); return; }
-    input.value = "";
+    // Prefill the prompt - the user types their text AFTER it and hits Enter.
+    // (Sending immediately used to fire with empty content, so the AI had
+    // nothing to rewrite.)
+    const prefix = MEME_PREFIX[chip.dataset.task] || (chip.dataset.task + ": ");
+    input.value = prefix;
     input.focus();
-    send(chip.dataset.task + ": ", chip.dataset.task);
+    input.setSelectionRange(prefix.length, prefix.length);
   });
 
   document.getElementById("minBtn").addEventListener("click", () => window.close());
@@ -323,7 +419,26 @@
     scrollDownBtn.hidden = true;
   });
 
-  window.pilly.onSuggest(() => input.focus());
+  window.pilly.onSuggest((type) => {
+    // Tray "Meme mode": prefill the rewrite prompt so the user just types
+    // their text and hits Enter.
+    if (type === "meme") input.value = MEME_PREFIX.rewrite;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
+
+  // Pilly's proactive questions (every 3-5 min while the pet is on) land in
+  // the chat too, so they're there when you open the window. The question is
+  // ALSO pushed into the AI history as Pilly's own line - otherwise his reply
+  // to your answer would have no idea he even asked something.
+  window.pilly.onQuestion((text) => {
+    addMsg("bot", "🤔 " + escapeHtml(text || ""));
+    const q = String(text || "").trim();
+    if (q) {
+      history.push({ role: "assistant", content: "I asked you: " + q });
+      if (history.length > 16) history.splice(0, history.length - 16);
+    }
+  });
 
   // Frameless windows on Windows can keep a stale page offset after a
   // hide+show (the header bar looks shifted down). Force a full reflow
@@ -415,6 +530,9 @@
         size: petSize.value,
         bubbles: petBubbles.checked,
         bubbleSize: petBubbleSize.value,
+        walkMode: petWalkMode.value,
+        stopFreq: petStopFreq.value,
+        questions: petQuestions.checked,
       },
     };
   }
@@ -433,6 +551,9 @@
     petSize.value = p.size || "md";
     petBubbleSize.value = p.bubbleSize || "md";
     petBubbles.checked = p.bubbles !== false;
+    petWalkMode.value = p.walkMode || "taskbar";
+    petStopFreq.value = p.stopFreq || "normal";
+    petQuestions.checked = p.questions !== false;
     applyPetTheme(p);
     buildTierRows(s);
     settingsEl.classList.remove("hidden");
@@ -442,14 +563,17 @@
   document.getElementById("gearBtn").addEventListener("click", openSettings);
   document.getElementById("settingsClose").addEventListener("click", () => settingsEl.classList.add("hidden"));
 
-  // Live pet preview: apply theme/size/bubbles immediately while tweaking.
-  [petTheme, petSize, petBubbles, petBubbleSize].forEach((el) => {
+  // Live pet preview: apply pet options immediately while tweaking.
+  [petTheme, petSize, petBubbles, petBubbleSize, petWalkMode, petStopFreq, petQuestions].forEach((el) => {
     el.addEventListener("change", () => {
       const pet = {
         theme: petTheme.value,
         size: petSize.value,
         bubbles: petBubbles.checked,
         bubbleSize: petBubbleSize.value,
+        walkMode: petWalkMode.value,
+        stopFreq: petStopFreq.value,
+        questions: petQuestions.checked,
       };
       applyPetTheme(pet);
       window.pilly.petApply(pet);
@@ -477,5 +601,8 @@
     const el = document.getElementById("appVersion");
     if (el && v) el.textContent = v;
   }).catch(() => {});
+
+  // Bring back the previous conversation (minimize/restart must not lose it).
+  restoreChat();
 })();
 

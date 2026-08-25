@@ -12,6 +12,7 @@
       overflow: hidden;
       -webkit-user-select: none;
       user-select: none;
+      cursor: pointer;
     }
     .bubble {
       position: absolute;
@@ -62,6 +63,10 @@
         bubble.classList.add("show");
       });
     }
+    // Clicking a bubble (Pilly's question) opens the chat so you can answer.
+    document.addEventListener("click", () => {
+      if (window.pilly) window.pilly.openChat();
+    });
   </script>
 </body>
 </html>

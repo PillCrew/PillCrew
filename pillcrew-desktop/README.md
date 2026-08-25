@@ -12,8 +12,10 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 - **One click = chat** - a small frameless window pops up right above the tray icon.
 - **Free AI** - talks through your own API settings (⚙️ in the chat: paste any chat-completions endpoint and key, pick a free model with one click, test, done).
 - **Live Solana data (pro)** - paste a token address or a pump.fun/jup.ag link and Pilly pulls live data from free APIs (pump.fun, DexScreener, GeckoTerminal, Jupiter intel): price, mcap, volume, liquidity, 24h change, age, buy/sell txns, organic score, verification, holder/audit flags - then gives a trained pro read (I BUY / TRIM / hold / SELL with the real numbers).
-- **🔥 Trending** - one click pulls the hottest Solana coins right now (GeckoTerminal trending) with real volume/change and a short rundown.
-- **Meme brain** - detects what you want and switches mode:
+- **🔥 Trending** - one click pulls the hottest Solana coins right now with **real market caps** (GeckoTerminal + DexScreener + pump.fun) and a short rundown.
+- **💼 Wallet portfolio** - paste your Solana wallet address and Pilly lists your SOL + token holdings with real prices, weighted 24h change and total value (both Token and Token-2022 accounts).
+- **🐾 Taskbar pet** - Pilly walks the taskbar (or the whole monitor), pauses, hops, follows your cursor, drops jokes, asks you questions - and gets annoyed when you drag him around.
+- **Meme brain** - detects what you want and switches mode (from the chips, or just by typing it - `roast me`, `caption this: …`):
   - `meme this` → rewrites your text in meme-native language
   - `caption this` → a punchy meme caption
   - `name this` → an absurd coin / token / character name

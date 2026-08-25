@@ -234,6 +234,7 @@ body {
 .tr-row { display: grid; grid-template-columns: 18px 1fr auto auto auto; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
 .tr-row:last-child { border-bottom: none; }
 .tr-rank { color: var(--dim); font-variant-numeric: tabular-nums; }
+.tr-note { font-size: 10px; color: var(--dim); padding: 5px 0 1px; text-align: right; }
 .tr-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tr-name em { color: var(--dim); font-style: normal; }
 .tr-price { font-variant-numeric: tabular-nums; }
@@ -241,6 +242,12 @@ body {
 .tr-chg.up { color: var(--green); }
 .tr-chg.down { color: var(--red); }
 .tr-vol { color: var(--dim); font-variant-numeric: tabular-nums; }
+.tr-mcap { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.tr-mcap small { font-size: 9px; color: var(--dim); }
+.tr-headrow { display: grid; grid-template-columns: 18px 1fr auto auto auto; gap: 6px; align-items: center; padding: 0 0 4px; margin-bottom: 2px; border-bottom: 1px solid var(--border); font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.tr-headrow .tr-price, .tr-headrow .tr-chg { justify-self: end; }
+.tr-headrow .tr-mcap { align-items: flex-end; }
+.tr-row .tr-price, .tr-row .tr-chg { justify-self: end; }
 
 /* ---- Scrollbars ---- */
 .messages::-webkit-scrollbar, .settings::-webkit-scrollbar { width: 8px; }

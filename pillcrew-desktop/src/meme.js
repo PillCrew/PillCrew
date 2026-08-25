@@ -16,7 +16,7 @@ const TASKS = [
   },
   {
     id: "react",
-    words: ["react", "react to", "your reaction", "how would you react", "what do you think about", "opinion on", "thoughts on", "whats your take", "what's your take"],
+    words: ["react", "react to this", "react to", "your reaction", "how would you react", "what do you think about", "opinion on", "thoughts on", "whats your take", "what's your take"],
   },
   {
     id: "roast",
@@ -26,19 +26,24 @@ const TASKS = [
 
 /**
  * Detect the meme task for a message.
+ * Punctuation is normalized ("meme this: X" == "meme this X") and the LONGEST
+ * matching phrase wins, so the returned prefix can be cleanly stripped from
+ * the user text ("caption this: dog" -> task caption, prefix "caption this").
  * @returns {{task: string, prefix: string} | null}
  */
 function detectTask(text) {
   if (!text) return null;
-  const lower = " " + String(text).toLowerCase().replace(/\s+/g, " ") + " ";
+  const lower = " " + String(text).toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ") + " ";
+  let best = null;
   for (const t of TASKS) {
     for (const w of t.words) {
-      if (lower.includes(" " + w + " ") || lower.startsWith(w + " ") || lower.endsWith(" " + w)) {
-        return { task: t.id, prefix: w };
+      const ww = " " + w + " ";
+      if (lower.includes(ww)) {
+        if (!best || w.length > best.prefix.length) best = { task: t.id, prefix: w };
       }
     }
   }
-  return null;
+  return best;
 }
 
 module.exports = { detectTask };

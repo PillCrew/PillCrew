@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pilly poop</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .poop {
+      position: absolute;
+      bottom: 1px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 14px;
+      line-height: 1;
+      filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
+      animation: wiggle 1.3s ease-in-out infinite;
+    }
+    /* Rising stink puff - the "it smells" effect. */
+    .stink {
+      position: absolute;
+      bottom: 15px;
+      left: 50%;
+      transform: translate(-50%, 0);
+      font-size: 11px;
+      opacity: 0;
+      animation: stink 1.6s ease-out 0.4s infinite;
+    }
+    @keyframes wiggle {
+      0%, 100% { transform: translateX(-50%) rotate(-4deg); }
+      50% { transform: translateX(-50%) rotate(4deg); }
+    }
+    @keyframes stink {
+      0% { opacity: 0; transform: translate(-50%, 0) scale(0.7); }
+      30% { opacity: 0.9; }
+      100% { opacity: 0; transform: translate(-50%, -20px) scale(1.25); }
+    }
+    /* Fade everything out just before main destroys the window. */
+    body.fade .poop, body.fade .stink { opacity: 0; transition: opacity 0.6s ease; }
+  </style>
+</head>
+<body>
+  <div class="stink">💨</div>
+  <div class="poop">💩</div>
+  <script>
+    setTimeout(() => document.body.classList.add("fade"), 4400);
+  </script>
+</body>
+</html>

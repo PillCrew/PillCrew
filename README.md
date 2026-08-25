@@ -13,7 +13,7 @@
 
 **A tiny green pill AI friend for Windows. Click it, chat with it, ask it about Solana - it answers like a sharp, terminally-online friend.**
 
-Live coin checks · 🔥 Trending · 🎲 Pick a coin · Meme brain · Free AI
+Live coin checks · � Portfolio · �🔥 Trending · 🎲 Pick a coin · Meme brain · Free AI
 
 [![Release](https://img.shields.io/github/v/release/PillCrew/PillCrew?style=flat-square&color=4caf50)](https://github.com/PillCrew/PillCrew/releases)
 [![License](https://img.shields.io/badge/License-MIT-4caf50?style=flat-square)](LICENSE)
@@ -45,20 +45,27 @@ taskbar** and drops a joke every few minutes.
 
 - **Lives in the system tray** - an animated pill icon (3-frame blink) and a
   global hotkey (**Ctrl+Shift+P**) that summons the window from anywhere.
-- **Taskbar pet** - Pilly can **walk along your taskbar**, pause, hop, and
-  follow your cursor with its eyes. Pick a color (green, blue, purple, pink,
-  orange) and a size - it updates live.
+- **Taskbar pet** - Pilly **walks your taskbar (or the whole monitor)**, pauses,
+  hops, follows your cursor with its eyes, drops jokes and occasionally asks
+  you a question about memecoins. In whole-monitor mode you can **grab and drag
+  him anywhere** (he gets annoyed about it) - and he even leaves the occasional
+  tiny poop. Pick a color (green, blue, purple, pink, orange) and a size - all
+  live.
 - **Live Solana coin checks** - paste a token address or a `pump.fun` link and
   Pilly pulls live price, market cap, volume, liquidity, age, buy/sell counts
   and an organic-score read from the public pump.fun / DexScreener / Jupiter
   APIs - then gives a trained pro read (I BUY / TRIM / hold / SELL with the
   real numbers).
-- **🔥 Trending** - the top 10 movers on Solana right now, pulled from
-  GeckoTerminal's public feed, no API key needed.
+- **💼 Wallet portfolio** - paste your own Solana wallet address and Pilly shows
+  your SOL + token holdings with real prices, weighted 24h change and total
+  value (both Token and Token-2022 accounts are supported).
+- **🔥 Trending** - the top 10 movers on Solana right now with **real market
+  caps** (GeckoTerminal + DexScreener + pump.fun fallbacks), no API key needed.
 - **🎲 Pick a coin** - Pilly rolls a random coin from the live trending feed,
   pulls its full snapshot and tells you if it's a buy - with a roast.
 - **Meme lab** - rewrite, caption, name, react to or roast any coin, in Pilly's
-  voice. One click from the chips under the input.
+  voice - from the chips under the input, or just by typing it (`roast me`,
+  `caption this: …`).
 - **Bring your own AI** - Pilly runs on **free AI tiers out of the box**, and
   you can plug in your own keys for OpenRouter, Groq, Cerebras, NVIDIA NIM,
   DeepSeek, Together, Mistral - or any OpenAI-compatible endpoint (even a local
