@@ -14,7 +14,26 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 - **Live Solana data (pro)** - paste a token address or a pump.fun/jup.ag link and Pilly pulls live data from free APIs (pump.fun, DexScreener, GeckoTerminal, Jupiter intel): price, mcap, volume, liquidity, 24h change, age, buy/sell txns, organic score, verification, holder/audit flags - then gives a trained pro read (I BUY / TRIM / hold / SELL with the real numbers).
 - **🔥 Trending** - one click pulls the hottest Solana coins right now with **real market caps** (GeckoTerminal + DexScreener + pump.fun) and a short rundown.
 - **💼 Wallet portfolio** - paste your Solana wallet address and Pilly lists your SOL + token holdings with real prices, weighted 24h change and total value (both Token and Token-2022 accounts).
-- **🐾 Taskbar pet** - Pilly walks the taskbar (or the whole monitor), pauses, hops, follows your cursor, drops jokes, asks you questions - and gets annoyed when you drag him around.
+- **🐾 Taskbar pet (pro animations)** - a 60fps canvas renderer. Pilly walks the
+  taskbar (or the whole monitor) with smooth step-squash and rocking, soft
+  landings, a talking mouth, richer eyes (pupils, gloss, squints, eye-darts)
+  and a soft radial shadow - crisp on any DPI.
+- **📈 Market reactions** - check a coin, wallet or trending and Pilly reacts to
+  the market: green = confetti + smile + bounce, red = frown + a tear.
+- **🌦️ Ambient life** - day/night behavior, dance notes, idle gestures (wave /
+  yawn), weather moods, a morning greeting, and naps when the mouse is idle.
+- **🖱️ Cursor play** - in whole-monitor mode a fast poke spooks Pilly: jump,
+  "!", a short scared dash - then he calms down and stays clickable.
+- **💬 Chat mood** - the chat avatar senses the mood of your messages and the
+  market, and reacts with emoji + expressions (plus click = boop, hold = pet).
+- **🚀 Market alerts** - Pilly watches trending every few minutes and calls out
+  big pumps and dumps.
+- **🔊 Sound effects** - optional WebAudio blips (hop, scare, confetti, sad,
+  sleep) - toggle in settings.
+- **🧠 Memory & stats** - Pilly counts jokes, coins, scares and days together,
+  and shares little facts from its life.
+- **🎨 Personalization** - rename Pilly, set a default mood, and the whole chat
+  (bubbles included) follows your theme color.
 - **Meme brain** - detects what you want and switches mode (from the chips, or just by typing it - `roast me`, `caption this: …`):
   - `meme this` → rewrites your text in meme-native language
   - `caption this` → a punchy meme caption

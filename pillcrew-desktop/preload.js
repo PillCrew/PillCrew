@@ -32,5 +32,10 @@ contextBridge.exposeInMainWorld("pilly", {
   onPetSettings: (cb) => { ipcRenderer.on("pet:settings", (e, s) => cb(s)); },
   petDrag: (p) => ipcRenderer.send("pet:drag", p),
   petReact: (kind) => ipcRenderer.send("pet:react", kind),
+  petMood: (m) => ipcRenderer.invoke("pilly:pet:mood", m),
+  onPetTalking: (cb) => { ipcRenderer.on("pet:talking", (e, on) => cb(on)); },
+  onPetMarket: (cb) => { ipcRenderer.on("pet:market", (e, m) => cb(m)); },
+  onPetMood: (cb) => { ipcRenderer.on("pet:mood", (e, m) => cb(m)); },
+  onPetSpook: (cb) => { ipcRenderer.on("pet:spook", (e, t) => cb(t)); },
   onQuestion: (cb) => { ipcRenderer.on("pilly:question", (e, t) => cb(t)); },
 });

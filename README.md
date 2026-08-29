@@ -13,7 +13,7 @@
 
 **A tiny green pill AI friend for Windows. Click it, chat with it, ask it about Solana - it answers like a sharp, terminally-online friend.**
 
-Live coin checks · � Portfolio · �🔥 Trending · 🎲 Pick a coin · Meme brain · Free AI
+Live coin checks · 💼 Portfolio · 🔥 Trending · 🎲 Pick a coin · Meme brain · Free AI
 
 [![Release](https://img.shields.io/github/v/release/PillCrew/PillCrew?style=flat-square&color=4caf50)](https://github.com/PillCrew/PillCrew/releases)
 [![License](https://img.shields.io/badge/License-MIT-4caf50?style=flat-square)](LICENSE)
@@ -21,6 +21,8 @@ Live coin checks · � Portfolio · �🔥 Trending · 🎲 Pick a coin · Mem
 
 <video src="assets/pilly-demo.mp4" controls loop muted width="100%"></video>
 *Pilly in action - walking the taskbar, pulling live coin data and roasting your picks.*
+
+▶️ **New walkthrough:** [watch the full Pilly demo on Streamable](https://streamable.com/sicd62)
 
 </div>
 
@@ -38,6 +40,33 @@ taskbar** and drops a joke every few minutes.
 | --- | --- |
 | ![Pilly chat](assets/pilly-chat.png) | ![Pilly coin analysis](assets/pilly-coin.png) |
 | ![Pilly settings](assets/pilly-settings.png) | ![Pilly on the taskbar](assets/pilly-pet.png) |
+
+---
+
+## What's new in v1.0.4
+
+- **Pro animations** - Pilly is a 60fps canvas renderer: smooth walking with
+  step-squash and rocking, soft landings, a talking mouth, richer eyes (pupils,
+  gloss, squints, idle eye-darts), a soft radial shadow and crisp rendering on
+  any DPI.
+- **Market reactions** - check a coin, wallet or trending and Pilly reacts:
+  green = confetti + smile + bounce, red = frown + a tear. The chat avatar
+  feels it too.
+- **Ambient life** - day/night behavior (sleepy at night, peppy by day), dance
+  notes, idle gestures (waving, yawning), weather moods, a morning greeting and
+  faster naps when the mouse sits still.
+- **Cursor play** - in whole-monitor mode a fast poke spooks Pilly: jump, "!",
+  a short scared dash - then he calms down and stays clickable.
+- **Chat mood** - Pilly senses the mood of the conversation and the chat avatar
+  reacts with emoji + expressions.
+- **Proactive market alerts** - every few minutes Pilly watches trending and
+  calls out big pumps and dumps.
+- **Sound effects** - optional WebAudio blips for hops, scares and confetti
+  (toggle in settings).
+- **Memory & stats** - Pilly remembers how long you've been together and shares
+  little facts from its life.
+- **Personalization** - rename Pilly, set a default mood, and the whole chat
+  (bubbles included) follows your theme color.
 
 ---
 

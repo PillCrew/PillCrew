@@ -1,7 +1,7 @@
 {
   "name": "pilly-desktop",
   "productName": "Pilly",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Pilly - a tiny green pill AI friend that lives in your Windows taskbar. Free AI chat, live Solana coin checks, meme brain.",
   "main": "main.js",
   "author": "PillCrew",

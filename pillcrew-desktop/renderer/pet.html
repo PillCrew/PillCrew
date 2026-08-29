@@ -12,235 +12,660 @@
       overflow: hidden;
       -webkit-user-select: none;
       user-select: none;
-      cursor: pointer;
     }
-    .scene {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      transform: scale(var(--ps, 1));
-      transform-origin: 50% 100%;
-    }
-    /* Direction flip (1 = right, -1 = left) applied to the whole pill */
-    .pill {
-      --dir: 1;
-      position: absolute;
-      left: 50%;
-      bottom: 11px;
-      width: 40px;
-      height: 23px;
-      transform: translateX(-50%) scaleX(var(--dir));
-      transition: transform 0.18s ease;
-    }
-    .body {
-      width: 100%;
-      height: 100%;
-      border-radius: 999px;
-      background: linear-gradient(135deg, var(--c1, #22c55e), var(--c2, #34d399) 55%, var(--c3, #6366f1));
-      box-shadow: 0 6px 16px var(--glow, rgba(34, 197, 94, 0.45)), inset 0 1px 0 rgba(255, 255, 255, 0.28);
-      position: relative;
-      animation: walk 0.5s ease-in-out infinite;
-    }
-    .eye {
-      position: absolute;
-      top: 6px;
-      width: 6px;
-      height: 7px;
-      border-radius: 50%;
-      background: #0b0f0d;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .eye.l { left: 8px; }
-    .eye.r { right: 8px; }
-    .eye b {
-      width: 2px;
-      height: 3px;
-      border-radius: 50%;
-      background: #fff;
-      transform: translate(var(--px, 0px), var(--py, 0px));
-      transition: transform 0.12s ease;
-    }
-    .mouth {
-      position: absolute;
-      bottom: 3px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 10px;
-      height: 3px;
-      border-radius: 0 0 10px 10px;
-      background: #0b0f0d;
-    }
-    .shadow {
-      position: absolute;
-      bottom: 2px;
-      left: 50%;
-      width: 34px;
-      height: 7px;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.35);
-      border-radius: 50%;
-      animation: shadow 0.5s ease-in-out infinite;
-    }
-    @keyframes walk {
-      0%, 100% { transform: translateY(0) scaleY(1) scaleX(1); }
-      40% { transform: translateY(-3px) scaleY(1.06) scaleX(0.96); }
-      60% { transform: translateY(-5px) scaleY(1.08) scaleX(0.94); }
-    }
-    @keyframes shadow {
-      0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.5; }
-      40% { transform: translateX(-50%) scale(0.85); opacity: 0.35; }
-      60% { transform: translateX(-50%) scale(0.7); opacity: 0.3; }
-    }
-    /* Behavior states: pause in place, or do a hop */
-    .scene.pause .body { animation: none; }
-    .scene.pause .shadow, .scene.drag .shadow { animation: none; }
-    .scene.hop .body { animation: hop 0.8s ease; }
-    .scene.hop .shadow { animation: hopShadow 0.8s ease; }
-    @keyframes hop {
-      0% { transform: translateY(0) scale(1, 1); }
-      30% { transform: translateY(-13px) scale(1.1, 0.9); }
-      55% { transform: translateY(-16px) scale(1.15, 0.85); }
-      100% { transform: translateY(0) scale(1, 1); }
-    }
-    @keyframes hopShadow {
-      0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.5; }
-      40% { transform: translateX(-50%) scale(0.55); opacity: 0.25; }
-    }
-    /* Annoyed while being dragged */
-    .scene.drag .eye::before {
-      content: "";
-      position: absolute;
-      top: -5px;
-      left: -1px;
-      width: 9px;
-      height: 2px;
-      background: #0b0f0d;
-      border-radius: 2px;
-    }
-    .scene.drag .eye.l::before { transform: rotate(20deg); }
-    .scene.drag .eye.r::before { transform: rotate(-20deg); }
-    .scene.drag .mouth { border-radius: 10px 10px 0 0; }
+    canvas { display: block; width: 100%; height: 100%; }
+    body.can-drag canvas { cursor: grab; }
+    body.dragging canvas { cursor: grabbing; }
+    body.default canvas { cursor: pointer; }
   </style>
 </head>
 <body>
-  <div class="scene">
-    <div class="pill" id="pill">
-      <div class="body">
-        <i class="eye l"><b></b></i>
-        <i class="eye r"><b></b></i>
-        <i class="mouth"></i>
-      </div>
-    </div>
-    <div class="shadow"></div>
-  </div>
+  <canvas id="pet"></canvas>
   <script>
-    const THEMES = {
-      green: { c1: "#22c55e", c2: "#34d399", c3: "#6366f1", glow: "rgba(34,197,94,0.45)" },
-      blue: { c1: "#3b82f6", c2: "#38bdf8", c3: "#8b5cf6", glow: "rgba(59,130,246,0.45)" },
-      purple: { c1: "#8b5cf6", c2: "#a78bfa", c3: "#ec4899", glow: "rgba(139,92,246,0.45)" },
-      pink: { c1: "#ec4899", c2: "#f472b6", c3: "#fbbf24", glow: "rgba(236,72,153,0.45)" },
-      orange: { c1: "#f97316", c2: "#fbbf24", c3: "#ef4444", glow: "rgba(249,115,22,0.45)" },
-    };
-    function applyPetSettings(pet) {
-      const t = (pet && THEMES[pet.theme]) || THEMES.green;
-      const rs = document.documentElement.style;
-      rs.setProperty("--c1", t.c1);
-      rs.setProperty("--c2", t.c2);
-      rs.setProperty("--c3", t.c3);
-      rs.setProperty("--glow", t.glow);
-      const scale = pet && pet.size === "sm" ? 0.85 : pet && pet.size === "lg" ? 1.2 : 1;
-      rs.setProperty("--ps", scale);
-      // Whole-monitor mode lets the user grab Pilly and drag it anywhere.
-      enableDrag(pet && pet.walkMode === "screen");
-    }
-    if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyPetSettings);
-    if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyPetSettings);
+    // ============================================================
+    // Pilly pet - 60fps canvas renderer (Etap 1 "pro animations").
+    // Smooth state transitions, walk/pause/hop/sleep/dance states,
+    // particles (confetti/dust/zzz), eye tracking + blink, drag face.
+    // ============================================================
+    (function () {
+      "use strict";
+      const canvas = document.getElementById("pet");
+      const ctx = canvas.getContext("2d");
+      // Logical size 60x64 CSS px; crisp on any DPI.
+      const W = 60, H = 64;
+      const DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+      canvas.width = W * DPR;
+      canvas.height = H * DPR;
+      ctx.scale(DPR, DPR);
 
-    // Face the direction Pilly is walking.
-    const pill = document.getElementById("pill");
-    let petDirNow = 1;
-    if (window.pilly && window.pilly.onPetDir) {
-      window.pilly.onPetDir((d) => {
-        petDirNow = d === -1 ? -1 : 1;
-        pill.style.setProperty("--dir", petDirNow);
-      });
-    }
-    // Eyes follow the mouse cursor. The pill is mirrored when walking left,
-    // so the horizontal offset is flipped to keep the look correct. The pupil
-    // is 2x3 inside a 6x7 eye - clamped to +/-1.2px so it always stays inside.
-    if (window.pilly && window.pilly.onPetCursor) {
-      window.pilly.onPetCursor((pos) => {
-        const dx = Math.max(-1.2, Math.min(1.2, (pos.x / 120) * 1.2)) * petDirNow;
-        const dy = Math.max(-1.2, Math.min(1.2, (pos.y / 120) * 1.2));
-        document.documentElement.style.setProperty("--px", dx + "px");
-        document.documentElement.style.setProperty("--py", dy + "px");
-      });
-    }
-    // Behavior: pause or hop.
-    if (window.pilly && window.pilly.onPetState) {
-      window.pilly.onPetState((s) => {
-        const scene = document.querySelector(".scene");
-        scene.classList.remove("hop", "pause");
-        if (s === "hop") { void scene.offsetWidth; scene.classList.add("hop"); }
-        else if (s === "pause") scene.classList.add("pause");
-      });
-    }
-    // Single click opens the chat. (No double-click action anymore - rapid
-    // clicks used to toggle the walk off and make Pilly disappear.)
-    if (window.pilly) {
-      pill.addEventListener("click", () => {
-        if (moved > 6) return; // it was a drag, not a click
-        window.pilly.openChat();
-      });
-    }
-    // Drag Pilly around the monitor (whole-monitor mode only). Mouse deltas are
-    // forwarded to main, which moves the pet window while pausing its walk.
-    // While being dragged Pilly looks annoyed (eyebrows + frown) and complains.
-    let canDrag = false;
-    let dragging = false;
-    let lastX = 0, lastY = 0, moved = 0, dragReacted = false;
-    const sceneEl = document.querySelector(".scene");
-    function enableDrag(on) {
-      canDrag = !!on;
-      document.body.style.cursor = canDrag ? "grab" : "pointer";
-    }
-    document.addEventListener("mousedown", (e) => {
-      if (!canDrag) return;
-      dragging = true;
-      moved = 0;
-      dragReacted = false;
-      lastX = e.screenX;
-      lastY = e.screenY;
-      document.body.style.cursor = "grabbing";
-      if (window.pilly) window.pilly.petDrag({ mode: "start" });
-      e.preventDefault();
-    });
-    document.addEventListener("mousemove", (e) => {
-      if (!dragging || !canDrag) return;
-      const dx = e.screenX - lastX;
-      const dy = e.screenY - lastY;
-      lastX = e.screenX;
-      lastY = e.screenY;
-      moved += Math.abs(dx) + Math.abs(dy);
-      if (window.pilly) window.pilly.petDrag({ mode: "move", dx, dy });
-      // Only act annoyed after a REAL drag - a plain click must not trigger
-      // the "put me down!" reaction.
-      if (!dragReacted && moved > 12) {
-        dragReacted = true;
-        sceneEl.classList.add("drag");
-        if (window.pilly) window.pilly.petReact("dragstart");
+      const THEMES = {
+        green: { c1: "#22c55e", c2: "#34d399", c3: "#6366f1" },
+        blue: { c1: "#3b82f6", c2: "#38bdf8", c3: "#8b5cf6" },
+        purple: { c1: "#8b5cf6", c2: "#a78bfa", c3: "#ec4899" },
+        pink: { c1: "#ec4899", c2: "#f472b6", c3: "#fbbf24" },
+        orange: { c1: "#f97316", c2: "#fbbf24", c3: "#ef4444" },
+      };
+      let theme = THEMES.green;
+      let ps = 1; // size scale (sm 0.85 / md 1 / lg 1.2)
+
+      function applyPetSettings(pet) {
+        theme = (pet && THEMES[pet.theme]) || THEMES.green;
+        ps = pet && pet.size === "sm" ? 0.85 : pet && pet.size === "lg" ? 1.2 : 1;
+        enableDrag(!!(pet && pet.walkMode === "screen"));
+        soundsOn = !pet || pet.sounds !== false;
+        defaultMood = pet && pet.mood === "happy" ? "happy" : pet && pet.mood === "sad" ? "sad" : "";
       }
-    });
-    document.addEventListener("mouseup", () => {
-      if (!dragging) return;
-      dragging = false;
-      document.body.style.cursor = canDrag ? "grab" : "pointer";
-      sceneEl.classList.remove("drag");
-      if (window.pilly) window.pilly.petDrag({ mode: "end" });
-      if (dragReacted && window.pilly) window.pilly.petReact("dragend");
-    });
+      if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyPetSettings);
+      if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyPetSettings);
+
+      // ---- target params per state (smoothed toward each frame) ----
+      const PARAMS = {
+        walk:  { squX: 1.00, squY: 1.00, mouth: 0.30, tilt: 0.00, annoyed: false, eyes: 1 },
+        pause: { squX: 1.00, squY: 1.02, mouth: 0.30, tilt: 0.00, annoyed: false, eyes: 1 },
+        hop:   { squX: 1.00, squY: 1.00, mouth: 0.20, tilt: 0.00, annoyed: false, eyes: 1 },
+        sleep: { squX: 0.97, squY: 0.93, mouth: 0.08, tilt: 0.00, annoyed: false, eyes: 0 },
+        dance: { squX: 1.08, squY: 0.93, mouth: 0.85, tilt: 0.12, annoyed: false, eyes: 1 },
+        drag:  { squX: 1.02, squY: 0.98, mouth: -0.50, tilt: 0.16, annoyed: true, eyes: 1 },
+        flee:  { squX: 1.00, squY: 1.02, mouth: 0.15, tilt: 0.00, annoyed: false, eyes: 1 },
+      };
+      let state = "walk";
+      let cur = { squX: 1, squY: 1, mouth: 0.3, tilt: 0, annoyed: false, eyes: 1 };
+      let petDirNow = 1;
+      let cursor = { x: 0, y: 0 };
+      let hopStart = 0;
+      const HOP_MS = 720;
+      let particles = [];
+      let last = performance.now();
+      let blinkNext = performance.now() + 1500 + Math.random() * 2500;
+      let blinkUntil = 0;
+      let zzNext = performance.now() + 900;
+      let talking = false; // mouth animates while a bubble is shown
+      let landingUntil = 0; // brief squash after a hop lands
+      let dartUntil = 0, dartNext = performance.now() + 2500 + Math.random() * 3500, dartX = 0, dartY = 0;
+      let face = { px: 0, py: 0, excited: false, squint: false };
+      // Etap 2: live market mood overlay - "up" (green) or "down" (red).
+      let market = "";
+      let marketUntil = 0;
+      let bounceStart = 0, bounceUntil = 0; // happy bounce when the market goes green
+      let defaultMood = ""; // resting mouth mood from settings (neutral/happy/sad)
+      // Etap 3: ambient life - dance notes, idle gestures, flee, hover/click.
+      let noteNext = performance.now() + 600;
+      let gesture = "", gestureUntil = 0, gestureNext = performance.now() + 12000 + Math.random() * 10000;
+      let thoughtNext = performance.now() + 40000 + Math.random() * 40000;
+      let sweatNext = performance.now() + 500;
+      let hover = false, clickUntil = 0;
+      let spookStart = 0, spookUntil = 0, streakNext = performance.now() + 200;
+
+      if (window.pilly && window.pilly.onPetDir) {
+        window.pilly.onPetDir((d) => { petDirNow = d === -1 ? -1 : 1; });
+      }
+      if (window.pilly && window.pilly.onPetCursor) {
+        window.pilly.onPetCursor((pos) => { cursor = pos; });
+      }
+      if (window.pilly && window.pilly.onPetState) {
+        window.pilly.onPetState((s) => {
+          if (s === "hop") { hopStart = performance.now(); sfx("hop"); }
+          if (s === "dance") { confetti(26); sfx("confetti"); }
+          if (s === "sleep") sfx("sleep");
+          state = PARAMS[s] ? s : "pause";
+        });
+      }
+      if (window.pilly && window.pilly.onPetTalking) {
+        window.pilly.onPetTalking((on) => { talking = !!on; });
+      }
+      // A shared mood overlay used by market data (pet:market) and chat
+      // sentiment (pet:mood): happy = confetti + smile + bounce,
+      // sad = frown + droopy eyes + a tear.
+      function triggerMood(m) {
+        const kind = m && m.kind;
+        const happy = kind === "up" || kind === "happy";
+        const sad = kind === "down" || kind === "sad";
+        if (!happy && !sad) return;
+        market = happy ? "up" : "down";
+        marketUntil = performance.now() + 2400;
+        if (happy) {
+          confetti(26);
+          sfx("confetti");
+          bounceStart = performance.now();
+          bounceUntil = bounceStart + 720;
+        } else {
+          sfx("sad");
+          particles.push({ type: "tear", x: 40, y: 40, vx: 0, vy: 0.18, size: 1.5, life: 0, max: 900 });
+          setTimeout(() => {
+            particles.push({ type: "tear", x: 40, y: 40, vx: 0, vy: 0.18, size: 1.5, life: 0, max: 900 });
+          }, 340);
+        }
+      }
+      if (window.pilly && window.pilly.onPetMarket) {
+        window.pilly.onPetMarket((m) => triggerMood(m));
+      }
+      if (window.pilly && window.pilly.onPetMood) {
+        window.pilly.onPetMood((m) => triggerMood(m));
+      }
+      // Cursor poked him - spooked jump + "!" pop above his head.
+      if (window.pilly && window.pilly.onPetSpook) {
+        window.pilly.onPetSpook(() => {
+          sfx("spook");
+          spookStart = performance.now();
+          spookUntil = spookStart + 420;
+          particles.push({ type: "bang", x: 30, y: 14, vx: 0, vy: -0.35, size: 12, life: 0, max: 520 });
+        });
+      }
+
+      // ---- drag (whole-monitor mode only) ----
+      let canDrag = false, dragging = false, dragReacted = false, moved = 0, lastX = 0, lastY = 0;
+      const dragOverride = { active: false };
+      function enableDrag(on) {
+        canDrag = !!on;
+        document.body.className = canDrag ? "can-drag" : "default";
+      }
+      document.addEventListener("mousedown", (e) => {
+        if (!canDrag) return;
+        dragging = true;
+        moved = 0;
+        dragReacted = false;
+        lastX = e.screenX;
+        lastY = e.screenY;
+        dragOverride.active = true;
+        document.body.className = "dragging";
+        if (window.pilly) window.pilly.petDrag({ mode: "start" });
+        e.preventDefault();
+      });
+      document.addEventListener("mousemove", (e) => {
+        if (!dragging || !canDrag) return;
+        const dx = e.screenX - lastX;
+        const dy = e.screenY - lastY;
+        lastX = e.screenX;
+        lastY = e.screenY;
+        moved += Math.abs(dx) + Math.abs(dy);
+        if (window.pilly) window.pilly.petDrag({ mode: "move", dx, dy });
+        // Only act annoyed after a REAL drag - a plain click must not trigger
+        // the "put me down!" reaction.
+        if (!dragReacted && moved > 12) {
+          dragReacted = true;
+          if (window.pilly) window.pilly.petReact("dragstart");
+        }
+      });
+      document.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        dragOverride.active = false;
+        document.body.className = canDrag ? "can-drag" : "default";
+        if (window.pilly) window.pilly.petDrag({ mode: "end" });
+        if (dragReacted && window.pilly) window.pilly.petReact("dragend");
+      });
+      document.addEventListener("click", (e) => {
+        if (moved > 6) return; // it was a drag, not a click
+        ensureAudio();
+        clickUntil = performance.now() + 180; // quick tap squish
+        if (window.pilly) window.pilly.openChat();
+      });
+      document.addEventListener("mouseover", () => { hover = true; ensureAudio(); });
+      document.addEventListener("mouseout", () => { hover = false; });
+
+      // ---- particles ----
+      function confetti(n) {
+        const cols = ["#22c55e", "#fbbf24", "#f472b6", "#38bdf8", "#a78bfa", "#ef4444"];
+        for (let i = 0; i < n; i++) {
+          particles.push({
+            type: "confetti",
+            x: 30 + (Math.random() - 0.5) * 26,
+            y: 16 + Math.random() * 10,
+            vx: (Math.random() - 0.5) * 1.6,
+            vy: 0.6 + Math.random() * 1.2,
+            rot: Math.random() * Math.PI,
+            vr: (Math.random() - 0.5) * 0.3,
+            size: 2 + Math.random() * 2,
+            color: cols[(Math.random() * cols.length) | 0],
+            life: 0,
+            max: 55 + Math.random() * 45,
+          });
+        }
+      }
+      function dust(x) {
+        for (let i = 0; i < 5; i++) {
+          particles.push({
+            type: "dust",
+            x: x + (Math.random() - 0.5) * 12,
+            y: 61,
+            vx: (Math.random() - 0.5) * 0.7,
+            vy: -0.25 - Math.random() * 0.45,
+            size: 1.4 + Math.random() * 1.6,
+            life: 0,
+            max: 28 + Math.random() * 22,
+          });
+        }
+      }
+
+      // ---- Etap 4: tiny WebAudio sound effects (no files, optional) ----
+      let soundsOn = true;
+      let audioCtx = null;
+      function ensureAudio() {
+        try {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+        } catch (e) { /* ignore */ }
+      }
+      function sfx(type) {
+        if (!soundsOn) return;
+        try {
+          ensureAudio();
+          if (!audioCtx) return;
+          const now = audioCtx.currentTime;
+          const o = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          o.connect(g); g.connect(audioCtx.destination);
+          let f0 = 440, f1 = 440, dur = 0.12, wave = "sine";
+          if (type === "hop") { f0 = 300; f1 = 560; dur = 0.16; }
+          else if (type === "spook") { f0 = 950; f1 = 200; dur = 0.35; wave = "square"; }
+          else if (type === "confetti") { f0 = 523; f1 = 1046; dur = 0.4; }
+          else if (type === "sad") { f0 = 330; f1 = 210; dur = 0.45; wave = "triangle"; }
+          else if (type === "sleep") { f0 = 180; f1 = 120; dur = 0.4; wave = "triangle"; }
+          o.type = wave;
+          o.frequency.setValueAtTime(f0, now);
+          o.frequency.exponentialRampToValueAtTime(Math.max(40, f1), now + dur);
+          g.gain.setValueAtTime(0.06, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+          o.start(now);
+          o.stop(now + dur + 0.02);
+        } catch (e) { /* ignore */ }
+      }
+
+      function roundRect(x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+
+      function drawEye(ex, ey, open, excited, squint, pupilX, pupilY, lid) {
+        if (open) {
+          ctx.fillStyle = "#0b0f0d";
+          roundRect(ex - 3, ey - 3.5, 6, 7, 3);
+          ctx.fill();
+          // pupil (white) - follows cursor, bigger when excited
+          const pr = excited ? 1.6 : 1.1;
+          ctx.fillStyle = "#fff";
+          ctx.beginPath();
+          ctx.arc(ex + pupilX, ey + pupilY, pr, 0, Math.PI * 2);
+          ctx.fill();
+          // gloss highlight (pro touch)
+          ctx.fillStyle = "rgba(255,255,255,0.55)";
+          ctx.beginPath();
+          ctx.arc(ex - 1.7, ey - 2, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+          // eyelid: squint when annoyed, droopy when sad
+          const lidH = lid ? lid * 7 : squint ? 2.8 : 0;
+          if (lidH > 0) {
+            ctx.fillStyle = "#0b0f0d";
+            roundRect(ex - 3, ey - 3.5, 6, lidH, 1);
+            ctx.fill();
+          }
+        } else {
+          ctx.strokeStyle = "#0b0f0d";
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(ex - 3, ey);
+          ctx.lineTo(ex + 3, ey);
+          ctx.stroke();
+        }
+      }
+
+      function drawMouth(v, now, mood) {
+        // open/close mouth while talking (bubble visible)
+        if (talking) {
+          const ph = 0.5 + 0.5 * Math.sin((now / 1000) * 24);
+          ctx.fillStyle = "#0b0f0d";
+          ctx.beginPath();
+          ctx.ellipse(0, -4.8, 3 + ph * 1.4, 0.9 + ph * 1.8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          return;
+        }
+        if (mood === "yawn") {
+          // big sleepy yawn
+          ctx.fillStyle = "#0b0f0d";
+          ctx.beginPath();
+          ctx.ellipse(0, -4.8, 3.2, 3.4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          return;
+        }
+        if (mood === "scared") {
+          // startled little "o"
+          ctx.fillStyle = "#0b0f0d";
+          ctx.beginPath();
+          ctx.ellipse(0, -5, 1.6, 2.2, 0, 0, Math.PI * 2);
+          ctx.fill();
+          return;
+        }
+        ctx.strokeStyle = "#0b0f0d";
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        if (mood === "happy") {
+          // smile
+          ctx.moveTo(-4.5, -5.5);
+          ctx.quadraticCurveTo(0, -3.2, 4.5, -5.5);
+        } else if (mood === "sad") {
+          // frown
+          ctx.moveTo(-4.5, -4.6);
+          ctx.quadraticCurveTo(0, -7.6, 4.5, -4.6);
+        } else {
+          ctx.moveTo(-4.5, -5.5);
+          ctx.quadraticCurveTo(0, -5.5 + v * 3.4, 4.5, -5.5);
+        }
+        ctx.stroke();
+      }
+
+      function drawBody(now) {
+        // capsule body
+        const grd = ctx.createLinearGradient(0, -23, 0, 0);
+        grd.addColorStop(0, theme.c1);
+        grd.addColorStop(0.55, theme.c2);
+        grd.addColorStop(1, theme.c3);
+        ctx.fillStyle = grd;
+        roundRect(-20, -23, 40, 23, 11.5);
+        ctx.fill();
+        // rim
+        ctx.strokeStyle = "rgba(0,0,0,0.16)";
+        ctx.lineWidth = 1;
+        roundRect(-20, -23, 40, 23, 11.5);
+        ctx.stroke();
+        // top gloss
+        ctx.save();
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = "#fff";
+        roundRect(-15.5, -21, 31, 5.5, 2.75);
+        ctx.fill();
+        ctx.restore();
+
+        // face
+        let mood = defaultMood;
+        if (now < marketUntil) mood = market;
+        else if (gesture === "yawn" && now < gestureUntil) mood = "yawn";
+        else if (gesture === "wave" && now < gestureUntil) mood = "happy";
+        else if (state === "flee") mood = "scared";
+        const eyesOpen = cur.eyes === 1 && !(now < blinkUntil) && !(gesture === "yawn" && now < gestureUntil);
+        const eyeY = -14.5;
+        const lid = now < marketUntil && market === "down" ? 0.6 : 0;
+        drawEye(-11, eyeY, eyesOpen, face.excited, face.squint, face.px, face.py, lid);
+        drawEye(9, eyeY, eyesOpen, face.excited, face.squint, face.px, face.py, lid);
+        if (cur.annoyed) {
+          ctx.strokeStyle = "#0b0f0d";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(-17, -22.5); ctx.lineTo(-6, -19.5);
+          ctx.moveTo(17, -22.5); ctx.lineTo(6, -19.5);
+          ctx.stroke();
+        }
+        drawMouth(cur.mouth, now, mood);
+      }
+
+      function draw(now, dt) {
+        ctx.clearRect(0, 0, W, H);
+        const t = now / 1000;
+        const base = dragOverride.active ? PARAMS.drag : (PARAMS[state] || PARAMS.pause);
+        const k = 1 - Math.exp((-dt / 1000) * 9);
+        cur.squX += (base.squX - cur.squX) * k;
+        cur.squY += (base.squY - cur.squY) * k;
+        cur.mouth += (base.mouth - cur.mouth) * k;
+        cur.tilt += (base.tilt - cur.tilt) * k;
+        cur.annoyed = base.annoyed;
+        cur.eyes = base.eyes;
+
+        // vertical bob / rotation per state
+        let bodyY = 0, rot = 0;
+        if (state === "walk") {
+          // step phase: bob + rocking + subtle squash-stretch
+          const ph = Math.sin(t * 9);
+          bodyY = -Math.abs(ph) * 3.4;
+          rot = Math.sin(t * 4.5) * 0.06;
+          cur.squX = 1 + 0.05 * Math.sin(t * 18);
+          cur.squY = 1 - 0.04 * Math.sin(t * 18);
+        } else if (state === "dance") {
+          bodyY = -Math.abs(Math.sin(t * 13)) * 4.5;
+          rot = Math.sin(t * 7) * 0.13;
+        } else if (state === "pause") {
+          bodyY = -Math.abs(Math.sin(t * 2.1)) * 1.4; // breathe
+        } else if (state === "sleep") {
+          bodyY = Math.sin(t * 0.9) * 1.6; // slow, deep breathing
+          cur.tilt = 0.05; // sleepy tilt
+        } else if (state === "flee") {
+          bodyY = -Math.abs(Math.sin(t * 20)) * 5; // panicked scurry
+          rot = Math.sin(t * 9) * 0.1;
+        } else if (state === "hop" && now - hopStart < HOP_MS) {
+          const p = (now - hopStart) / HOP_MS;
+          const h = Math.sin(p * Math.PI);
+          bodyY = -h * 16;
+          cur.squX = 1 + 0.22 * (1 - h);
+          cur.squY = 1 - 0.22 * (1 - h);
+          if (p > 0.85) dust(30);
+          if (p >= 0.97) landingUntil = now + 170;
+        }
+        // happy bounce when the market goes green
+        if (now < bounceUntil) {
+          const p = (now - bounceStart) / 720;
+          bodyY -= Math.sin(p * Math.PI) * 7;
+        }
+        // spooked jump when the cursor pokes Pilly
+        if (now < spookUntil) {
+          const p = (now - spookStart) / 420;
+          bodyY -= Math.sin(p * Math.PI) * 10;
+        }
+        // waving: gentle rock side to side
+        if (gesture === "wave" && now < gestureUntil) rot += Math.sin(t * 6) * 0.08;
+        // soft landing squash after the hop
+        if (now < landingUntil) {
+          const landK = (landingUntil - now) / 170;
+          const k2 = 1 - Math.exp((-dt / 1000) * 16);
+          cur.squX += (1 + 0.16 * landK - cur.squX) * k2;
+          cur.squY += (1 - 0.15 * landK - cur.squY) * k2;
+        }
+        // gentle squash while the cursor hovers over Pilly
+        if (hover && state !== "drag" && !(now < marketUntil) && !(gesture === "wave" && now < gestureUntil)) {
+          cur.squX += (1.07 - cur.squX) * k;
+          cur.squY += (0.95 - cur.squY) * k;
+        }
+        // quick tap squish on click
+        if (now < clickUntil) {
+          const p = (clickUntil - now) / 180;
+          cur.squX += (1 + 0.18 * p - cur.squX) * k;
+          cur.squY += (1 - 0.16 * p - cur.squY) * k;
+        }
+
+        // occasional idle gestures while hanging out (wave / yawn)
+        if ((state === "pause" || state === "walk") && now > gestureNext && !talking && now >= marketUntil && !gesture) {
+          gestureNext = now + 15000 + Math.random() * 15000;
+          gesture = Math.random() < 0.5 ? "wave" : "yawn";
+          gestureUntil = now + 1100;
+          if (gesture === "wave") {
+            particles.push({ type: "emoji", x: 44, y: 30, vx: 0.25, vy: -0.3, size: 10, life: 0, max: 1000, glyph: "👋" });
+          }
+        }
+        // Etap 6: occasional random moods / thought bubbles while hanging out
+        if ((state === "pause" || state === "walk") && now > thoughtNext && !talking && now >= marketUntil && !gesture) {
+          thoughtNext = now + 40000 + Math.random() * 45000;
+          if (Math.random() < 0.6) {
+            market = Math.random() < 0.5 ? "up" : "down";
+            marketUntil = now + 2200;
+          } else {
+            const thoughts = ["💭", "🤔", "😌", "✨", "😏", "🫠"];
+            particles.push({
+              type: "emoji", x: 44, y: 16,
+              vx: 0.2, vy: -0.3, size: 9,
+              life: 0, max: 1100,
+              glyph: thoughts[(Math.random() * thoughts.length) | 0],
+            });
+          }
+        }
+        // idle eye-dart (pause only): pupils glance around sometimes
+        if (state === "pause" && now > dartNext) {
+          dartX = (Math.random() - 0.5) * 2.2;
+          dartY = (Math.random() - 0.5) * 1.4;
+          dartUntil = now + 260;
+          dartNext = now + 3200 + Math.random() * 4000;
+        }
+        const useDart = now < dartUntil;
+        const cursorDist = Math.hypot(cursor.x, cursor.y);
+        const alert = state !== "flee" && state !== "sleep" && cursorDist < 95;
+        const excited = state === "dance" || state === "flee" || alert || talking || (now < marketUntil && market === "up");
+        const squint = cur.annoyed;
+        const cx = useDart ? dartX : Math.max(-1.2, Math.min(1.2, (cursor.x / 120) * 1.2)) * petDirNow;
+        const cy = useDart ? dartY : Math.max(-1.2, Math.min(1.2, (cursor.y / 120) * 1.2));
+        face.px = cx; face.py = cy; face.excited = excited; face.squint = squint;
+
+        // soft radial shadow (pro, scales with jump height)
+        const shScale = Math.max(0.4, 1 - (bodyY / 40) * 0.65);
+        ctx.save();
+        ctx.translate(30, 62);
+        ctx.scale(shScale, 0.25 * shScale);
+        const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 16);
+        g.addColorStop(0, "rgba(0,0,0,0.5)");
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // pill (mirrored by direction)
+        ctx.save();
+        ctx.translate(30, 53 + bodyY);
+        ctx.scale(petDirNow, 1);
+        ctx.rotate(rot);
+        ctx.scale(cur.squX * ps, cur.squY * ps);
+        drawBody(now);
+        ctx.restore();
+      }
+
+      function updateParticles(now, dt) {
+        // spawn zzz while sleeping
+        if (state === "sleep" && now > zzNext) {
+          zzNext = now + 650 + Math.random() * 500;
+          particles.push({
+            type: "zz",
+            x: 17, y: 20,
+            vx: 0.25, vy: -0.35,
+            size: 6 + Math.random() * 4,
+            life: 0, max: 1300,
+          });
+        }
+        // music notes while dancing
+        if (state === "dance" && now > noteNext) {
+          noteNext = now + 420 + Math.random() * 500;
+          particles.push({
+            type: "note",
+            x: 30 + (Math.random() - 0.5) * 30,
+            y: 8 + Math.random() * 14,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: -0.6 - Math.random() * 0.5,
+            size: 7 + Math.random() * 4,
+            life: 0, max: 900,
+            glyph: Math.random() < 0.5 ? "♪" : "♫",
+          });
+        }
+        // sweat drop while fleeing the cursor
+        if (state === "flee" && now > sweatNext) {
+          sweatNext = now + 380;
+          particles.push({ type: "sweat", x: 44, y: 36, vx: 0.1, vy: 0.35, size: 1.6, life: 0, max: 500 });
+        }
+        // motion streaks while sprinting away
+        if (state === "flee" && now > streakNext) {
+          streakNext = now + 90;
+          const dir = petDirNow;
+          particles.push({
+            type: "streak",
+            x: 30 - dir * 13,
+            y: 38 + (Math.random() - 0.5) * 18,
+            vx: -dir * 1.6,
+            vy: 0,
+            size: 1.5 + Math.random() * 1.5,
+            life: 0, max: 200,
+          });
+        }
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.life += dt;
+          p.x += p.vx;
+          p.y += p.vy;
+          if (p.type !== "zz" && p.vy < 1.4) p.vy += 0.02;
+          if (p.vr) p.rot += p.vr;
+          const a = Math.max(0, 1 - p.life / p.max);
+          if (p.type === "confetti") {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.globalAlpha = a;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+            ctx.restore();
+          } else if (p.type === "dust") {
+            ctx.globalAlpha = a * 0.5;
+            ctx.fillStyle = "#999";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          } else if (p.type === "zz") {
+            ctx.save();
+            ctx.globalAlpha = a;
+            ctx.fillStyle = theme.c2;
+            ctx.font = p.size + "px sans-serif";
+            ctx.fillText("z", p.x, p.y);
+            ctx.restore();
+          } else if (p.type === "tear") {
+            ctx.globalAlpha = a;
+            ctx.fillStyle = "#7dd3fc";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          } else if (p.type === "sweat") {
+            ctx.globalAlpha = a;
+            ctx.fillStyle = "#93c5fd";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          } else if (p.type === "note" || p.type === "emoji") {
+            ctx.save();
+            ctx.globalAlpha = a;
+            ctx.fillStyle = p.type === "note" ? theme.c2 : "#fff";
+            ctx.font = p.size + "px sans-serif";
+            ctx.fillText(p.glyph, p.x, p.y);
+            ctx.restore();
+          } else if (p.type === "bang") {
+            ctx.save();
+            ctx.globalAlpha = a;
+            ctx.fillStyle = "#f87171";
+            ctx.font = "bold " + p.size + "px sans-serif";
+            ctx.fillText("!", p.x, p.y);
+            ctx.restore();
+          } else if (p.type === "streak") {
+            ctx.globalAlpha = a * 0.5;
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x + p.vx * 6, p.y);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+          if (p.life >= p.max) particles.splice(i, 1);
+        }
+      }
+
+      function frame(now) {
+        const dt = Math.min(50, now - last);
+        last = now;
+        updateParticles(now, dt);
+        draw(now, dt);
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    })();
   </script>
 </body>
 </html>

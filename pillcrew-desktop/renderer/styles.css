@@ -10,6 +10,9 @@
   --dim: #8a94a6;
   --green: #22c55e;
   --red: #ef4444;
+  --c1: #22c55e;
+  --c2: #34d399;
+  --c3: #6366f1;
   --radius: 0px; /* sharp design */
 }
 
@@ -42,12 +45,12 @@ body {
   width: 34px;
   height: 20px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--c1, #22c55e), var(--c3, #6366f1));
-  box-shadow: 0 2px 10px var(--glow, rgba(34, 197, 94, 0.45));
-  animation: pillBob 2.4s ease-in-out infinite;
+  background: transparent;
+  -webkit-app-region: no-drag;
   flex-shrink: 0;
 }
-.pill-avatar.thinking { animation: pillBob 2.4s ease-in-out infinite, pillThink 1.2s ease-in-out infinite; }
+.pill-avatar canvas { display: block; width: 100%; height: 100%; }
+.pill-avatar.thinking { animation: pillThink 1.2s ease-in-out infinite; }
 .pill-avatar .eye {
   position: absolute;
   top: 5px;
@@ -73,14 +76,14 @@ body {
 .bar-id { display: flex; flex-direction: column; line-height: 1.15; }
 .bar-id strong { font-size: 13px; letter-spacing: 0.01em; }
 .bar-id small { color: var(--dim); font-size: 10px; display: flex; align-items: center; gap: 4px; }
-.bar-id .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: dotPulse 1.6s infinite; }
+.bar-id .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c1, var(--green)); animation: dotPulse 1.6s infinite; }
 .bar-actions { margin-left: auto; display: flex; gap: 4px; }
 .bar-actions button {
   background: transparent; border: none; color: var(--dim); font-size: 12px;
   width: 26px; height: 26px; cursor: pointer; border-radius: var(--radius);
 }
 .bar-actions button:hover { background: var(--panel-2); color: var(--text); }
-.bar-actions button.active { background: rgba(34, 197, 94, 0.18); color: var(--green); }
+.bar-actions button.active { background: color-mix(in srgb, var(--c1, var(--green)) 18%, transparent); color: var(--c1, var(--green)); }
 
 /* ---- Messages ---- */
 .messages {
@@ -108,16 +111,16 @@ body {
 .bubble em { -webkit-user-select: text; user-select: text; }
 .msg.bot .bubble {
   background: #151d17;
-  border-color: #2c3d31;
+  border-color: color-mix(in srgb, var(--c1, var(--green)) 35%, #1a241c);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
-.msg.bot .bubble:hover { border-color: #3a5243; }
+.msg.bot .bubble:hover { border-color: color-mix(in srgb, var(--c1, var(--green)) 55%, #1a241c); }
 .msg.user .bubble {
-  background: rgba(34, 197, 94, 0.16);
-  border-color: rgba(34, 197, 94, 0.5);
+  background: color-mix(in srgb, var(--c1, var(--green)) 16%, transparent);
+  border-color: color-mix(in srgb, var(--c1, var(--green)) 50%, transparent);
   color: #eafff1;
 }
-.bubble em { color: #4ade80; font-style: normal; font-weight: 600; }
+.bubble em { color: var(--c2, #4ade80); font-style: normal; font-weight: 600; }
 .err .bubble { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.45); color: #fca5a5; }
 .typing { display: inline-flex; gap: 3px; align-items: center; padding: 2px 0; }
 .typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--dim); animation: typingDot 1.2s infinite; }
@@ -198,6 +201,26 @@ body {
 }
 @keyframes dotPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes typingDot { 0%,80%,100% { transform: translateY(0); opacity: 0.5; } 40% { transform: translateY(-3px); opacity: 1; } }
+
+/* ---- Chat avatar mood badge (Etap 4) ---- */
+.pill-avatar .mood {
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%) scale(0);
+  font-size: 14px;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0;
+}
+.pill-avatar .mood.show { animation: moodPop 2.3s ease-out forwards; }
+@keyframes moodPop {
+  0% { transform: translateX(-50%) scale(0.3); opacity: 0; }
+  15% { transform: translateX(-50%) scale(1.2); opacity: 1; }
+  25% { transform: translateX(-50%) scale(1); }
+  75% { opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 0; }
+}
 
 /* ---- Coin card ---- */
 .coin-card {

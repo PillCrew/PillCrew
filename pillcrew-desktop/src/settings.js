@@ -15,6 +15,8 @@ const DEFAULT_SETTINGS = {
   temperature: 0.8,
   maxTokens: 240,
   pet: {
+    name: "Pilly",
+    mood: "neutral",
     theme: "green",
     size: "md",
     bubbles: true,
@@ -22,6 +24,7 @@ const DEFAULT_SETTINGS = {
     walkMode: "taskbar",
     stopFreq: "normal",
     questions: true,
+    sounds: true,
   },
 };
 
@@ -65,6 +68,8 @@ function save(userDataDir, settings) {
     temperature: Number.isFinite(Number(settings.temperature)) ? Number(settings.temperature) : 0.8,
     maxTokens: Number.isFinite(Number(settings.maxTokens)) ? Number(settings.maxTokens) : 240,
     pet: {
+      name: String((settings.pet && settings.pet.name) || "Pilly").slice(0, 14),
+      mood: String((settings.pet && settings.pet.mood) || "neutral"),
       theme: String((settings.pet && settings.pet.theme) || "green"),
       size: String((settings.pet && settings.pet.size) || "md"),
       bubbles: !settings.pet || settings.pet.bubbles !== false,
@@ -72,6 +77,7 @@ function save(userDataDir, settings) {
       walkMode: String((settings.pet && settings.pet.walkMode) || "taskbar"),
       stopFreq: String((settings.pet && settings.pet.stopFreq) || "normal"),
       questions: !settings.pet || settings.pet.questions !== false,
+      sounds: !settings.pet || settings.pet.sounds !== false,
     },
   };
   try {

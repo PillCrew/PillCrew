@@ -19,6 +19,9 @@
   const petWalkMode = document.getElementById("petWalkMode");
   const petStopFreq = document.getElementById("petStopFreq");
   const petQuestions = document.getElementById("petQuestions");
+  const petSounds = document.getElementById("petSounds");
+  const petName = document.getElementById("petName");
+  const petMood = document.getElementById("petMood");
   const settingsStatus = document.getElementById("settingsStatus");
 
   const history = []; // [{ role, content }] for context (capped)
@@ -138,6 +141,14 @@
     pink: { c1: "#ec4899", c2: "#f472b6", c3: "#fbbf24", glow: "rgba(236,72,153,0.45)" },
     orange: { c1: "#f97316", c2: "#fbbf24", c3: "#ef4444", glow: "rgba(249,115,22,0.45)" },
   };
+  let defaultFaceMood = "";
+  function applyName(name) {
+    const n = String(name || "").trim();
+    if (!n) return;
+    const el = document.querySelector(".bar-id strong");
+    if (el) el.textContent = n;
+    document.title = n + " · Pilly";
+  }
   function applyPetTheme(pet) {
     const t = (pet && PET_THEMES[pet.theme]) || PET_THEMES.green;
     const rs = document.documentElement.style;
@@ -145,6 +156,8 @@
     rs.setProperty("--c2", t.c2);
     rs.setProperty("--c3", t.c3);
     rs.setProperty("--glow", t.glow);
+    defaultFaceMood = pet && pet.mood === "happy" ? "happy" : pet && pet.mood === "sad" ? "sad" : "";
+    applyName(pet && pet.name);
   }
 
   function setThinking(on) {
@@ -163,6 +176,198 @@
     return `$${n.toFixed(dec)}`;
   };
   const fmtPct = (v) => (v == null || !isFinite(Number(v)) ? "" : `${v >= 0 ? "▲ +" : "▼ "}${Math.abs(v).toFixed(1)}%`);
+
+  // ---- Chat avatar mood badge (Etap 4): a quick emoji reaction pops over
+  // the avatar when the market or the conversation turns strongly up/down.
+  let avatarMoodTimer = null;
+  const AVATAR_MOODS = { happy: "🎉", sad: "😢" };
+  function setAvatarBadge(emoji) {
+    const el = document.getElementById("pillMood");
+    if (!el || !emoji) return;
+    el.textContent = emoji;
+    el.classList.remove("show");
+    void el.offsetWidth; // restart the animation
+    el.classList.add("show");
+    if (avatarMoodTimer) clearTimeout(avatarMoodTimer);
+    avatarMoodTimer = setTimeout(() => el.classList.remove("show"), 2400);
+  }
+  function setAvatarMood(kind) {
+    const emoji = AVATAR_MOODS[kind];
+    faceMood = kind === "happy" ? "happy" : kind === "sad" ? "sad" : "";
+    if (faceMood) faceMoodUntil = performance.now() + 2400;
+    if (emoji) setAvatarBadge(emoji);
+  }
+
+  // ---- Chat avatar face: mirrors the taskbar pet's look (canvas) ----
+  const faceCanvas = document.getElementById("pillFace");
+  const faceCtx = faceCanvas ? faceCanvas.getContext("2d") : null;
+  let faceMood = "";
+  let faceMoodUntil = 0;
+  let faceBlink = performance.now() + 1800 + Math.random() * 2500;
+  let faceBlinkUntil = 0;
+  let faceAnim = null;
+  // Etap 6: avatar interactions - pupils follow the mouse, click = boop,
+  // hold = petting.
+  let facePupil = { x: 0, y: 0 };
+  let boopUntil = 0, petting = false, pettingTimer = null;
+  document.addEventListener("mousemove", (e) => {
+    const r = faceCanvas ? faceCanvas.getBoundingClientRect() : null;
+    if (!r) return;
+    facePupil.x = Math.max(-1.6, Math.min(1.6, ((e.clientX - (r.left + r.width / 2)) / (r.width / 2)) * 1.6));
+    facePupil.y = Math.max(-1.4, Math.min(1.4, ((e.clientY - (r.top + r.height / 2)) / (r.height / 2)) * 1.4));
+  });
+  const avatarEl = document.getElementById("pillAvatar");
+  if (avatarEl) {
+    avatarEl.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      if (pettingTimer) clearTimeout(pettingTimer);
+      pettingTimer = setTimeout(() => {
+        petting = true;
+        setAvatarBadge("😌");
+      }, 450);
+    });
+    const endPetting = () => {
+      if (pettingTimer) { clearTimeout(pettingTimer); pettingTimer = null; }
+      petting = false;
+    };
+    avatarEl.addEventListener("mouseup", endPetting);
+    avatarEl.addEventListener("mouseleave", endPetting);
+    avatarEl.addEventListener("click", (e) => {
+      e.preventDefault();
+      boopUntil = performance.now() + 500;
+    });
+  }
+  function rr(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function drawFaceEye(ctx, ex, ey, open, happy, lid, px, py) {
+    if (open) {
+      rr(ctx, ex - 3.5, ey - 4, 7, 8, 3.5);
+      ctx.fillStyle = "#0b0f0d";
+      ctx.fill();
+      const pr = happy ? 1.9 : 1.3;
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(ex + (px || 0), ey + (py || 0), pr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.beginPath();
+      ctx.arc(ex - 2 + (px || 0), ey - 2.4 + (py || 0), 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      if (lid) {
+        ctx.fillStyle = "#0b0f0d";
+        rr(ctx, ex - 3.5, ey - 4, 7, lid * 8, 1);
+        ctx.fill();
+      }
+    } else {
+      ctx.strokeStyle = "#0b0f0d";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(ex - 3.5, ey);
+      ctx.lineTo(ex + 3.5, ey);
+      ctx.stroke();
+    }
+  }
+  function drawFace(now) {
+    if (!faceCtx || !faceCanvas) return;
+    const W = faceCanvas.width, H = faceCanvas.height;
+    faceCtx.clearRect(0, 0, W, H);
+    const rs = getComputedStyle(document.documentElement);
+    const c1 = rs.getPropertyValue("--c1").trim() || "#22c55e";
+    const c2 = rs.getPropertyValue("--c2").trim() || "#34d399";
+    const c3 = rs.getPropertyValue("--c3").trim() || "#6366f1";
+    const t = now / 1000;
+    // gentle breathing bob + squash (boop / petting)
+    const bob = Math.abs(Math.sin(t * 2.1)) * 1.4;
+    let squish = 1, rot = 0;
+    if (now < boopUntil) {
+      const p = (boopUntil - now) / 500;
+      squish = 1 + 0.16 * p;
+      rot = Math.sin(now / 55) * 0.08 * p;
+    } else if (petting) {
+      squish = 1 + 0.07 * Math.sin(t * 11);
+    }
+    const pw = 46 / squish, ph = 20 * squish;
+    const px = (W - pw) / 2, cy = H / 2 + bob, py = cy - ph / 2;
+    faceCtx.save();
+    faceCtx.translate(W / 2, cy);
+    faceCtx.rotate(rot);
+    faceCtx.translate(-W / 2, -cy);
+    const grad = faceCtx.createLinearGradient(0, py, 0, py + ph);
+    grad.addColorStop(0, c1);
+    grad.addColorStop(0.55, c2);
+    grad.addColorStop(1, c3);
+    rr(faceCtx, px, py, pw, ph, ph / 2);
+    faceCtx.fillStyle = grad;
+    faceCtx.fill();
+    rr(faceCtx, px, py, pw, ph, ph / 2);
+    faceCtx.strokeStyle = "rgba(0,0,0,0.16)";
+    faceCtx.lineWidth = 1;
+    faceCtx.stroke();
+    faceCtx.globalAlpha = 0.22;
+    faceCtx.fillStyle = "#fff";
+    rr(faceCtx, px + 5, py + 2, pw - 10, ph * 0.24, ph * 0.12);
+    faceCtx.fill();
+    faceCtx.globalAlpha = 1;
+    const mood = now < faceMoodUntil ? faceMood : defaultFaceMood;
+    const eyesOpen = !(now < faceBlinkUntil);
+    const eyeY = py + ph * 0.55;
+    const lid = now < faceMoodUntil && faceMood === "sad" ? 0.6 : 0;
+    const ppx = petting ? 0 : facePupil.x, ppy = petting ? 0 : facePupil.y;
+    drawFaceEye(faceCtx, px + pw * 0.28, eyeY, eyesOpen, mood === "happy", lid, ppx, ppy);
+    drawFaceEye(faceCtx, px + pw * 0.72, eyeY, eyesOpen, mood === "happy", lid, ppx, ppy);
+    const mx = W / 2, my = py + ph * 0.82;
+    faceCtx.strokeStyle = "#0b0f0d";
+    faceCtx.lineWidth = 1.6;
+    faceCtx.lineCap = "round";
+    faceCtx.beginPath();
+    if (mood === "happy") {
+      faceCtx.moveTo(mx - 4.5, my - 1);
+      faceCtx.quadraticCurveTo(mx, my + 2.6, mx + 4.5, my - 1);
+    } else if (mood === "sad") {
+      faceCtx.moveTo(mx - 4.5, my + 1);
+      faceCtx.quadraticCurveTo(mx, my - 2.8, mx + 4.5, my + 1);
+    } else {
+      faceCtx.moveTo(mx - 4, my);
+      faceCtx.quadraticCurveTo(mx, my + 1.6, mx + 4, my);
+    }
+    faceCtx.stroke();
+    faceCtx.restore();
+  }
+  function startFaceAnim() {
+    if (faceAnim || !faceCtx) return;
+    const loop = (now) => {
+      if (now > faceBlink) {
+        faceBlinkUntil = now + 160;
+        faceBlink = now + 1800 + Math.random() * 2600;
+      }
+      drawFace(now);
+      requestAnimationFrame(loop);
+    };
+    faceAnim = requestAnimationFrame(loop);
+  }
+
+  // Tiny sentiment guess for the pet: counts bullish/bearish words & emojis
+  // so Pilly reacts to the mood of the conversation (no AI round-trip).
+  function guessMood(text) {
+    const s = String(text || "").toLowerCase();
+    const pos = ["moon", "green", "gain", "gains", "win", "profit", "pump", "lambo", "alpha", "diamond", "bull", "buy", "bought", "love", "sick", "wen", "yolo"];
+    const neg = ["rug", "dump", "red", "loss", "lose", "rekt", "rip", "sad", "shit", "liq", "liquidated", "scam", "dead", "pain", "cope", "f"];
+    const emojis = { "🚀": 2, "😂": 1, "🎉": 1, "🔥": 1, "😍": 1, "😢": -1, "💀": -1, "😭": -1 };
+    let score = 0;
+    for (const w of pos) if (new RegExp("\\b" + w + "\\b").test(s)) score += 1;
+    for (const w of neg) if (new RegExp("\\b" + w + "\\b").test(s)) score -= 1;
+    for (const [e, v] of Object.entries(emojis)) if (s.includes(e)) score += v;
+    if (score >= 2) return "happy";
+    if (score <= -2) return "sad";
+    return "flat";
+  }
 
   // Solana mint detection (bare address or pump.fun/jup link). Same leniency as
   // the web platform: any alphanumeric 32-44 char run counts as a candidate so
@@ -229,6 +434,12 @@
     if (!trimmed || sendBtn.disabled) return;
     addMsg("user", escapeHtml(trimmed));
     history.push({ role: "user", content: trimmed });
+    // Etap 3: let the pet know the mood of what the user just said.
+    const mood = guessMood(trimmed);
+    if (mood !== "flat") {
+      window.pilly.petMood({ kind: mood });
+      setAvatarMood(mood);
+    }
 
     // Asked about trending / what to buy? Pull the live feed instead of a generic joke.
     let coinContext = "";
@@ -263,6 +474,9 @@
         if (data && data.coin) {
           addCoinCard(data.coin);
           coinContext = data.context;
+          if (data.coin.change24h != null) {
+            setAvatarMood(data.coin.change24h >= 0.5 ? "happy" : data.coin.change24h <= -0.5 ? "sad" : null);
+          }
         } else {
           // Not a token mint - it might be a wallet address. Check the
           // portfolio instead of giving up.
@@ -272,6 +486,9 @@
             effectiveTask = "wallet";
             addWalletCard(w);
             coinContext = w.context;
+            if (w.change24h != null) {
+              setAvatarMood(w.change24h >= 0.5 ? "happy" : w.change24h <= -0.5 ? "sad" : null);
+            }
           } else {
             addMsg("bot err", "Couldn't pull live data for that token - double-check the address.");
             return;
@@ -315,6 +532,11 @@
       typing.remove();
       if (data && data.list && data.list.length) {
         addTrendingCard(data.list);
+        const chgs = data.list.map((c) => c.change24h).filter((c) => c != null && isFinite(c));
+        if (chgs.length) {
+          const avg = chgs.reduce((s, c) => s + c, 0) / chgs.length;
+          setAvatarMood(avg >= 0.5 ? "happy" : avg <= -0.5 ? "sad" : null);
+        }
       } else {
         addMsg("bot err", "Trending feed is unavailable right now.");
       }
@@ -526,6 +748,8 @@
       temperature: Number(setTemp.value) || 0.8,
       maxTokens: Number(setTokens.value) || 240,
       pet: {
+        name: petName.value.trim() || "Pilly",
+        mood: petMood.value,
         theme: petTheme.value,
         size: petSize.value,
         bubbles: petBubbles.checked,
@@ -533,6 +757,7 @@
         walkMode: petWalkMode.value,
         stopFreq: petStopFreq.value,
         questions: petQuestions.checked,
+        sounds: petSounds.checked,
       },
     };
   }
@@ -554,6 +779,9 @@
     petWalkMode.value = p.walkMode || "taskbar";
     petStopFreq.value = p.stopFreq || "normal";
     petQuestions.checked = p.questions !== false;
+    petSounds.checked = p.sounds !== false;
+    petName.value = p.name || "Pilly";
+    petMood.value = p.mood || "neutral";
     applyPetTheme(p);
     buildTierRows(s);
     settingsEl.classList.remove("hidden");
@@ -564,9 +792,11 @@
   document.getElementById("settingsClose").addEventListener("click", () => settingsEl.classList.add("hidden"));
 
   // Live pet preview: apply pet options immediately while tweaking.
-  [petTheme, petSize, petBubbles, petBubbleSize, petWalkMode, petStopFreq, petQuestions].forEach((el) => {
+  [petTheme, petSize, petBubbles, petBubbleSize, petWalkMode, petStopFreq, petQuestions, petSounds, petName, petMood].forEach((el) => {
     el.addEventListener("change", () => {
       const pet = {
+        name: petName.value.trim() || "Pilly",
+        mood: petMood.value,
         theme: petTheme.value,
         size: petSize.value,
         bubbles: petBubbles.checked,
@@ -574,6 +804,7 @@
         walkMode: petWalkMode.value,
         stopFreq: petStopFreq.value,
         questions: petQuestions.checked,
+        sounds: petSounds.checked,
       };
       applyPetTheme(pet);
       window.pilly.petApply(pet);
@@ -604,5 +835,6 @@
 
   // Bring back the previous conversation (minimize/restart must not lose it).
   restoreChat();
+  startFaceAnim();
 })();
 

@@ -43,6 +43,28 @@ function petOpts() {
   return (s && s.pet) || { theme: "green", size: "md", bubbles: true, bubbleSize: "md", walkMode: "taskbar", stopFreq: "normal", questions: true };
 }
 
+// ---- Etap 5: Pilly's memory & stats (persisted in userData) ----
+let STATS = null;
+function statsPath() { return path.join(userDataDir(), "pilly-stats.json"); }
+function loadStats() {
+  if (STATS) return STATS;
+  try {
+    if (fs.existsSync(statsPath())) STATS = JSON.parse(fs.readFileSync(statsPath(), "utf8"));
+  } catch (e) { /* ignore */ }
+  if (!STATS || typeof STATS !== "object") {
+    STATS = { firstSeen: Date.now(), lastSeen: Date.now(), jokes: 0, questions: 0, spooks: 0, drags: 0, poops: 0, alerts: 0, chats: 0, coins: 0, wallets: 0, trends: 0, happy: 0, sad: 0 };
+  }
+  STATS.lastSeen = Date.now();
+  STATS.days = Math.max(1, Math.ceil((Date.now() - STATS.firstSeen) / 86400000));
+  try { fs.writeFileSync(statsPath(), JSON.stringify(STATS)); } catch (e) { /* ignore */ }
+  return STATS;
+}
+function bumpStat(key, n) {
+  const s = loadStats();
+  s[key] = (s[key] || 0) + (n || 1);
+  try { fs.writeFileSync(statsPath(), JSON.stringify(s)); } catch (e) { /* ignore */ }
+}
+
 function applyPetSettings() {
   const pet = petOpts();
   if (petWin && !petWin.isDestroyed()) petWin.webContents.send("pet:settings", pet);
@@ -58,10 +80,17 @@ let petDir = 1;
 let petX = 0;
 let petState = "walk";
 let petStateEnd = 0;
+let petStateStart = 0;
 let petLastState = "";
 let petY = 0;
 let petTarget = null;
 let petDragging = false;
+let petCursorPrev = { x: 0, y: 0, t: 0 };
+let petSpookCooldownUntil = 0;
+let marketAlertTimer = null;
+let weatherMood = null;
+let weatherNext = 0;
+let cursorIdleAt = Date.now();
 let petQuestionTimer = null;
 let lastPetQuestion = "";
 let iconFrames = [];
@@ -188,6 +217,7 @@ function startPet() {
   petDir = 1;
   petState = "walk";
   petStateEnd = Date.now() + 2000 + Math.random() * 2000;
+  petStateStart = Date.now();
   petTarget = null;
   petDragging = false;
   petWin.setPosition(petX, petY);
@@ -204,22 +234,53 @@ function startPet() {
       const plan = randomPetState();
       petState = plan.mode;
       petStateEnd = now + plan.ms;
+      petStateStart = now;
     }
-    if (petState === "walk") {
+    // Long pause -> Pilly dozes off (sleep state with zzz). At night - or
+    // when the mouse has been idle for minutes - he nods off much sooner.
+    const nightNow = isNight();
+    const idleLong = now - cursorIdleAt > 240000;
+    if (!petDragging && petState === "pause" && now - petStateStart > (nightNow || idleLong ? 5500 : 12000)) {
+      petState = "sleep";
+      petStateEnd = now + (nightNow ? 13000 : 9000) + Math.random() * 9000;
+      petStateStart = now;
+    }
+    // Screen mode: Pilly plays cat-and-mouse with the cursor. A FAST poke
+    // spooks him (jump + "!" + a short scared dash), then he stops and lets
+    // you click him. A cooldown + speed check means slowly hovering over him
+    // to open the chat never triggers it.
+    if (!petDragging && petOpts().walkMode === "screen" && petState !== "sleep") {
+      const c = screen.getCursorScreenPoint();
+      const dtC = now - petCursorPrev.t;
+      let cSpeed = 0;
+      if (petCursorPrev.t && dtC > 0) cSpeed = Math.hypot(c.x - petCursorPrev.x, c.y - petCursorPrev.y) / dtC;
+      const d = Math.hypot(c.x - (petX + PET_W / 2), c.y - (petY + PET_H - 20));
+      if (d < 46 && cSpeed > 0.5 && now > petSpookCooldownUntil) {
+        petState = "flee";
+        petStateStart = now;
+        petStateEnd = now + 800;
+        petSpookCooldownUntil = now + 4000;
+        bumpStat("spooks");
+        petWin.webContents.send("pet:spook", now);
+        pickFleeTarget(c, 90);
+      }
+    }
+    if (petState === "walk" || petState === "flee") {
       // Pick a new target when there isn't one (taskbar mode = along the
       // taskbar line, screen mode = anywhere on the monitor).
-      if (!petTarget) petTarget = pickPetTarget(area);
+      if (!petTarget) petTarget = petState === "flee" ? { x: petX, y: petY - 20 } : pickPetTarget(area);
       const dx = petTarget.x - petX;
       const dy = petTarget.y - petY;
       const dist = Math.hypot(dx, dy);
-      if (dist < 2) {
-        // Reached the target - stop and think for a bit instead of turning
-        // around and marching corner to corner.
+      if (dist < 2 || (petState === "flee" && now >= petStateEnd)) {
+        // Reached the target (or done fleeing) - stop and think for a bit
+        // instead of turning around and marching corner to corner.
         petTarget = null;
         petState = "pause";
         petStateEnd = now + pauseMs();
       } else {
-        const sp = petOpts().walkMode === "screen" ? 2.4 : 2;
+        const base = petOpts().walkMode === "screen" ? 2.4 : 2;
+        const sp = petState === "flee" ? 3.6 : nightNow ? base * 0.65 : base;
         petX += (dx / dist) * sp;
         petY += (dy / dist) * sp;
         const nd = dx >= 0 ? 1 : -1;
@@ -235,6 +296,9 @@ function startPet() {
     petWin.setPosition(Math.round(petX), Math.round(petY));
     petWin.webContents.send("pet:dir", petDir);
     const cur = screen.getCursorScreenPoint();
+    // Track how long the mouse has been still (ambient sleep logic).
+    if (Math.abs(cur.x - petCursorPrev.x) + Math.abs(cur.y - petCursorPrev.y) > 3) cursorIdleAt = now;
+    petCursorPrev = { x: cur.x, y: cur.y, t: now };
     // Aim the pupils at the pill's center, not the window's center.
     petWin.webContents.send("pet:cursor", { x: cur.x - (petX + PET_W / 2), y: cur.y - (petY + PET_H - 22.5) });
     if (bubbleWin && !bubbleWin.isDestroyed() && bubbleWin.isVisible()) positionBubble();
@@ -249,6 +313,18 @@ function startPet() {
   }
   // Tiny poops on the screen every 4-5 min (they vanish on their own).
   setTimeout(() => { if (petActive) { spawnPoop(); scheduleNextPoop(); } }, 150000 + Math.random() * 60000);
+  // Etap 4: proactive market alerts + ambient (morning greeting, weather).
+  scheduleMarketAlert();
+  const h = new Date().getHours();
+  if (h >= 5 && h < 11) {
+    setTimeout(() => {
+      if (!petActive || !petOpts().bubbles) return;
+      showPetJoke(`☕ gm anon. ${(petOpts().name || "Pilly")} ready for some pumps?`);
+      sendPetMarket({ kind: "up", name: "morning" });
+    }, 12000);
+  }
+  weatherNext = Date.now() + 90000;
+  setTimeout(() => { if (petActive) weatherTick(); }, 90000);
 }
 
 function stopPet() {
@@ -257,6 +333,7 @@ function stopPet() {
   if (petJokeTimer) { clearInterval(petJokeTimer); petJokeTimer = null; }
   if (petQuestionTimer) { clearTimeout(petQuestionTimer); petQuestionTimer = null; }
   if (poopTimer) { clearTimeout(poopTimer); poopTimer = null; }
+  if (marketAlertTimer) { clearTimeout(marketAlertTimer); marketAlertTimer = null; }
   if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null; }
   petDragging = false;
   petTarget = null;
@@ -330,14 +407,22 @@ function showPetJoke(text) {
   b.webContents.send("pet:joke", text);
   positionBubble();
   b.showInactive();
+  sendPetTalking(true);
   if (bubbleTimer) clearTimeout(bubbleTimer);
   bubbleTimer = setTimeout(() => {
     if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.hide();
+    sendPetTalking(false);
   }, 9000);
 }
 
 function localPetJoke() {
   return PET_JOKES[Math.floor(Math.random() * PET_JOKES.length)];
+}
+
+// Pilly is a creature of habit: late night hours make him sleepy, daytime peppy.
+function isNight() {
+  const h = new Date().getHours();
+  return h >= 22 || h < 7;
 }
 
 // How long Pilly pauses depends on the "stopping" setting.
@@ -348,15 +433,19 @@ function pauseMs() {
   return 1400 + Math.random() * 2200;
 }
 
-// Decide what Pilly does next: pause in place, do a little hop, or walk.
+// Decide what Pilly does next: pause in place, do a little hop, dance, or walk.
 // "often" stopping makes Pilly hang out instead of marching corner to corner.
+// At night Pilly gets lazier - pauses more, moves less.
 function randomPetState() {
   const f = petOpts().stopFreq || "normal";
-  const pauseP = f === "often" ? 0.5 : f === "rare" ? 0.15 : 0.3;
+  const night = isNight();
+  let pauseP = f === "often" ? 0.5 : f === "rare" ? 0.15 : 0.3;
+  if (night) pauseP = Math.min(0.8, pauseP + 0.25);
   const r = Math.random();
   if (r < pauseP) return { mode: "pause", ms: pauseMs() };
-  if (r < pauseP + 0.18) return { mode: "hop", ms: 900 + Math.random() * 600 };
-  return { mode: "walk", ms: 2500 + Math.random() * 4000 };
+  if (r < pauseP + 0.16) return { mode: "hop", ms: (night ? 700 : 900) + Math.random() * 600 };
+  if (r < pauseP + 0.2) return { mode: "dance", ms: (night ? 2200 : 4000) + Math.random() * 3000 };
+  return { mode: "walk", ms: (night ? 1800 : 2500) + Math.random() * 4000 };
 }
 
 // Where Pilly walks to next. Taskbar mode keeps it on the taskbar line;
@@ -375,22 +464,47 @@ function pickPetTarget(area) {
   };
 }
 
+// Where Pilly dashes when the cursor pokes him - a short hop always away
+// from the cursor, so he stays clickable afterwards.
+function pickFleeTarget(c, dist) {
+  const area = screen.getPrimaryDisplay().workArea;
+  const ang = Math.atan2((petY + PET_H - 20) - c.y, (petX + PET_W / 2) - c.x);
+  petTarget = {
+    x: Math.max(area.x, Math.min(petX + Math.cos(ang) * dist, area.x + area.width - PET_W)),
+    y: Math.max(area.y, Math.min(petY + Math.sin(ang) * dist * 0.75, area.y + area.height - PET_H)),
+  };
+}
+
 async function petJokeTick() {
   if (!petActive || !petOpts().bubbles) return;
   let joke = localPetJoke();
-  try {
-    const r = await AI.respond(
-      "tell me a very short funny joke about solana pump.fun memecoins, one line, under 10 words",
-      { task: "", ai: aiOpts() }
-    );
-    if (r && r.reply) {
-      const j = String(r.reply).trim();
-      if (j.length > 4) {
-        joke = j.length > 70 ? j.slice(0, 70).replace(/\s+\S*$/, "") + "…" : j;
+  // Etap 5: sometimes Pilly shares a little fact from his memory instead.
+  if (Math.random() < 0.18) {
+    const s = loadStats();
+    const facts = [
+      `day ${s.days} together. i've told ${s.jokes} jokes and survived ${s.spooks} cursor scares.`,
+      `little stat: ${s.coins} coins checked, ${s.happy} good moods, ${s.sad} sad ones.`,
+      `we've been at this for ${s.days} day${s.days === 1 ? "" : "s"}. my jokes are still free.`,
+    ];
+    joke = facts[(Math.random() * facts.length) | 0];
+  } else {
+    try {
+      const r = await AI.respond(
+        "tell me a very short funny joke about solana pump.fun memecoins, one line, under 10 words",
+        { task: "", ai: aiOpts() }
+      );
+      if (r && r.reply) {
+        const j = String(r.reply).trim();
+        if (j.length > 4) {
+          joke = j.length > 70 ? j.slice(0, 70).replace(/\s+\S*$/, "") + "…" : j;
+        }
       }
-    }
-  } catch (e) { /* keep the local joke */ }
-  if (petActive) showPetJoke(joke);
+    } catch (e) { /* keep the local joke */ }
+  }
+  if (petActive) {
+    showPetJoke(joke);
+    bumpStat("jokes");
+  }
 }
 
 // Schedule the next joke 2-3 minutes after the current one.
@@ -429,6 +543,18 @@ function setBubbleClickable(on) {
   bubbleWin.setIgnoreMouseEvents(!on, { forward: true });
 }
 
+// Tell the pet renderer whether Pilly is "speaking" so his mouth animates.
+function sendPetTalking(on) {
+  if (petWin && !petWin.isDestroyed()) petWin.webContents.send("pet:talking", !!on);
+}
+
+// Etap 2: Pilly reacts to live market data - green = happy, red = sad.
+function sendPetMarket(m) {
+  if (petActive && petWin && !petWin.isDestroyed()) {
+    petWin.webContents.send("pet:market", m || { kind: "flat" });
+  }
+}
+
 async function petQuestionTick() {
   if (!petActive || petOpts().questions === false) return;
   let q = localPetQuestion();
@@ -447,6 +573,7 @@ async function petQuestionTick() {
   if (!petActive) return;
   lastPetQuestion = q;
   showPetQuestion(q);
+  bumpStat("questions");
   const w = ensureWindow();
   if (w && !w.isDestroyed()) w.webContents.send("pilly:question", q);
 }
@@ -460,12 +587,14 @@ function showPetQuestion(text) {
   positionBubble();
   b.showInactive();
   setBubbleClickable(true);
+  sendPetTalking(true);
   if (bubbleTimer) clearTimeout(bubbleTimer);
   bubbleTimer = setTimeout(() => {
     if (bubbleWin && !bubbleWin.isDestroyed()) {
       bubbleWin.hide();
       setBubbleClickable(false);
     }
+    sendPetTalking(false);
   }, 12000);
 }
 
@@ -510,6 +639,7 @@ function spawnPoop() {
     // Drop it right under Pilly's feet; it stays put and fades on its own.
     poop.setPosition(Math.round(petX + PET_W / 2 - POOP_W / 2), Math.round(petY + PET_H - POOP_H - 3));
     poop.showInactive();
+    bumpStat("poops");
     setTimeout(() => { if (!poop.isDestroyed()) poop.destroy(); }, 5200);
   } catch (e) { /* ignore */ }
 }
@@ -522,6 +652,73 @@ function scheduleNextPoop() {
     spawnPoop();
     scheduleNextPoop();
   }, delay);
+}
+
+// ---- Etap 4: proactive market alerts - Pilly watches trending and shouts
+// when something really moves (pure data, no AI round-trip). ----
+function scheduleMarketAlert() {
+  if (!petActive || !petOpts().bubbles) return;
+  const delay = 300000 + Math.floor(Math.random() * 240000); // 5-9 min
+  marketAlertTimer = setTimeout(() => {
+    if (!petActive || !petOpts().bubbles) return;
+    marketAlertTick();
+    scheduleMarketAlert();
+  }, delay);
+}
+async function marketAlertTick() {
+  try {
+    const data = await COINS.fetchTrendingTop(10);
+    if (!data || !Array.isArray(data.list) || !data.list.length) return;
+    const withChg = data.list.filter((c) => c.change24h != null && isFinite(c.change24h));
+    if (!withChg.length) return;
+    const gainer = withChg.reduce((a, b) => (b.change24h > a.change24h ? b : a));
+    const loser = withChg.reduce((a, b) => (b.change24h < a.change24h ? b : a));
+    if (gainer.change24h >= 18) {
+      const pct = `${gainer.change24h >= 0 ? "+" : ""}${gainer.change24h.toFixed(0)}%`;
+      bumpStat("alerts");
+      showPetJoke(`🚀 ${gainer.name} ${pct}! ${Math.random() < 0.5 ? "incoming pump?" : "calling it now."}`);
+      sendPetMarket({ kind: "up", name: gainer.name });
+    } else if (loser.change24h <= -18) {
+      const pct = `${loser.change24h.toFixed(0)}%`;
+      bumpStat("alerts");
+      showPetJoke(`☠️ ${loser.name} ${pct}... that's rough.`);
+      sendPetMarket({ kind: "down", name: loser.name });
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// ---- Etap 4: ambient weather mood (free wttr.in, IP-based, no key) ----
+async function refreshWeather() {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch("https://wttr.in/?format=j1", { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!res.ok) return;
+    const j = await res.json();
+    const cc = j && j.current_condition && j.current_condition[0];
+    const desc = String((cc && cc.weatherDesc && cc.weatherDesc[0] && cc.weatherDesc[0].value) || "").toLowerCase();
+    weatherMood = /rain|drizzle|storm|thunder|snow|sleet|shower/.test(desc) ? "wet"
+      : /clear|sunny/.test(desc) ? "sunny" : null;
+  } catch (e) { /* ignore */ }
+}
+async function weatherTick() {
+  if (!petActive) return;
+  if (Date.now() < weatherNext) return;
+  weatherNext = Date.now() + 45 * 60 * 1000;
+  await refreshWeather();
+  if (weatherMood && Math.random() < 0.35) {
+    setTimeout(() => {
+      if (!petActive || !petOpts().bubbles) return;
+      if (weatherMood === "wet") {
+        showPetJoke("☔ it's raining out there... my mood matches.");
+        sendPetMarket({ kind: "down", name: "weather" });
+      } else if (weatherMood === "sunny") {
+        showPetJoke("☀️ sunny vibes today. green candles incoming.");
+        sendPetMarket({ kind: "up", name: "weather" });
+      }
+    }, 1500);
+  }
 }
 
 function startTrayAnim() {
@@ -558,6 +755,7 @@ function createTray() {
 ipcMain.handle("pilly:chat", async (event, payload) => {
   const { text, task, history, coinContext } = payload || {};
   if (!text || typeof text !== "string" || !text.trim()) return { error: "empty" };
+  bumpStat("chats");
   try {
     return await AI.respond(text.trim(), {
       task: task || "",
@@ -662,21 +860,42 @@ ipcMain.handle("pilly:settings:models", async (event, t) => {
 // ---- IPC: live Solana data ----
 ipcMain.handle("pilly:coin", async (event, mint) => {
   try {
-    return await COINS.fetchCoinContext(String(mint || "").trim());
+    bumpStat("coins");
+    const data = await COINS.fetchCoinContext(String(mint || "").trim());
+    if (data && data.coin && data.coin.change24h != null && isFinite(data.coin.change24h)) {
+      const chg = data.coin.change24h;
+      sendPetMarket({ kind: chg >= 0.5 ? "up" : chg <= -0.5 ? "down" : "flat", name: data.coin.name || "" });
+    }
+    return data;
   } catch (e) {
     return null;
   }
 });
 ipcMain.handle("pilly:wallet", async (event, address) => {
   try {
-    return await COINS.fetchWalletPortfolio(String(address || "").trim());
+    bumpStat("wallets");
+    const data = await COINS.fetchWalletPortfolio(String(address || "").trim());
+    if (data && data.ok && data.change24h != null && isFinite(data.change24h)) {
+      const chg = data.change24h;
+      sendPetMarket({ kind: chg >= 0.5 ? "up" : chg <= -0.5 ? "down" : "flat", name: "your wallet" });
+    }
+    return data;
   } catch (e) {
     return null;
   }
 });
 ipcMain.handle("pilly:trending", async () => {
   try {
-    return await COINS.fetchTrendingTop(10);
+    bumpStat("trends");
+    const data = await COINS.fetchTrendingTop(10);
+    if (data && Array.isArray(data.list)) {
+      const chgs = data.list.map((c) => c.change24h).filter((c) => c != null && isFinite(c));
+      if (chgs.length) {
+        const avg = chgs.reduce((s, c) => s + c, 0) / chgs.length;
+        sendPetMarket({ kind: avg >= 0.5 ? "up" : avg <= -0.5 ? "down" : "flat", name: "trending" });
+      }
+    }
+    return data;
   } catch (e) {
     return { list: [], context: "trending unavailable" };
   }
@@ -702,6 +921,16 @@ ipcMain.handle("pilly:pet:apply", (event, pet) => {
   if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:settings", p);
   return { ok: true };
 });
+// Etap 3: the chat renderer tells Pilly the mood of the conversation.
+ipcMain.handle("pilly:pet:mood", (event, m) => {
+  const k = m && m.kind;
+  if (k === "happy") bumpStat("happy");
+  else if (k === "sad") bumpStat("sad");
+  if (petActive && petWin && !petWin.isDestroyed()) {
+    petWin.webContents.send("pet:mood", m || { kind: "flat" });
+  }
+  return { ok: true };
+});
 // While walking across the monitor, the user can grab Pilly and drag it.
 ipcMain.on("pet:drag", (event, payload) => {
   if (!petWin || petWin.isDestroyed()) return;
@@ -710,10 +939,12 @@ ipcMain.on("pet:drag", (event, payload) => {
     petDragging = true;
     petTarget = null;
     petState = "pause";
+    petStateStart = Date.now();
     petLastState = "pause";
   } else if (mode === "end") {
     petDragging = false;
     petState = "pause";
+    petStateStart = Date.now();
     petStateEnd = Date.now() + pauseMs();
   } else if (mode === "move" && petDragging) {
     const dx = Number(payload.dx) || 0;
@@ -748,6 +979,7 @@ const DRAG_LINES = {
 };
 ipcMain.on("pet:react", (event, kind) => {
   if (!petActive) return;
+  if (kind === "start") bumpStat("drags");
   const lines = kind === "end" ? DRAG_LINES.end : DRAG_LINES.start;
   const line = lines[Math.floor(Math.random() * lines.length)];
   setBubbleClickable(false);
@@ -755,9 +987,11 @@ ipcMain.on("pet:react", (event, kind) => {
   b.webContents.send("pet:joke", "😤 " + line);
   positionBubble();
   b.showInactive();
+  sendPetTalking(true);
   if (bubbleTimer) clearTimeout(bubbleTimer);
   bubbleTimer = setTimeout(() => {
     if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.hide();
+    sendPetTalking(false);
   }, 3500);
 });
 ipcMain.handle("pilly:open-chat", () => {
