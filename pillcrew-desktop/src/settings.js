@@ -21,10 +21,27 @@ const DEFAULT_SETTINGS = {
     size: "md",
     bubbles: true,
     bubbleSize: "md",
+    bubbleText: "md", // sm | md | lg (font size in pet bubbles)
+    bubbleStyle: "default", // default | light | glass | neon | comic | minimal
+    soundVol: 60, // 0-100
     walkMode: "taskbar",
     stopFreq: "normal",
     questions: true,
     sounds: true,
+    // Proactive features (v1.1.0)
+    hotAlerts: true, // Pilly scans trending and flags hot 5m movers
+    hotPct: 10, // minimum 5m move % to flag a hot coin
+    alertSound: true, // ding when a watchlist alert fires
+    dailyBrief: true, // morning summary (SOL + your PnL)
+    pillyPick: true, // Pilly's AI pick of the day (every ~6h)
+    sniper: true, // v1.2.0: snipe just-launched coins
+    whaleAlerts: true, // v1.2.0: alert when a followed whale opens a position
+    portfolioMood: true, // v1.2.0: Pilly reacts to your own PnL
+  },
+  chat: {
+    bubble: "sharp", // sharp | rounded | glass | neon | minimal
+    alwaysOnTop: true,
+    fontSize: "normal", // sm | normal | lg
   },
 };
 
@@ -47,6 +64,14 @@ function load(userDataDir) {
         tiers: Array.isArray(raw.tiers) && raw.tiers.length
           ? raw.tiers.slice(0, 6)
           : DEFAULT_SETTINGS.tiers,
+        chat: {
+          ...DEFAULT_SETTINGS.chat,
+          ...(raw.chat || {}),
+        },
+        pet: {
+          ...DEFAULT_SETTINGS.pet,
+          ...(raw.pet || {}),
+        },
       };
       cache = merged;
       return cache;
@@ -74,10 +99,44 @@ function save(userDataDir, settings) {
       size: String((settings.pet && settings.pet.size) || "md"),
       bubbles: !settings.pet || settings.pet.bubbles !== false,
       bubbleSize: String((settings.pet && settings.pet.bubbleSize) || "md"),
+      bubbleText: ["sm", "md", "lg"].includes(settings.pet && settings.pet.bubbleText)
+        ? settings.pet.bubbleText
+        : "md",
+      bubbleStyle: ["default", "light", "glass", "neon", "comic", "minimal"].includes(
+        settings.pet && settings.pet.bubbleStyle
+      )
+        ? settings.pet.bubbleStyle
+        : "default",
+      soundVol: (() => {
+        const v = Number(settings.pet && settings.pet.soundVol);
+        return isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : 60;
+      })(),
       walkMode: String((settings.pet && settings.pet.walkMode) || "taskbar"),
       stopFreq: String((settings.pet && settings.pet.stopFreq) || "normal"),
       questions: !settings.pet || settings.pet.questions !== false,
       sounds: !settings.pet || settings.pet.sounds !== false,
+      hotAlerts: !settings.pet || settings.pet.hotAlerts !== false,
+      hotPct: (() => {
+        const v = Number(settings.pet && settings.pet.hotPct);
+        return isFinite(v) && v > 0 ? Math.min(100, Math.round(v)) : 10;
+      })(),
+      alertSound: !settings.pet || settings.pet.alertSound !== false,
+      dailyBrief: !settings.pet || settings.pet.dailyBrief !== false,
+      pillyPick: !settings.pet || settings.pet.pillyPick !== false,
+      sniper: !settings.pet || settings.pet.sniper !== false,
+      whaleAlerts: !settings.pet || settings.pet.whaleAlerts !== false,
+      portfolioMood: !settings.pet || settings.pet.portfolioMood !== false,
+    },
+    chat: {
+      bubble: ["sharp", "rounded", "glass", "neon", "minimal"].includes(
+        settings.chat && settings.chat.bubble
+      )
+        ? settings.chat.bubble
+        : "sharp",
+      alwaysOnTop: !settings.chat || settings.chat.alwaysOnTop !== false,
+      fontSize: ["sm", "normal", "lg"].includes(settings.chat && settings.chat.fontSize)
+        ? settings.chat.fontSize
+        : "normal",
     },
   };
   try {

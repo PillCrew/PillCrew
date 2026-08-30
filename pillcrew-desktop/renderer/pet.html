@@ -53,6 +53,7 @@
         ps = pet && pet.size === "sm" ? 0.85 : pet && pet.size === "lg" ? 1.2 : 1;
         enableDrag(!!(pet && pet.walkMode === "screen"));
         soundsOn = !pet || pet.sounds !== false;
+        soundVol = pet && pet.soundVol != null ? Math.max(0, Math.min(100, Number(pet.soundVol))) : 60;
         defaultMood = pet && pet.mood === "happy" ? "happy" : pet && pet.mood === "sad" ? "sad" : "";
       }
       if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyPetSettings);
@@ -151,6 +152,10 @@
           particles.push({ type: "bang", x: 30, y: 14, vx: 0, vy: -0.35, size: 12, life: 0, max: 520 });
         });
       }
+      // Main asks Pilly to play a sound (hot-coin ding / alert ding / confetti).
+      if (window.pilly && window.pilly.onPetPlay) {
+        window.pilly.onPetPlay((type) => sfx(type || "coin"));
+      }
 
       // ---- drag (whole-monitor mode only) ----
       let canDrag = false, dragging = false, dragReacted = false, moved = 0, lastX = 0, lastY = 0;
@@ -197,6 +202,7 @@
       document.addEventListener("click", (e) => {
         if (moved > 6) return; // it was a drag, not a click
         ensureAudio();
+        sfx("boop");
         clickUntil = performance.now() + 180; // quick tap squish
         if (window.pilly) window.pilly.openChat();
       });
@@ -237,8 +243,10 @@
         }
       }
 
-      // ---- Etap 4: tiny WebAudio sound effects (no files, optional) ----
+      // ---- Etap 4: WebAudio sound effects (no files, optional) ----
+      // Richer engine: layered tones + a noise burst, volume-aware.
       let soundsOn = true;
+      let soundVol = 60;
       let audioCtx = null;
       function ensureAudio() {
         try {
@@ -246,29 +254,80 @@
           if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
         } catch (e) { /* ignore */ }
       }
-      function sfx(type) {
-        if (!soundsOn) return;
+      function tone(o) {
+        if (!soundsOn || !audioCtx) return;
         try {
           ensureAudio();
           if (!audioCtx) return;
-          const now = audioCtx.currentTime;
-          const o = audioCtx.createOscillator();
+          const now = audioCtx.currentTime + (o.delay || 0);
+          const osc = audioCtx.createOscillator();
           const g = audioCtx.createGain();
-          o.connect(g); g.connect(audioCtx.destination);
-          let f0 = 440, f1 = 440, dur = 0.12, wave = "sine";
-          if (type === "hop") { f0 = 300; f1 = 560; dur = 0.16; }
-          else if (type === "spook") { f0 = 950; f1 = 200; dur = 0.35; wave = "square"; }
-          else if (type === "confetti") { f0 = 523; f1 = 1046; dur = 0.4; }
-          else if (type === "sad") { f0 = 330; f1 = 210; dur = 0.45; wave = "triangle"; }
-          else if (type === "sleep") { f0 = 180; f1 = 120; dur = 0.4; wave = "triangle"; }
-          o.type = wave;
-          o.frequency.setValueAtTime(f0, now);
-          o.frequency.exponentialRampToValueAtTime(Math.max(40, f1), now + dur);
-          g.gain.setValueAtTime(0.06, now);
-          g.gain.exponentialRampToValueAtTime(0.001, now + dur);
-          o.start(now);
-          o.stop(now + dur + 0.02);
+          osc.type = o.wave || "sine";
+          osc.frequency.setValueAtTime(o.f0, now);
+          if (o.glide === "lin") osc.frequency.linearRampToValueAtTime(o.f1, now + o.dur);
+          else osc.frequency.exponentialRampToValueAtTime(Math.max(30, o.f1), now + o.dur);
+          const vol = (o.gain || 0.06) * (soundVol / 100);
+          g.gain.setValueAtTime(vol, now);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + o.dur);
+          osc.connect(g); g.connect(audioCtx.destination);
+          osc.start(now); osc.stop(now + o.dur + 0.04);
         } catch (e) { /* ignore */ }
+      }
+      function noise(dur, gain, delay) {
+        if (!soundsOn || !audioCtx) return;
+        try {
+          ensureAudio();
+          if (!audioCtx) return;
+          const now = audioCtx.currentTime + (delay || 0);
+          const n = Math.max(1, Math.floor(audioCtx.sampleRate * dur));
+          const buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
+          const d = buf.getChannelData(0);
+          for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+          const src = audioCtx.createBufferSource();
+          src.buffer = buf;
+          const f = audioCtx.createBiquadFilter();
+          f.type = "lowpass"; f.frequency.value = 2400;
+          const g = audioCtx.createGain();
+          g.gain.setValueAtTime((gain || 0.05) * (soundVol / 100), now);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+          src.connect(f); f.connect(g); g.connect(audioCtx.destination);
+          src.start(now); src.stop(now + dur + 0.02);
+        } catch (e) { /* ignore */ }
+      }
+      function sfx(type) {
+        if (!soundsOn) return;
+        ensureAudio();
+        if (!audioCtx) return;
+        if (type === "hop") {
+          tone({ f0: 240, f1: 520, dur: 0.14, wave: "triangle", gain: 0.07 });
+          tone({ f0: 480, f1: 760, dur: 0.1, wave: "sine", gain: 0.04, delay: 0.06 });
+        } else if (type === "spook") {
+          tone({ f0: 1000, f1: 160, dur: 0.4, wave: "sawtooth", gain: 0.05 });
+          noise(0.18, 0.05);
+        } else if (type === "confetti") {
+          tone({ f0: 523, f1: 660, dur: 0.12, wave: "triangle", gain: 0.06 });
+          tone({ f0: 660, f1: 880, dur: 0.12, wave: "triangle", gain: 0.06, delay: 0.09 });
+          tone({ f0: 880, f1: 1175, dur: 0.18, wave: "triangle", gain: 0.06, delay: 0.18 });
+        } else if (type === "sad") {
+          tone({ f0: 392, f1: 262, dur: 0.4, wave: "triangle", gain: 0.06 });
+          tone({ f0: 330, f1: 220, dur: 0.45, wave: "sine", gain: 0.04, delay: 0.15 });
+        } else if (type === "sleep") {
+          tone({ f0: 220, f1: 160, dur: 0.35, wave: "sine", gain: 0.05 });
+          tone({ f0: 180, f1: 130, dur: 0.35, wave: "sine", gain: 0.04, delay: 0.2 });
+        } else if (type === "boop") {
+          tone({ f0: 700, f1: 950, dur: 0.08, wave: "sine", gain: 0.05 });
+        } else if (type === "question") {
+          tone({ f0: 660, f1: 660, dur: 0.1, wave: "sine", gain: 0.05 });
+          tone({ f0: 880, f1: 880, dur: 0.16, wave: "sine", gain: 0.05, delay: 0.12 });
+        } else if (type === "coin") {
+          tone({ f0: 880, f1: 880, dur: 0.08, wave: "square", gain: 0.04 });
+          tone({ f0: 1318, f1: 1318, dur: 0.22, wave: "square", gain: 0.04, delay: 0.08 });
+          tone({ f0: 1760, f1: 1760, dur: 0.18, wave: "sine", gain: 0.03, delay: 0.16 });
+        } else if (type === "alert") {
+          tone({ f0: 740, f1: 740, dur: 0.1, wave: "square", gain: 0.045 });
+          tone({ f0: 740, f1: 740, dur: 0.1, wave: "square", gain: 0.045, delay: 0.16 });
+          tone({ f0: 988, f1: 988, dur: 0.2, wave: "square", gain: 0.04, delay: 0.32 });
+        }
       }
 
       function roundRect(x, y, w, h, r) {
@@ -498,6 +557,7 @@
               life: 0, max: 1100,
               glyph: thoughts[(Math.random() * thoughts.length) | 0],
             });
+            sfx("question");
           }
         }
         // idle eye-dart (pause only): pupils glance around sometimes

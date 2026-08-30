@@ -18,9 +18,14 @@
       <small><span class="dot"></span> in your taskbar</small>
     </div>
     <div class="bar-actions">
-      <button id="trendBtn" title="Trending now">🔥</button>
-      <button id="gearBtn" title="Settings">⚙️</button>      <button id="petBtn" title="Let Pilly walk on the taskbar">🐾</button>      <button id="clearBtn" title="Clear chat">🧹</button>      <button id="gitBtn" title="PillCrew on GitHub">🐙</button>      <button id="minBtn" title="Hide">-</button>
-      <button id="quitBtn" title="Quit">✕</button>
+      <button id="trendBtn" title="Trending now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg></button>
+      <button id="watchBtn" title="Watchlist & alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></button>
+      <button id="gearBtn" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+      <button id="petBtn" title="Let Pilly walk on the taskbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
+      <button id="clearBtn" title="Clear chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14"/></svg></button>
+      <button id="gitBtn" title="PillCrew on GitHub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></button>
+      <button id="minBtn" title="Hide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <button id="quitBtn" title="Quit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
   </header>
 
@@ -30,11 +35,22 @@
     </div>
   </main>
 
-  <button id="scrollDown" class="scroll-down" title="Jump to latest" hidden>↓</button>
+  <button id="scrollDown" class="scroll-down" title="Jump to latest" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
 
   <div class="chips" id="chips">
+    <button id="chipsToggle" class="chips-toggle" title="Show / hide quick actions">
+      <svg class="ct-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      <svg class="ct-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+    </button>
     <button class="chip" data-action="trending">🔥 trending</button>
+    <button class="chip" data-action="watchlist">👛 watchlist</button>
     <button class="chip" data-action="pick">🎲 pick a coin</button>
+    <button class="chip" data-action="radar">📡 radar</button>
+    <button class="chip" data-action="calc">🧮 size</button>
+    <button class="chip" data-action="scorecard">🏆 scorecard</button>
+    <button class="chip" data-action="whales">🐋 whales</button>
     <button class="chip" data-task="rewrite">🎭 meme this</button>
     <button class="chip" data-task="caption">🖼️ caption</button>
     <button class="chip" data-task="name">🏷️ name it</button>
@@ -44,8 +60,108 @@
 
   <form id="chatForm" class="inputbar">
     <input id="input" type="text" placeholder="Paste a token address, ask, or meme…" autocomplete="off" />
-    <button type="submit" id="sendBtn" title="Send">➤</button>
+    <button type="submit" id="sendBtn" title="Send">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+    </button>
   </form>
+
+  <!-- Watchlist panel -->
+  <div id="watchlist" class="settings hidden">
+    <div class="settings-head">
+      <strong>👛 Watchlist &amp; alerts</strong>
+      <button id="watchlistClose" title="Close">✕</button>
+    </div>
+    <div class="settings-body">
+      <p class="hint">Watched coins refresh every 30s. Set a ±% alert and Pilly will pop a Windows notification when 24h move crosses it. Set your <b>entry price</b> to track PnL.</p>
+      <div id="watchRows" class="watch-rows"></div>
+      <div id="watchStatus" class="status"></div>
+      <div class="settings-actions">
+        <button id="watchRefreshBtn" class="ghost">↻ Refresh prices</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Radar panel (fresh launches) -->
+  <div id="radar" class="settings hidden">
+    <div class="settings-head">
+      <strong>📡 Fresh launches</strong>
+      <button id="radarClose" title="Close">✕</button>
+    </div>
+    <div class="settings-body">
+      <p class="hint">Newest coins on pump.fun. Click a row to pull its full live card. Refreshes while open.</p>
+      <div id="radarRows" class="watch-rows"></div>
+      <div id="radarStatus" class="status"></div>
+      <div class="settings-actions">
+        <button id="radarRefreshBtn" class="ghost">↻ Refresh</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Position calculator panel -->
+  <div id="calc" class="settings hidden">
+    <div class="settings-head">
+      <strong>🧮 Position size</strong>
+      <button id="calcClose" title="Close">✕</button>
+    </div>
+    <div class="settings-body">
+      <p class="hint">Size a position: SOL → tokens, and risk-based sizing (stop % × risk $).</p>
+      <label class="row"><span>SOL to spend</span>
+        <input id="calcSol" type="number" step="any" min="0" placeholder="0.1" />
+      </label>
+      <label class="row"><span>Coin price</span>
+        <input id="calcPrice" type="number" step="any" min="0" placeholder="auto from last card" />
+      </label>
+      <div id="calcOut" class="calc-out"></div>
+      <div class="calc-sep"></div>
+      <label class="row"><span>Risk per trade ($)</span>
+        <input id="calcRisk" type="number" step="any" min="0" placeholder="50" />
+      </label>
+      <label class="row"><span>Stop loss (%)</span>
+        <input id="calcStop" type="number" step="any" min="0" placeholder="25" />
+      </label>
+      <div id="calcRiskOut" class="calc-out"></div>
+      <div class="settings-actions">
+        <button id="calcRefreshBtn" class="ghost">↻ Recalc</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Whale follow panel -->
+  <div id="whales" class="settings hidden">
+    <div class="settings-head">
+      <strong>🐋 Whale follow</strong>
+      <button id="whalesClose" title="Close">✕</button>
+    </div>
+    <div class="settings-body">
+      <p class="hint">Paste a Solana wallet and Pilly watches it. When the whale opens a NEW position you get a clickable bubble, and it lands in the scorecard as a call.</p>
+      <label class="row"><span>Wallet</span>
+        <input id="whaleAddr" type="text" placeholder="Solana address…" />
+      </label>
+      <div class="settings-actions">
+        <button id="whaleAddBtn" class="primary">➕ Follow whale</button>
+        <button id="whaleCheckBtn" class="ghost">↻ Check now</button>
+      </div>
+      <div id="whaleStatus" class="status"></div>
+      <div id="whaleRows" class="watch-rows"></div>
+    </div>
+  </div>
+
+  <!-- Scorecard panel (Pilly's track record) -->
+  <div id="scorecard" class="settings hidden">
+    <div class="settings-head">
+      <strong>🏆 Pilly's scorecard</strong>
+      <button id="scorecardClose" title="Close">✕</button>
+    </div>
+    <div class="settings-body">
+      <p class="hint">Every hot-coin flag and Pilly's pick is logged at the price he called it, then marked win/loss against the live tape. Copy it and post it - receipts for the degen of degen agents.</p>
+      <div id="scStats" class="sc-stats"></div>
+      <div id="scRows" class="watch-rows"></div>
+      <div id="scStatus" class="status"></div>
+      <div class="settings-actions">
+        <button id="scCopyBtn" class="primary">📋 Copy scorecard</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Settings panel -->
   <div id="settings" class="settings hidden">
@@ -163,6 +279,31 @@
             <option value="lg">Large</option>
           </select>
         </label>
+        <label class="row"><span>Bubble text size</span>
+          <select id="petBubbleText">
+            <option value="sm">Small</option>
+            <option value="md">Medium</option>
+            <option value="lg">Large</option>
+          </select>
+        </label>
+        <label class="row"><span>Bubble style</span>
+          <select id="petBubbleStyle">
+            <option value="default">Default</option>
+            <option value="light">Light</option>
+            <option value="glass">Glass</option>
+            <option value="neon">Neon</option>
+            <option value="comic">Comic</option>
+            <option value="minimal">Minimal</option>
+          </select>
+        </label>
+        <label class="row"><span>Sound volume</span>
+          <select id="petSoundVol">
+            <option value="0">Off</option>
+            <option value="25">Low</option>
+            <option value="60">Medium</option>
+            <option value="90">High</option>
+          </select>
+        </label>
         <label class="row"><span>Walk area</span>
           <select id="petWalkMode">
             <option value="taskbar">Taskbar only</option>
@@ -188,6 +329,72 @@
           <span>Sound effects</span>
           <input id="petSounds" type="checkbox" />
         </label>
+        <label class="row toggle">
+          <span>Hot coin radar</span>
+          <input id="petHotAlerts" type="checkbox" />
+        </label>
+        <label class="row"><span>Hot move threshold</span>
+          <select id="petHotPct">
+            <option value="5">5% / 5m</option>
+            <option value="10">10% / 5m</option>
+            <option value="15">15% / 5m</option>
+            <option value="20">20% / 5m</option>
+          </select>
+        </label>
+        <label class="row toggle">
+          <span>Ding on watchlist alerts</span>
+          <input id="petAlertSound" type="checkbox" />
+        </label>
+        <label class="row toggle">
+          <span>Daily brief (SOL + PnL)</span>
+          <input id="petDailyBrief" type="checkbox" />
+        </label>
+        <label class="row toggle">
+          <span>Pilly's pick (AI, every 6h)</span>
+          <input id="petPillyPick" type="checkbox" />
+        </label>
+        <label class="row toggle">
+          <span>Sniper mode (just-launched)</span>
+          <input id="petSniper" type="checkbox" />
+        </label>
+        <label class="row toggle">
+          <span>Whale buy alerts</span>
+          <input id="petWhaleAlerts" type="checkbox" />
+        </label>
+        <label class="row toggle">
+          <span>Portfolio mood (reacts to your PnL)</span>
+          <input id="petPortfolioMood" type="checkbox" />
+        </label>
+      </div>
+
+      <div class="pet-block">
+        <div class="pet-title">💬 Chat</div>
+        <label class="row"><span>Bubble style</span>
+          <select id="chatBubble">
+            <option value="sharp">Sharp</option>
+            <option value="rounded">Rounded</option>
+            <option value="glass">Glass</option>
+            <option value="neon">Neon</option>
+            <option value="minimal">Minimal</option>
+          </select>
+        </label>
+        <p class="hint" style="margin-top:-2px;">Pick how Pilly's messages look. Applies instantly, saved with settings.</p>
+        <label class="row"><span>Message size</span>
+          <select id="chatFontSize">
+            <option value="sm">Small</option>
+            <option value="normal">Normal</option>
+            <option value="lg">Large</option>
+          </select>
+        </label>
+        <label class="row toggle">
+          <span>Always on top</span>
+          <input id="chatOnTop" type="checkbox" />
+        </label>
+        <label class="row toggle">
+          <span>Remember window size &amp; position</span>
+          <input id="chatRemember" type="checkbox" checked disabled />
+        </label>
+        <p class="hint" style="margin-top:-2px;">Drag the bottom edge to stretch the chat taller. Its position is remembered automatically (right-click the tray icon → Reset window position to snap back).</p>
       </div>
     </div>
     <div class="settings-foot">Pilly v<span id="appVersion">1.0.2</span> · PillCrew</div>

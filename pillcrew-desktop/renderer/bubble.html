@@ -17,16 +17,17 @@
     .bubble {
       position: absolute;
       left: 50%;
-      bottom: 4px;
+      bottom: 14px; /* room for the tail so it never clips */
       transform: translateX(-50%);
       background: #10150f;
       border: 1px solid #2c3d31;
       color: #e8f0e9;
-      font-size: calc(9px * var(--bs, 1));
-      line-height: 1.35;
-      padding: calc(6px * var(--bs, 1)) calc(8px * var(--bs, 1));
-      border-radius: calc(9px * var(--bs, 1));
-      max-width: calc(150px * var(--bs, 1));
+      font-size: calc(var(--bt, 12px) * var(--bs, 1));
+      line-height: 1.4;
+      padding: calc(7px * var(--bs, 1)) calc(10px * var(--bs, 1));
+      border-radius: calc(10px * var(--bs, 1));
+      /* Never wider than the 190px window - big bubble sizes can't overflow. */
+      max-width: min(calc(170px * var(--bs, 1)), calc(100vw - 24px));
       text-align: center;
       opacity: 0;
       transition: opacity 0.25s ease;
@@ -43,15 +44,101 @@
       border-bottom: 0;
     }
     .bubble.show { opacity: 1; }
+
+    /* ---- Pet bubble styles (settings → body.bs-*) ---- */
+    /* default: dark pill, green-tinted tail */
+    body.bs-default .bubble { background: #10150f; border-color: #2c3d31; color: #e8f0e9; }
+    body.bs-default .bubble::after { border-top-color: #10150f; }
+
+    /* light: clean white bubble, dark text */
+    body.bs-light .bubble { background: #f2f7f3; border-color: #cde5d6; color: #0f1a12; }
+    body.bs-light .bubble::after { border-top-color: #f2f7f3; }
+
+    /* glass: frosted, soft glow */
+    body.bs-glass .bubble {
+      background: rgba(20, 28, 22, 0.55);
+      border-color: rgba(34, 197, 94, 0.35);
+      color: #eafff1;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+    body.bs-glass .bubble::after { border-top-color: rgba(20, 28, 22, 0.55); }
+
+    /* neon: glowing green outline */
+    body.bs-neon .bubble {
+      background: #08110b;
+      border-color: #22c55e;
+      color: #d9ffe6;
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.5), 0 6px 18px rgba(0, 0, 0, 0.5);
+    }
+    body.bs-neon .bubble::after { border-top-color: #08110b; }
+
+    /* comic: white, bold black outline, classic speech bubble */
+    body.bs-comic .bubble {
+      background: #ffffff;
+      border: 2px solid #10150f;
+      color: #10150f;
+      border-radius: calc(12px * var(--bs, 1));
+      box-shadow: 3px 3px 0 rgba(16, 21, 15, 0.9);
+      font-weight: 600;
+    }
+    body.bs-comic .bubble::after {
+      border: 8px solid transparent;
+      border-top-color: #10150f;
+      border-bottom: 0;
+      bottom: -9px;
+    }
+    body.bs-comic .bubble::before {
+      content: "";
+      position: absolute;
+      bottom: -5px;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #ffffff;
+      border-bottom: 0;
+    }
+
+    /* minimal: just the words, no box */
+    body.bs-minimal .bubble {
+      background: transparent;
+      border: none;
+      color: #eafff1;
+      box-shadow: none;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    }
+    body.bs-minimal .bubble::after { display: none; }
   </style>
 </head>
-<body>
+<body class="bs-default">
   <div class="bubble" id="bubble"></div>
   <script>
     const bubble = document.getElementById("bubble");
     function applyBubble(pet) {
       const s = pet && pet.bubbleSize === "sm" ? 0.85 : pet && pet.bubbleSize === "lg" ? 1.15 : 1;
       document.documentElement.style.setProperty("--bs", s);
+      // Text size (independent of the bubble padding scale).
+      const ts = pet && pet.bubbleText === "sm" ? 10 : pet && pet.bubbleText === "lg" ? 14 : 12;
+      document.documentElement.style.setProperty("--bt", ts + "px");
+      const style = pet && pet.bubbleStyle ? pet.bubbleStyle : "default";
+      document.body.className = "bs-" + style;
+      resizeToFit();
+    }
+    // Grow/shrink the bubble window so the bubble text is NEVER cut off at the
+    // bottom (the window is 160px fixed, so long text used to overflow it).
+    // The bottom edge stays anchored, so the tail keeps pointing at Pilly.
+    function resizeToFit() {
+      let need = Math.ceil(bubble.offsetHeight) + 18; // bubble + 14px anchor + tail room
+      // Safety net: if even the max window (340px) can't fit the text, shrink
+      // the font a notch at a time so the bubble is NEVER clipped.
+      if (need > 320) {
+        for (let i = 0; i < 8 && need > 320; i++) {
+          const bt = parseFloat(document.documentElement.style.getPropertyValue("--bt")) || 12;
+          document.documentElement.style.setProperty("--bt", Math.max(8, bt - 2) + "px");
+          need = Math.ceil(bubble.offsetHeight) + 18;
+        }
+      }
+      if (window.pilly && window.pilly.resizeBubble) window.pilly.resizeBubble(need);
     }
     if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyBubble);
     if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyBubble);
@@ -61,6 +148,7 @@
         bubble.classList.remove("show");
         void bubble.offsetWidth; // restart the fade
         bubble.classList.add("show");
+        resizeToFit();
       });
     }
     // Clicking a bubble (Pilly's question) opens the chat so you can answer.

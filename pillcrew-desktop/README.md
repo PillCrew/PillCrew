@@ -110,6 +110,45 @@ Outputs an NSIS installer + portable `.exe` in `dist/`.
 npm test
 ```
 
+## 🆘 Troubleshooting
+
+**The chat window froze or stopped responding.**
+
+1. **Close it** – right-click the tray icon → **Quit Pilly**. If the window is
+   really stuck (can't click anything), end it from the taskbar: `Ctrl+Shift+Esc`
+   → find **Pilly / electron.exe** → *End task*.
+2. **Open it again** – the chat history, watchlist, PnL and settings are all
+   saved on disk, so nothing is lost. Click the tray icon to reopen.
+3. **Still freezing?** – it's almost always the free AI endpoint being slow or
+   rate-limited (the coin/watchlist data is local and fast). Give it a few
+   seconds – Pilly retries and falls back to a local read for coins. You can
+   also lower the load: close the **radar** panel (it refreshes every 60 s)
+   and the **watchlist** panel.
+
+**The window closed but the app still runs.** That's normal – closing the chat
+only hides it (Pilly stays in the tray). Reopen with the tray icon or the
+`Ctrl+Shift+P` hotkey. If it truly died, right-click the tray icon → Quit, then
+start Pilly again.
+
+**Pilly is "gone" (no tray icon).** Restart the app. If it won't start at all,
+check that a previous instance isn't holding it: `Ctrl+Shift+Esc` → end all
+`electron.exe` processes, then start Pilly again.
+
+**Coin paste shows "no data".** The free market APIs are throttled sometimes –
+retry in a few seconds. Pilly pulls from 4 sources (pump.fun, DexScreener,
+Jupiter, GeckoTerminal) with automatic retries, so a temporary 429 usually
+clears itself.
+
+**Worst case / factory reset.** Quit Pilly, then delete these files in
+`%APPDATA%\pilly-desktop\` (or the productName folder) to reset only that part:
+- `pilly-settings.json` – API settings & preferences
+- `pilly-watchlist.json` – watched coins
+- `pilly-pnl.json` – entry prices (PnL)
+- `pilly-window.json` – window position
+- `pilly-stats.json` – Pilly's memory/stats
+
+Deleting all of them gives you a fresh install-like state.
+
 ## 🧠 How it's built
 
 ```

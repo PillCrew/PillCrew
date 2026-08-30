@@ -79,9 +79,11 @@ body {
 .bar-id .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c1, var(--green)); animation: dotPulse 1.6s infinite; }
 .bar-actions { margin-left: auto; display: flex; gap: 4px; }
 .bar-actions button {
-  background: transparent; border: none; color: var(--dim); font-size: 12px;
+  background: transparent; border: none; color: var(--dim);
   width: 26px; height: 26px; cursor: pointer; border-radius: var(--radius);
+  display: flex; align-items: center; justify-content: center;
 }
+.bar-actions button svg { width: 15px; height: 15px; display: block; }
 .bar-actions button:hover { background: var(--panel-2); color: var(--text); }
 .bar-actions button.active { background: color-mix(in srgb, var(--c1, var(--green)) 18%, transparent); color: var(--c1, var(--green)); }
 
@@ -95,7 +97,7 @@ body {
   gap: 8px;
   scroll-behavior: smooth;
 }
-.msg { display: flex; max-width: 88%; }
+.msg { display: flex; flex-wrap: wrap; max-width: 88%; position: relative; }
 .msg.bot { align-self: flex-start; }
 .msg.user { align-self: flex-end; }
 .bubble {
@@ -107,6 +109,11 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   -webkit-user-select: text; user-select: text;
+  animation: bubbleIn 0.22s ease-out;
+}
+@keyframes bubbleIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
 }
 .bubble em { -webkit-user-select: text; user-select: text; }
 .msg.bot .bubble {
@@ -127,6 +134,12 @@ body {
 .typing i:nth-child(2) { animation-delay: 0.15s; }
 .typing i:nth-child(3) { animation-delay: 0.3s; }
 .err .bubble { border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }
+
+/* ---- Chat message size (body.fs-*) ---- */
+body.fs-sm .bubble { font-size: 12px; }
+body.fs-lg .bubble { font-size: 14.5px; }
+body.fs-sm .coin-card, body.fs-sm .trend-card { font-size: 11px; }
+body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
 
 /* ---- Chips ---- */
 .chips {
@@ -151,13 +164,30 @@ body {
 
 /* ---- Input ---- */
 .inputbar {
+  position: relative;
   display: flex;
   gap: 8px;
-  padding: 10px 12px 14px;
+  padding: 10px 12px 16px;
   flex-shrink: 0;
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
+/* Resize affordance: a small grip on the bottom edge hints the chat stretches
+   vertically (width is fixed - only the bottom edge drags). */
+.inputbar::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border);
+  pointer-events: none;
+  transition: background 0.15s;
+}
+.inputbar:hover::after { background: rgba(34, 197, 94, 0.6); }
 .inputbar input {
   flex: 1;
   background: var(--bg);
@@ -175,12 +205,35 @@ body {
   background: var(--green);
   border: none;
   color: #04120a;
-  font-size: 15px;
-  font-weight: 700;
   border-radius: var(--radius);
   cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
 }
+.inputbar button svg { width: 17px; height: 17px; display: block; }
 .inputbar button:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- Collapsible chips row (quick-action buttons above the chat) ---- */
+.chips-toggle {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--dim);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.chips-toggle svg { width: 13px; height: 13px; display: none; }
+.chips-toggle .ct-open { display: block; }
+.chips-toggle.collapsed .ct-open { display: none; }
+.chips-toggle.collapsed .ct-closed { display: block; }
+.chips-toggle:hover { color: var(--green); border-color: rgba(34, 197, 94, 0.5); }
+/* Collapsed: hide the chips, keep just the toggle button */
+.chips.collapsed .chip { display: none; }
+.chips.collapsed { gap: 0; }
 
 /* ---- Animations ---- */
 @keyframes pillBob {
@@ -230,6 +283,9 @@ body {
   padding: 9px 10px;
   min-width: 250px;
   font-size: 12px;
+  /* Fill the message row so the .cc-foot action bar below it lines up edge to
+     edge (otherwise the buttons stuck out past the card's right side). */
+  flex: 1 1 auto;
 }
 .cc-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cc-img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--panel-2); }
@@ -289,12 +345,95 @@ body {
   border-radius: var(--radius);
   background: var(--panel-2);
   color: var(--dim);
-  font-size: 14px;
   cursor: pointer;
   z-index: 10;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  display: flex; align-items: center; justify-content: center;
 }
+.scroll-down svg { width: 15px; height: 15px; display: block; }
 .scroll-down:hover { color: var(--green); border-color: rgba(34, 197, 94, 0.5); }
+
+/* ---- Message timestamps + hover copy (pro chat) ---- */
+.msg-time {
+  position: absolute;
+  top: -13px;
+  right: 2px;
+  font-size: 9px;
+  color: var(--dim);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.msg.user .msg-time { right: auto; left: 2px; }
+.msg:hover .msg-time { opacity: 0.75; }
+.msg-copy {
+  position: absolute;
+  top: -14px;
+  left: 2px;
+  width: 20px;
+  height: 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+}
+.msg-copy svg { width: 11px; height: 11px; }
+.msg:hover .msg-copy { opacity: 1; }
+.msg-copy:hover { color: var(--green); border-color: rgba(34, 197, 94, 0.5); }
+.msg.bot .msg-copy { left: 2px; }
+.msg.user .msg-copy { left: auto; right: 2px; }
+
+/* ---- Bubble styles (body.bs-*) ---- */
+.bs-rounded .bubble { border-radius: 14px; }
+.bs-rounded .msg.bot .bubble { border-bottom-left-radius: 5px; }
+.bs-rounded .msg.user .bubble { border-bottom-right-radius: 5px; }
+
+.bs-glass .msg.bot .bubble {
+  background: rgba(21, 29, 23, 0.55);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+}
+.bs-glass .msg.user .bubble {
+  background: rgba(34, 197, 94, 0.13);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: 12px;
+}
+
+.bs-neon .msg.bot .bubble {
+  background: #0d1410;
+  border: 1px solid rgba(34, 197, 94, 0.7);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.12), 0 0 14px rgba(34, 197, 94, 0.35), inset 0 0 10px rgba(34, 197, 94, 0.06);
+  border-radius: 10px;
+  color: #d9ffe6;
+}
+.bs-neon .msg.bot .bubble em { text-shadow: 0 0 8px rgba(34, 197, 94, 0.6); }
+.bs-neon .msg.user .bubble {
+  background: rgba(34, 197, 94, 0.18);
+  border: 1px solid rgba(34, 197, 94, 0.8);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.35);
+  border-radius: 10px;
+}
+
+.bs-minimal .msg .bubble {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 6px 2px;
+  border-radius: 0;
+}
+.bs-minimal .msg.bot .bubble { color: var(--text); }
+.bs-minimal .msg.user .bubble { color: var(--c2, #4ade80); }
 
 /* ---- Settings panel ---- */
 .settings {
@@ -356,8 +495,30 @@ body {
   cursor: pointer;
 }
 .settings .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-size: 12px; }
-.settings .row input { width: 90px; flex-shrink: 0; margin: 0; }
-.settings .row.toggle input { width: auto; }
+.settings .row input {
+  width: 90px;
+  flex-shrink: 0;
+  margin: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  -webkit-user-select: text; user-select: text;
+}
+.settings .row input:focus { border-color: rgba(34, 197, 94, 0.55); }
+.settings .row input[type="checkbox"],
+.settings .row.toggle input {
+  width: auto;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--green);
+}
 .settings .row select {
   width: 110px;
   flex-shrink: 0;
@@ -478,3 +639,150 @@ body {
   color: #7dd3fc;
   word-break: break-all;
 }
+
+/* ---- v1.0.5: coin-card watch button ---- */
+/* The foot is a sibling of .coin-card inside the row-flex .msg - flex-basis
+   100% + wrap pushes it onto its own full-width line BELOW the card (buttons
+   were showing on the side and widening the message until the chat broke). */
+.cc-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; margin-top: 8px; padding-top: 7px; border-top: 1px dashed var(--border); flex: 1 0 100%; }
+.cc-watch {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.cc-watch svg { width: 12px; height: 12px; }
+.cc-watch.icon-only { padding: 4px 7px; }
+.cc-watch:hover { color: var(--text); border-color: var(--green); }
+.cc-watch.active { color: var(--green); border-color: var(--green); }
+.cc-watch:disabled { opacity: 0.6; cursor: wait; }
+
+/* v1.0.5: local-read fallback tag on bot messages */
+.fb-tag {
+  display: block;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--green);
+  opacity: 0.85;
+  letter-spacing: 0.3px;
+}
+
+/* ---- v1.0.5: watchlist panel rows ---- */
+.watch-rows { display: flex; flex-direction: column; gap: 6px; }
+.wl-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto 56px 46px 20px;
+  gap: 7px;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 9px;
+  font-size: 12px;
+}
+.wl-main { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.wl-main strong { font-size: 12.5px; }
+.wl-main small { color: var(--dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wl-price { font-weight: 700; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.wl-price .wl-pnl { font-size: 9.5px; font-weight: 600; }
+.wl-price.up, .wl-chg.up, .wl-pnl.up { color: var(--green); }
+.wl-price.down, .wl-chg.down, .wl-pnl.down { color: var(--red); }
+.wl-chg { font-variant-numeric: tabular-nums; font-size: 11px; }
+.wl-alert, .wl-entry {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 11px;
+  padding: 4px 5px;
+  border-radius: 6px;
+  min-width: 0;
+}
+.wl-alert::placeholder, .wl-entry::placeholder { color: var(--dim); }
+.wl-remove {
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px;
+}
+.wl-remove:hover { color: var(--red); }
+
+/* ---- Pilly's scorecard (track record) ---- */
+.sc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+.sc-cell { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 6px; text-align: center; }
+.sc-cell b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+.sc-cell span { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+.sc-cell.up b { color: var(--green); }
+.sc-cell.down b { color: var(--red); }
+.sc-row { grid-template-columns: minmax(0, 1fr) auto; }
+.sc-res { font-variant-numeric: tabular-nums; font-size: 12px; }
+.sc-open { color: var(--dim); font-size: 11px; }
+
+/* ---- RugGuard risk badge on coin cards ---- */
+.cc-stat.rug b { color: var(--text); }
+.cc-stat.rug.rg-low b { color: var(--green); }
+.cc-stat.rug.rg-med b { color: #f59e0b; }
+.cc-stat.rug.rg-high b { color: #fb923c; }
+.cc-stat.rug.rg-critical b { color: var(--red); }
+
+/* ---- Sparkline on coin cards ---- */
+.cc-spark { margin-top: 7px; height: 26px; }
+.cc-spark-svg { display: block; width: 100%; height: 26px; }
+
+/* ---- Wallet card PnL rows ---- */
+.wr-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto 60px auto;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.wr-row:last-of-type { border-bottom: none; }
+.wr-pnl { font-variant-numeric: tabular-nums; font-size: 10.5px; }
+.wr-pnl.up { color: var(--green); }
+.wr-pnl.down { color: var(--red); }
+.wr-entry {
+  width: 60px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 10.5px;
+  padding: 3px 5px;
+  border-radius: 6px;
+  min-width: 0;
+}
+.wr-entry::placeholder { color: var(--dim); }
+
+/* ---- Radar panel ---- */
+.radar-row { cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.radar-row:hover { border-color: rgba(34, 197, 94, 0.5); background: rgba(34, 197, 94, 0.06); }
+.radar-row .wl-main strong em { color: var(--dim); font-style: normal; font-weight: 400; }
+.rad-new {
+  display: inline-block;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #04120a;
+  background: var(--green);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 4px;
+  vertical-align: 1px;
+}
+.rad-go { color: var(--green); font-size: 11px; text-align: center; }
+.wl-mcap { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; font-size: 11px; }
+.wl-mcap small { font-size: 9px; color: var(--dim); }
+
+/* ---- Position calculator ---- */
+.calc-out { margin: 2px 0 8px; min-height: 30px; }
+.calc-line { font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.calc-line b { color: var(--c2, #4ade80); }
+.calc-sep { height: 1px; background: var(--border); margin: 10px 0; }

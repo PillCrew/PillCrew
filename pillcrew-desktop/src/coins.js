@@ -8,19 +8,35 @@
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36";
 
-async function fetchJson(url, ms = 9000) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: ctrl.signal });
-    if (res.status === 429) return { rateLimited: true };
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (e) {
-    return null;
-  } finally {
-    clearTimeout(timer);
+async function fetchJson(url, ms = 9000, retries = 2) {
+  // Retry with backoff on 429 (rate limit) and network blips - a paste that
+  // returns "no data" because one API happened to be throttled is a dead end,
+  // so we retry before ever giving up.
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: ctrl.signal });
+      if (res.status === 429) {
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+          continue;
+        }
+        return { rateLimited: true };
+      }
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return null;
 }
 
 const fmtUsd = (v) => {
@@ -126,6 +142,30 @@ async function fromJupiter(mint) {
   };
 }
 
+// ---- GeckoTerminal (last-resort fallback for anything the others miss) ----
+async function fromGecko(mint) {
+  const j = await fetchJson(
+    `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${encodeURIComponent(mint)}/pools?page=1`
+  );
+  if (!j || j.rateLimited) return null;
+  const pools = Array.isArray(j.data) ? j.data : [];
+  if (!pools.length) return null;
+  const attrs = pools
+    .map((p) => (p && p.attributes ? p.attributes : null))
+    .filter(Boolean)
+    .reduce((b, c) => (Number(c.reserve_in_usd || 0) > Number(b.reserve_in_usd || 0) ? c : b), pools[0].attributes);
+  const price = Number(attrs.base_token_price_usd);
+  if (!isFinite(price) || price <= 0) return null;
+  const pc = attrs.price_change_percentage || {};
+  return {
+    price,
+    marketCap: attrs.market_cap_usd != null ? Number(attrs.market_cap_usd) : null,
+    volume24h: attrs.volume_usd && attrs.volume_usd.h24 != null ? Number(attrs.volume_usd.h24) : null,
+    liquidityUsd: attrs.reserve_in_usd != null ? Number(attrs.reserve_in_usd) : null,
+    change24h: pc.h24 != null ? Number(pc.h24) : null,
+  };
+}
+
 function ageLabel(ms) {
   if (ms == null || !isFinite(ms)) return null;
   if (ms < 0) ms = 0;
@@ -135,31 +175,144 @@ function ageLabel(ms) {
   return `${(h / 24).toFixed(1)}d`;
 }
 
+// Deterministic, no-AI "pro read" for any coin - always available, so Pilly
+// NEVER goes silent or says "you pasted a random string" even when every AI
+// tier is down or a weak model ignores the live data. Honest, rule-based.
+function buildCoinRead(coin) {
+  if (!coin) return "";
+  const { name, symbol, price, mcap, change24h, volume24h, liquidityUsd, age, buys24h, sells24h, organicScore, isSus, holderCount } = coin;
+  const sym = symbol || name || "Coin";
+  const head = `${sym} · ${fmtUsd(price)} · mcap ${fmtUsd(mcap)}`;
+
+  let call;
+  if (isSus) call = "PASS - flagged suspicious";
+  else if (change24h != null && change24h <= -15) call = "AVOID / SELL";
+  else if (change24h != null && change24h >= 500) call = "DON'T CHASE";
+  else if (change24h != null && change24h >= 20) call = "WATCH (momentum)";
+  else if (change24h != null && change24h >= 0) call = "HOLD / WATCH";
+  else call = "PASS";
+
+  const facts = [];
+  if (change24h != null) facts.push(`24h ${fmtPct(change24h)}`);
+  if (age) facts.push(`${age} old`);
+  if (mcap != null) facts.push(`mcap ${fmtUsd(mcap)}`);
+  if (volume24h != null && liquidityUsd != null && liquidityUsd > 0) facts.push(`vol/liq ${(volume24h / liquidityUsd).toFixed(1)}x`);
+  if (buys24h != null && sells24h != null && buys24h + sells24h > 0) facts.push(`${Math.round((buys24h / (buys24h + sells24h)) * 100)}% buy share`);
+  if (organicScore != null) facts.push(`organic ${organicScore}/100`);
+  if (holderCount != null) facts.push(`${holderCount.toLocaleString()} holders`);
+  if (coin.rug) facts.push(`rug ${coin.rug.grade} ${coin.rug.score}/100`);
+
+  let verdict;
+  if (isSus) verdict = "Flagged suspicious by Jupiter - high rug risk. Do not buy.";
+  else if (coin.rug && (coin.rug.grade === "CRITICAL" || coin.rug.grade === "HIGH")) {
+    verdict = `🛡️ ${coin.rug.grade} rug risk (${coin.rug.score}/100) - ${coin.rug.reasons.join(", ") || "do not buy"}. Hard pass.`;
+  }
+  else if (call === "DON'T CHASE") verdict = `Already ran ${fmtPct(change24h)} in 24h. Chasing that is buying the top - wait for a flush, see if it holds.`;
+  else if (call === "AVOID / SELL") verdict = "Deep red - falling knife. Not your trade.";
+  else if (call === "WATCH (momentum)") verdict = "Fresh move with real volume behind it. If it holds, a pullback is the entry - don't fomo.";
+  else if (volume24h != null && volume24h > 0 && volume24h < 10000) verdict = "Tape is dust - almost no real volume behind it. Nothing to trade.";
+  else verdict = "Nothing screaming here. Hold or skip.";
+
+  return `${head}\nCALL: ${call}\nWhy: ${facts.join(" · ") || "thin data"}\nVerdict: ${verdict}\nNot financial advice.`;
+}
+
 /**
- * Full live snapshot for a mint.
+ * RugGuard (v1.2.0): deterministic 0-100 rug-risk score built from on-chain
+ * + exchange signals. Higher = riskier. Pure function, never throws.
+ * @returns {{score:number, grade:'LOW'|'MED'|'HIGH'|'CRITICAL', reasons:string[]} | null}
+ */
+function rugRisk(coin) {
+  if (!coin) return null;
+  let score = 0;
+  const reasons = [];
+  const add = (pts, why) => {
+    if (!pts) return;
+    score += pts;
+    if (reasons.length < 4) reasons.push(why);
+  };
+
+  // Jupiter's own suspicion flag - the single heaviest signal.
+  if (coin.isSus) add(40, "flagged suspicious by Jupiter");
+  // Mint authority can still print supply = instant rug button.
+  if (coin.mintAuthority === "active") add(25, "mint authority active");
+  else if (coin.mintAuthority === "renounced") score -= 8; // good sign
+  // Holder concentration (excl. LP would need on-chain - jup gives raw %).
+  if (coin.topHoldersPct != null) {
+    if (coin.topHoldersPct > 50) add(25, `top-10 hold ${coin.topHoldersPct.toFixed(0)}%`);
+    else if (coin.topHoldersPct > 30) add(15, `top-10 hold ${coin.topHoldersPct.toFixed(0)}%`);
+    else if (coin.topHoldersPct > 20) add(8, `top-10 hold ${coin.topHoldersPct.toFixed(0)}%`);
+  }
+  // Dev still holds a big bag = they can dump on you.
+  if (coin.devBalancePct != null) {
+    if (coin.devBalancePct > 20) add(20, `dev holds ${coin.devBalancePct.toFixed(0)}%`);
+    else if (coin.devBalancePct > 10) add(12, `dev holds ${coin.devBalancePct.toFixed(0)}%`);
+    else if (coin.devBalancePct > 5) add(6, `dev holds ${coin.devBalancePct.toFixed(0)}%`);
+  }
+  // Jupiter organic score: low = bot/wash-churned tape.
+  if (coin.organicScore != null) {
+    if (coin.organicScore < 30) add(20, `organic ${coin.organicScore}/100`);
+    else if (coin.organicScore < 50) add(10, `organic ${coin.organicScore}/100`);
+    else if (coin.organicScore < 70) add(5, `organic ${coin.organicScore}/100`);
+  }
+  // Liquidity is your exit - too low means you can't leave.
+  if (coin.liquidityUsd != null) {
+    if (coin.liquidityUsd < 2000) add(25, `liq ${fmtUsd(coin.liquidityUsd)}`);
+    else if (coin.liquidityUsd < 10000) add(15, `liq ${fmtUsd(coin.liquidityUsd)}`);
+    else if (coin.liquidityUsd < 50000) add(8, `liq ${fmtUsd(coin.liquidityUsd)}`);
+  }
+  // Volume vs liquidity: extreme churn on a thin pool = wash trading.
+  if (coin.volume24h != null && coin.liquidityUsd != null && coin.liquidityUsd > 0) {
+    const vl = coin.volume24h / coin.liquidityUsd;
+    if (vl > 30) add(8, `vol/liq ${vl.toFixed(0)}x`);
+  }
+  // DexScreener labels carry real safety info.
+  const labels = Array.isArray(coin.labels) ? coin.labels : [];
+  if (labels.some((l) => /lp-burned|revoked/i.test(l))) score -= 15;
+  if (labels.some((l) => /old/i.test(l))) score -= 8;
+  if (coin.verified) score -= 5;
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const grade = score >= 60 ? "CRITICAL" : score >= 40 ? "HIGH" : score >= 20 ? "MED" : "LOW";
+  return { score, grade, reasons };
+}
+
+/**
+ * Full live snapshot for a mint. Tries 4 sources in parallel (pump.fun,
+ * DexScreener, Jupiter, GeckoTerminal) and only gives up when EVERY one has
+ * nothing - so a throttled or unknown single API can't nuke the paste.
  * @returns {Promise<{coin: object, context: string} | null>}
  */
 async function fetchCoinContext(mint) {
   if (!mint) return null;
-  const [pump, dex, jup] = await Promise.all([fromPump(mint), fromDex(mint), fromJupiter(mint)]);
-  if (!pump && !dex) return null; // nothing knows this token
+  const [pump, dex, jup, gecko] = await Promise.all([fromPump(mint), fromDex(mint), fromJupiter(mint), fromGecko(mint)]);
+  // Never give up while ANY source has something usable (Jupiter's mcap counts
+  // - it indexes coins the DEX aggregators haven't listed yet).
+  const anyData = !!(pump || dex || gecko || (jup && (jup.mcap != null || jup.liquidity != null)));
+  if (!anyData) return null;
 
   const now = Date.now();
   const createdAt = pump?.createdAt ?? null;
   const ageMs = createdAt ? now - createdAt : null;
 
-  // Best values (prefer pump for pump coins, dex for everything else).
-  const price = pump?.price || dex?.price || null;
-  const mcap = pump?.mcap || dex?.marketCap || jup?.mcap || null;
-  const volume = pump?.volume24h || dex?.volume24h || null;
-  const liquidity = dex?.liquidityUsd || jup?.liquidity || null;
-  const change24h = dex?.change24h ?? null;
+  // Best values (prefer pump for pump coins, dex for everything else, gecko as
+  // the fresh-pool fallback, jup last).
+  const price = pump?.price || dex?.price || gecko?.price || null;
+  const mcap = pump?.mcap || dex?.marketCap || gecko?.marketCap || jup?.mcap || null;
+  const volume = pump?.volume24h || dex?.volume24h || gecko?.volume24h || null;
+  const liquidity = dex?.liquidityUsd || gecko?.liquidityUsd || jup?.liquidity || null;
+  const change24h = dex?.change24h ?? gecko?.change24h ?? null;
   const buys = dex?.buys24h ?? jup?.numBuys24h ?? null;
   const sells = dex?.sells24h ?? jup?.numSells24h ?? null;
 
+  const sources = [];
+  if (pump) sources.push("pump.fun");
+  if (dex) sources.push("DexScreener");
+  if (gecko) sources.push("GeckoTerminal");
+  if (jup) sources.push("Jupiter");
+
   const coin = {
     mint,
-    name: pump?.name || (dex?.pair ? "token" : "Unknown"),
+    name: pump?.name || "token",
     symbol: pump?.symbol || "",
     image: pump?.image || null,
     price,
@@ -182,7 +335,10 @@ async function fetchCoinContext(mint) {
     pair: dex?.pair || null,
     dex: dex?.dex || null,
     labels: dex?.labels || [],
+    sources,
   };
+  // RugGuard score attached to every snapshot + shown in the read.
+  coin.rug = rugRisk(coin);
 
   const lines = [];
   lines.push(`Coin: ${coin.name}${coin.symbol ? ` (${coin.symbol})` : ""}${pump ? " · pump.fun" : ""}`);
@@ -199,13 +355,17 @@ async function fetchCoinContext(mint) {
   if (coin.organicScore != null) lines.push(`organic ${coin.organicScore}/100${coin.organicScoreLabel ? ` (${coin.organicScoreLabel})` : ""}`);
   if (coin.verified != null) lines.push(coin.verified ? "verified" : "unverified");
   if (coin.isSus) lines.push("FLAGGED SUSPICIOUS (Jupiter) - high rug risk");
+  if (coin.rug) {
+    lines.push(`rug risk ${coin.rug.grade} (${coin.rug.score}/100)${coin.rug.reasons.length ? " - " + coin.rug.reasons.join(", ") : ""}`);
+  }
   if (coin.mintAuthority) lines.push(`mint authority ${coin.mintAuthority}`);
   if (coin.topHoldersPct != null) lines.push(`top-10 holders ${coin.topHoldersPct.toFixed(1)}%`);
   if (coin.devBalancePct != null) lines.push(`dev holds ${coin.devBalancePct.toFixed(1)}%`);
   if (coin.holderCount != null) lines.push(`${coin.holderCount.toLocaleString()} holders`);
   if (coin.dex) lines.push(`pair: ${coin.dex}${coin.pair ? ` (${coin.pair.slice(0, 8)}…)` : ""}`);
+  if (sources.length) lines.push(`data: ${sources.join(" + ")}`);
 
-  return { coin, context: lines.join("\n") };
+  return { coin, context: lines.join("\n"), read: buildCoinRead(coin) };
 }
 
 /**
@@ -224,6 +384,7 @@ async function fetchTrendingTop(limit = 8) {
     const name = a.name || "";
     const sym = (base.symbol || name.split("/")[0] || "").slice(0, 12);
     const price = Number(a.base_token_price_usd);
+    const m5 = a.price_change_percentage && a.price_change_percentage.m5 != null ? Number(a.price_change_percentage.m5) : null;
     const chg = a.price_change_percentage && a.price_change_percentage.h24 != null
       ? Number(a.price_change_percentage.h24)
       : null;
@@ -231,7 +392,7 @@ async function fetchTrendingTop(limit = 8) {
     const liq = Number(a.reserve_in_usd) || null;
     const mcap = a.market_cap_usd != null ? Number(a.market_cap_usd) : null;
     if (addr && isFinite(price) && price > 0) {
-      list.push({ mint: addr, name: name.split("/")[0] || sym, symbol: sym, price, change24h: chg, volume24h: vol, liquidityUsd: liq, mcap });
+      list.push({ mint: addr, name: name.split("/")[0] || sym, symbol: sym, price, change5m: m5, change24h: chg, volume24h: vol, liquidityUsd: liq, mcap });
     }
   }
   // GeckoTerminal doesn't report mcap for every pool (e.g. fresh bonding-curve
@@ -440,4 +601,170 @@ async function fetchWalletPortfolio(address) {
   return { wallet: addr, sol, solUsd, tokens: top, totalUsd, change24h, context: lines.join("\n"), ok: true };
 }
 
-module.exports = { detectMint, fetchCoinContext, fetchTrendingTop, fetchWalletPortfolio, isPubkey, fmtUsd, fmtPct };
+// ---- batch live prices (watchlist poller / tray tooltip) ----
+// One DexScreener bulk call (up to 30 mints each) + pump.fun fallback for
+// bonding-curve coins DexScreener hasn't listed yet. Best-effort: returns only
+// what it could price, never throws.
+async function fetchPrices(mints) {
+  const out = {};
+  const arr = [...new Set((mints || []).filter(Boolean))];
+  if (!arr.length) return out;
+  for (let i = 0; i < arr.length; i += 30) {
+    const chunk = arr.slice(i, i + 30);
+    const j = await fetchJson(`https://api.dexscreener.com/latest/dex/tokens/${chunk.join(",")}`, 12000, 1);
+    if (j && Array.isArray(j.pairs)) {
+      for (const p of j.pairs) {
+        const mint = p && p.baseToken && p.baseToken.address;
+        if (!mint) continue;
+        const price = Number(p.priceUsd);
+        if (!isFinite(price) || price <= 0) continue;
+        const liq = Number((p.liquidity && p.liquidity.usd) || 0);
+        const cur = out[mint];
+        // Keep the MOST LIQUID pair per mint - the first result is often a
+        // tiny/new pool with a nonsense price (SOL showed $0.0059 instead of
+        // ~$105 because of a fresh wrapped-SOL pool).
+        if (!cur || liq > (cur._liq || 0)) {
+          out[mint] = {
+            price,
+            change24h: p.priceChange && p.priceChange.h24 != null ? Number(p.priceChange.h24) : null,
+            name: (p.baseToken && p.baseToken.name) || "",
+            symbol: ((p.baseToken && p.baseToken.symbol) || "").slice(0, 12),
+            mcap: p.marketCap != null ? Number(p.marketCap) : null,
+            volume24h: p.volume && p.volume.h24 != null ? Number(p.volume.h24) : null,
+            _liq: liq,
+          };
+        }
+      }
+    }
+    // pump.fun knows every bonding-curve coin DexScreener hasn't listed.
+    await Promise.all(
+      chunk.filter((m) => !out[m]).map(async (m) => {
+        const pump = await fromPump(m);
+        if (pump && pump.price) {
+          out[m] = {
+            price: pump.price,
+            change24h: null,
+            name: pump.name || "",
+            symbol: pump.symbol || "",
+            mcap: pump.mcap,
+            volume24h: pump.volume24h,
+          };
+        }
+      })
+    );
+  }
+  return out;
+}
+
+// SOL price for the tray tooltip / quick glance.
+async function fetchSolPrice() {
+  const out = await fetchPrices([SOL_MINT]);
+  const s = out[SOL_MINT];
+  if (!s) return null;
+  return { price: s.price, change24h: s.change24h, name: "Solana", symbol: "SOL" };
+}
+
+// 24h price history for the coin-card sparkline (GeckoTerminal hourly OHLCV
+// on the most-liquid pool). Returns { points:[...], dir } or null.
+async function fetchSpark(mint) {
+  const pools = await fetchJson(
+    `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${encodeURIComponent(mint)}/pools?page=1`,
+    8000,
+    1
+  );
+  const pl = Array.isArray(pools && pools.data) ? pools.data : [];
+  if (!pl.length) return null;
+  const pool = pl.reduce((b, c) => {
+    const a1 = c && c.attributes ? Number(c.attributes.reserve_in_usd || 0) : 0;
+    const a2 = b && b.attributes ? Number(b.attributes.reserve_in_usd || 0) : 0;
+    return a1 > a2 ? c : b;
+  }, pl[0]);
+  const poolAddr = String(pool && (pool.attributes?.address || pool.id || "")).replace(/^solana_/, "");
+  if (!poolAddr) return null;
+  const ohlcv = await fetchJson(
+    `https://api.geckoterminal.com/api/v2/networks/solana/pools/${encodeURIComponent(poolAddr)}/ohlcv/hour?aggregate=1&limit=24&currency=usd`,
+    8000,
+    1
+  );
+  const list = ohlcv && ohlcv.data && ohlcv.data.attributes && Array.isArray(ohlcv.data.attributes.ohlcv_list)
+    ? ohlcv.data.attributes.ohlcv_list
+    : [];
+  const points = list
+    .map((c) => Number(Array.isArray(c) ? c[4] : null)) // [ts, open, high, low, close, vol]
+    .filter((v) => isFinite(v) && v > 0);
+  if (points.length < 2) return null;
+  return { points, dir: points[points.length - 1] >= points[0] ? "up" : "down" };
+}
+
+// Fresh pump.fun launches for the radar (pump.fun new-feed first, DexScreener
+// latest token profiles as fallback). Returns { list, context }.
+async function fetchNewCoins(limit = 12) {
+  let list = [];
+  const j = await fetchJson(
+    `https://frontend-api-v3.pump.fun/coins?offset=0&limit=${Math.min(limit, 25)}&sort=created_timestamp&order=DESC`,
+    10000,
+    1
+  );
+  const arr = Array.isArray(j) ? j : Array.isArray(j && j.data) ? j.data : [];
+  for (const c of arr.slice(0, limit)) {
+    if (!c || !c.mint) continue;
+    const mcap = Number(c.usd_market_cap);
+    list.push({
+      mint: c.mint,
+      name: c.name || "",
+      symbol: (c.symbol || "").slice(0, 12),
+      image: c.image_uri || null,
+      price:
+        Number(c.raydium_pool?.open_market_pool_info?.market_pool_price) ||
+        (c.price != null ? Number(c.price) : null),
+      mcap: isFinite(mcap) && mcap > 0 ? mcap : null,
+      volume24h: Number(c.volume_24) || null,
+      createdAt: c.created_timestamp ? Number(c.created_timestamp) : null,
+    });
+  }
+  if (!list.length) {
+    const prof = await fetchJson(`https://api.dexscreener.com/token-profiles/latest/v1`, 10000, 1);
+    const pl = Array.isArray(prof) ? prof : [];
+    const mints = pl.slice(0, limit).map((p) => p && p.tokenAddress).filter(Boolean);
+    const prices = mints.length ? await fetchPrices(mints) : {};
+    list = pl
+      .slice(0, limit)
+      .map((p) => {
+        const pr = p && prices[p.tokenAddress];
+        return {
+          mint: p.tokenAddress,
+          name: (pr && pr.name) || "",
+          symbol: (pr && pr.symbol) || ((p && p.symbol) || "").slice(0, 12),
+          image: (p && p.icon) || null,
+          price: pr && pr.price != null ? pr.price : null,
+          mcap: pr && pr.mcap != null ? pr.mcap : null,
+          volume24h: pr && pr.volume24h != null ? pr.volume24h : null,
+          createdAt: null,
+        };
+      })
+      .filter((c) => c.mint);
+  }
+  // Keep only items with at least a price or mcap (real, tradeable coins).
+  list = list.filter((c) => (c.price != null && c.price > 0) || (c.mcap != null && c.mcap > 0));
+  const lines = list.map(
+    (c, i) =>
+      `${i + 1}. ${c.name}${c.symbol ? ` (${c.symbol})` : ""}${c.price != null ? ` ${fmtUsd(c.price)}` : ""}${c.mcap != null ? ` mcap ${fmtUsd(c.mcap)}` : ""}${c.volume24h != null ? ` vol ${fmtUsd(c.volume24h)}` : ""}`
+  );
+  return { list, context: lines.length ? lines.join("\n") : "no fresh launches right now" };
+}
+
+module.exports = {
+  detectMint,
+  fetchCoinContext,
+  fetchTrendingTop,
+  fetchWalletPortfolio,
+  fetchPrices,
+  fetchSolPrice,
+  fetchSpark,
+  fetchNewCoins,
+  buildCoinRead,
+  rugRisk,
+  isPubkey,
+  fmtUsd,
+  fmtPct,
+};

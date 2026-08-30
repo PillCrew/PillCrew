@@ -122,12 +122,28 @@ async function respond(text, opts = {}) {
   const task = opts.task || "";
   const history = Array.isArray(opts.history) ? opts.history : [];
   const coinContext = opts.coinContext || "";
+  const fallback = opts.fallback || "";
   const system = PILLY.systemPrompt(task, coinContext);
-  const messages = [...history.slice(-12), { role: "user", content: text }];
+  // COIN MODE reliability: put the live data INSIDE the user turn too. Some
+  // (weak/free) models ignore the system block entirely but almost all read
+  // the user message - so the coin numbers reach the model no matter what.
+  let userContent = text;
+  if (task === "coin" && coinContext) {
+    userContent = `[LIVE COIN DATA - use ONLY these printed numbers]\n${coinContext}\n\nMy paste: ${text}\n\nGive me your pro read now.`;
+  }
+  const messages = [...history.slice(-12), { role: "user", content: userContent }];
 
   const reply = await viaTiers(messages, system, opts.ai || {});
   if (!reply) {
-    return { error: "Pilly couldn't reach any AI right now. Add your API in settings (⚙️) and try again." };
+    return fallback
+      ? { reply: fallback, fallback: true }
+      : { error: "Pilly couldn't reach any AI right now. Add your API in settings (⚙️) and try again." };
+  }
+  // A weak model that skipped the coin block often answers with generic fluff
+  // ("you pasted a random string", "no coin data"...). Catch it and hand over
+  // the always-correct local read instead.
+  if (fallback && task === "coin" && /(no (coin|token|market|live)? ?data|random string|what'?s up|didn'?t paste|no chat|nothing (was|to)|couldn'?t (find|pull)|(can'?t|cannot|don'?t|do not) (see|find|detect|pull)|(not|isn'?t|doesn'?t|don'?t) (a|an) (coin|token|mint|address)|(not|isn'?t|doesn'?t|don'?t) (look|looks) like (a|an) (coin|token|mint|address))/i.test(reply)) {
+    return { reply: fallback, fallback: true };
   }
   return { reply: clampShort(reply) };
 }
