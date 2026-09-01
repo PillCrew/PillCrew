@@ -1,6 +1,12 @@
 node_modules/
 dist/
 out/
+release/
 .env
 *.log
+*.local
 .DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

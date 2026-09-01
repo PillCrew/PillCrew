@@ -23,7 +23,7 @@
   <canvas id="pet"></canvas>
   <script>
     // ============================================================
-    // Pilly pet - 60fps canvas renderer (Etap 1 "pro animations").
+    // Pilly pet - 60fps canvas renderer (Stage 1 "pro animations").
     // Smooth state transitions, walk/pause/hop/sleep/dance states,
     // particles (confetti/dust/zzz), eye tracking + blink, drag face.
     // ============================================================
@@ -84,12 +84,12 @@
       let landingUntil = 0; // brief squash after a hop lands
       let dartUntil = 0, dartNext = performance.now() + 2500 + Math.random() * 3500, dartX = 0, dartY = 0;
       let face = { px: 0, py: 0, excited: false, squint: false };
-      // Etap 2: live market mood overlay - "up" (green) or "down" (red).
+      // Stage 2: live market mood overlay - "up" (green) or "down" (red).
       let market = "";
       let marketUntil = 0;
       let bounceStart = 0, bounceUntil = 0; // happy bounce when the market goes green
       let defaultMood = ""; // resting mouth mood from settings (neutral/happy/sad)
-      // Etap 3: ambient life - dance notes, idle gestures, flee, hover/click.
+      // Stage 3: ambient life - dance notes, idle gestures, flee, hover/click.
       let noteNext = performance.now() + 600;
       let gesture = "", gestureUntil = 0, gestureNext = performance.now() + 12000 + Math.random() * 10000;
       let thoughtNext = performance.now() + 40000 + Math.random() * 40000;
@@ -204,6 +204,13 @@
         ensureAudio();
         sfx("boop");
         clickUntil = performance.now() + 180; // quick tap squish
+        // a little "love" pop makes him feel alive
+        particles.push({
+          type: "emoji", x: 30 + (Math.random() - 0.5) * 14, y: 34,
+          vx: (Math.random() - 0.5) * 0.25, vy: -0.5 - Math.random() * 0.2,
+          size: 9 + Math.random() * 3, life: 0, max: 900,
+          glyph: Math.random() < 0.6 ? "💗" : "✨",
+        });
         if (window.pilly) window.pilly.openChat();
       });
       document.addEventListener("mouseover", () => { hover = true; ensureAudio(); });
@@ -243,7 +250,7 @@
         }
       }
 
-      // ---- Etap 4: WebAudio sound effects (no files, optional) ----
+      // ---- Stage 4: WebAudio sound effects (no files, optional) ----
       // Richer engine: layered tones + a noise burst, volume-aware.
       let soundsOn = true;
       let soundVol = 60;
@@ -399,6 +406,14 @@
           ctx.fill();
           return;
         }
+        if (mood === "curious") {
+          // curious little "o"
+          ctx.fillStyle = "#0b0f0d";
+          ctx.beginPath();
+          ctx.ellipse(0, -5.2, 1.4, 1.8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          return;
+        }
         ctx.strokeStyle = "#0b0f0d";
         ctx.lineWidth = 1.5;
         ctx.lineCap = "round";
@@ -432,12 +447,17 @@
         ctx.lineWidth = 1;
         roundRect(-20, -23, 40, 23, 11.5);
         ctx.stroke();
-        // top gloss
+        // top gloss - soft sheen that hugs the forehead, fading at both ends so
+        // it never reads as a hard line over the brow (the old flat band did).
         ctx.save();
-        ctx.globalAlpha = 0.22;
-        ctx.fillStyle = "#fff";
-        roundRect(-15.5, -21, 31, 5.5, 2.75);
-        ctx.fill();
+        roundRect(-20, -23, 40, 23, 11.5);
+        ctx.clip();
+        const gloss = ctx.createLinearGradient(0, -22, 0, -14);
+        gloss.addColorStop(0, "rgba(255,255,255,0)");
+        gloss.addColorStop(0.5, "rgba(255,255,255,0.34)");
+        gloss.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = gloss;
+        ctx.fillRect(-20, -22, 40, 8);
         ctx.restore();
 
         // face
@@ -445,6 +465,8 @@
         if (now < marketUntil) mood = market;
         else if (gesture === "yawn" && now < gestureUntil) mood = "yawn";
         else if (gesture === "wave" && now < gestureUntil) mood = "happy";
+        else if (gesture === "wiggle" && now < gestureUntil) mood = "happy";
+        else if (gesture === "curious" && now < gestureUntil) mood = "curious";
         else if (state === "flee") mood = "scared";
         const eyesOpen = cur.eyes === 1 && !(now < blinkUntil) && !(gesture === "yawn" && now < gestureUntil);
         const eyeY = -14.5;
@@ -465,6 +487,12 @@
       function draw(now, dt) {
         ctx.clearRect(0, 0, W, H);
         const t = now / 1000;
+        // Blink: a living pet blinks. Occasional slow blink for a natural beat.
+        if (cur.eyes === 1 && now > blinkNext) {
+          const slow = Math.random() < 0.2;
+          blinkUntil = now + (slow ? 300 : 120);
+          blinkNext = now + (slow ? 1500 : 2200) + Math.random() * (slow ? 2400 : 3400);
+        }
         const base = dragOverride.active ? PARAMS.drag : (PARAMS[state] || PARAMS.pause);
         const k = 1 - Math.exp((-dt / 1000) * 9);
         cur.squX += (base.squX - cur.squX) * k;
@@ -488,6 +516,7 @@
           rot = Math.sin(t * 7) * 0.13;
         } else if (state === "pause") {
           bodyY = -Math.abs(Math.sin(t * 2.1)) * 1.4; // breathe
+          rot = Math.sin(t * 0.7) * 0.04; // gentle idle sway while hanging out
         } else if (state === "sleep") {
           bodyY = Math.sin(t * 0.9) * 1.6; // slow, deep breathing
           cur.tilt = 0.05; // sleepy tilt
@@ -515,6 +544,10 @@
         }
         // waving: gentle rock side to side
         if (gesture === "wave" && now < gestureUntil) rot += Math.sin(t * 6) * 0.08;
+        // wiggle: quick excited shimmy
+        if (gesture === "wiggle" && now < gestureUntil) rot += Math.sin(t * 20) * 0.12;
+        // curious: slow, thoughtful sway
+        if (gesture === "curious" && now < gestureUntil) rot += Math.sin(t * 1.6) * 0.04;
         // soft landing squash after the hop
         if (now < landingUntil) {
           const landK = (landingUntil - now) / 170;
@@ -534,16 +567,25 @@
           cur.squY += (1 - 0.16 * p - cur.squY) * k;
         }
 
-        // occasional idle gestures while hanging out (wave / yawn)
+        // occasional idle gestures while hanging out (wave / yawn / curious / wiggle)
         if ((state === "pause" || state === "walk") && now > gestureNext && !talking && now >= marketUntil && !gesture) {
           gestureNext = now + 15000 + Math.random() * 15000;
-          gesture = Math.random() < 0.5 ? "wave" : "yawn";
+          const gr = Math.random();
+          if (gr < 0.32) gesture = "wave";
+          else if (gr < 0.58) gesture = "yawn";
+          else if (gr < 0.8) gesture = "curious";
+          else gesture = "wiggle";
           gestureUntil = now + 1100;
           if (gesture === "wave") {
             particles.push({ type: "emoji", x: 44, y: 30, vx: 0.25, vy: -0.3, size: 10, life: 0, max: 1000, glyph: "👋" });
+          } else if (gesture === "curious") {
+            particles.push({ type: "emoji", x: 44, y: 14, vx: 0.1, vy: -0.2, size: 9, life: 0, max: 900, glyph: "?" });
+            dartX = 0; dartY = -1.4; dartUntil = now + 1100; dartNext = now + 1100;
+          } else if (gesture === "wiggle") {
+            particles.push({ type: "emoji", x: 44, y: 30, vx: 0.2, vy: -0.25, size: 9, life: 0, max: 900, glyph: "✨" });
           }
         }
-        // Etap 6: occasional random moods / thought bubbles while hanging out
+        // Stage 6: occasional random moods / thought bubbles while hanging out
         if ((state === "pause" || state === "walk") && now > thoughtNext && !talking && now >= marketUntil && !gesture) {
           thoughtNext = now + 40000 + Math.random() * 45000;
           if (Math.random() < 0.6) {

@@ -40,21 +40,22 @@
       left: 50%;
       transform: translateX(-50%);
       border: 7px solid transparent;
-      border-top-color: #10150f;
+      border-top-color: var(--tail, #10150f);
       border-bottom: 0;
     }
     .bubble.show { opacity: 1; }
 
     /* ---- Pet bubble styles (settings → body.bs-*) ---- */
     /* default: dark pill, green-tinted tail */
+    body.bs-default { --tail: #10150f; }
     body.bs-default .bubble { background: #10150f; border-color: #2c3d31; color: #e8f0e9; }
-    body.bs-default .bubble::after { border-top-color: #10150f; }
 
     /* light: clean white bubble, dark text */
+    body.bs-light { --tail: #f2f7f3; }
     body.bs-light .bubble { background: #f2f7f3; border-color: #cde5d6; color: #0f1a12; }
-    body.bs-light .bubble::after { border-top-color: #f2f7f3; }
 
     /* glass: frosted, soft glow */
+    body.bs-glass { --tail: rgba(20, 28, 22, 0.55); }
     body.bs-glass .bubble {
       background: rgba(20, 28, 22, 0.55);
       border-color: rgba(34, 197, 94, 0.35);
@@ -62,18 +63,18 @@
       backdrop-filter: blur(8px);
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }
-    body.bs-glass .bubble::after { border-top-color: rgba(20, 28, 22, 0.55); }
 
     /* neon: glowing green outline */
+    body.bs-neon { --tail: #08110b; }
     body.bs-neon .bubble {
       background: #08110b;
       border-color: #22c55e;
       color: #d9ffe6;
       box-shadow: 0 0 12px rgba(34, 197, 94, 0.5), 0 6px 18px rgba(0, 0, 0, 0.5);
     }
-    body.bs-neon .bubble::after { border-top-color: #08110b; }
 
     /* comic: white, bold black outline, classic speech bubble */
+    body.bs-comic { --tail: #ffffff; }
     body.bs-comic .bubble {
       background: #ffffff;
       border: 2px solid #10150f;
@@ -100,6 +101,7 @@
     }
 
     /* minimal: just the words, no box */
+    body.bs-minimal { --tail: transparent; }
     body.bs-minimal .bubble {
       background: transparent;
       border: none;
@@ -108,6 +110,14 @@
       text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
     }
     body.bs-minimal .bubble::after { display: none; }
+
+    /* When Pilly sits against the top of the screen there's no room above him,
+       so the bubble flips to sit BELOW him - the tail points up and the text is
+       anchored to the top edge instead of the bottom. */
+    body.flip .bubble { bottom: auto; top: 14px; }
+    body.flip .bubble::after { bottom: auto; top: -6px; border-top: 0; border-bottom: 7px solid var(--tail, #10150f); }
+    body.flip.bs-comic .bubble::after { top: -9px; border: 8px solid transparent; border-top: 0; border-bottom-color: #10150f; }
+    body.flip.bs-comic .bubble::before { top: -5px; bottom: auto; border: 6px solid transparent; border-top: 0; border-bottom-color: #ffffff; }
   </style>
 </head>
 <body class="bs-default">
@@ -121,12 +131,22 @@
       const ts = pet && pet.bubbleText === "sm" ? 10 : pet && pet.bubbleText === "lg" ? 14 : 12;
       document.documentElement.style.setProperty("--bt", ts + "px");
       const style = pet && pet.bubbleStyle ? pet.bubbleStyle : "default";
-      document.body.className = "bs-" + style;
+      // Keep the current "flip" flag when re-applying styles (flip is set by
+      // the main process depending on where Pilly sits on the screen).
+      document.body.className = "bs-" + style + (flipped ? " flip" : "");
+      resizeToFit();
+    }
+    let flipped = false;
+    function setFlip(on) {
+      if (on === flipped) return;
+      flipped = on;
+      document.body.classList.toggle("flip", on);
       resizeToFit();
     }
     // Grow/shrink the bubble window so the bubble text is NEVER cut off at the
     // bottom (the window is 160px fixed, so long text used to overflow it).
-    // The bottom edge stays anchored, so the tail keeps pointing at Pilly.
+    // The anchored edge stays fixed (bottom when above Pilly, top when the
+    // bubble is flipped below him), so the tail keeps pointing at Pilly.
     function resizeToFit() {
       let need = Math.ceil(bubble.offsetHeight) + 18; // bubble + 14px anchor + tail room
       // Safety net: if even the max window (340px) can't fit the text, shrink
@@ -142,6 +162,7 @@
     }
     if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyBubble);
     if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyBubble);
+    if (window.pilly && window.pilly.onPetFlip) window.pilly.onPetFlip(setFlip);
     if (window.pilly && window.pilly.onPetJoke) {
       window.pilly.onPetJoke((text) => {
         bubble.textContent = text;

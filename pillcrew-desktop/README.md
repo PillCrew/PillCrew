@@ -6,33 +6,34 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 
 ---
 
-## ✨ What it does
+## What it does
 
 - **Sits in the system tray** - a little green pill with eyes, gently bobbing.
 - **One click = chat** - a small frameless window pops up right above the tray icon.
-- **Free AI** - talks through your own API settings (⚙️ in the chat: paste any chat-completions endpoint and key, pick a free model with one click, test, done).
+- **Free AI** - talks through your own API settings (**Settings** in the chat: paste any chat-completions endpoint and key, pick a free model with one click, test, done).
 - **Live Solana data (pro)** - paste a token address or a pump.fun/jup.ag link and Pilly pulls live data from free APIs (pump.fun, DexScreener, GeckoTerminal, Jupiter intel): price, mcap, volume, liquidity, 24h change, age, buy/sell txns, organic score, verification, holder/audit flags - then gives a trained pro read (I BUY / TRIM / hold / SELL with the real numbers).
-- **🔥 Trending** - one click pulls the hottest Solana coins right now with **real market caps** (GeckoTerminal + DexScreener + pump.fun) and a short rundown.
-- **💼 Wallet portfolio** - paste your Solana wallet address and Pilly lists your SOL + token holdings with real prices, weighted 24h change and total value (both Token and Token-2022 accounts).
-- **🐾 Taskbar pet (pro animations)** - a 60fps canvas renderer. Pilly walks the
+- **Trending** - one click pulls the hottest Solana coins right now with **real market caps** (GeckoTerminal + DexScreener + pump.fun) and a short rundown.
+- **Wallet portfolio** - paste your Solana wallet address and Pilly lists your SOL + token holdings with real prices, weighted 24h change and total value (both Token and Token-2022 accounts).
+- **Watchlist PnL summary** - set an entry price on any watched token and the watchlist rolls it up into a one-glance portfolio strip: Avg / Best / Worst and how many tokens are tracked. Green when you're up, red when you're down.
+- **Taskbar pet (pro animations)** - a 60fps canvas renderer. Pilly walks the
   taskbar (or the whole monitor) with smooth step-squash and rocking, soft
   landings, a talking mouth, richer eyes (pupils, gloss, squints, eye-darts)
   and a soft radial shadow - crisp on any DPI.
-- **📈 Market reactions** - check a coin, wallet or trending and Pilly reacts to
+- **Market reactions** - check a coin, wallet or trending and Pilly reacts to
   the market: green = confetti + smile + bounce, red = frown + a tear.
-- **🌦️ Ambient life** - day/night behavior, dance notes, idle gestures (wave /
+- **Ambient life** - day/night behavior, dance notes, idle gestures (wave /
   yawn), weather moods, a morning greeting, and naps when the mouse is idle.
-- **🖱️ Cursor play** - in whole-monitor mode a fast poke spooks Pilly: jump,
+- **Cursor play** - in whole-monitor mode a fast poke spooks Pilly: jump,
   "!", a short scared dash - then he calms down and stays clickable.
-- **💬 Chat mood** - the chat avatar senses the mood of your messages and the
+- **Chat mood** - the chat avatar senses the mood of your messages and the
   market, and reacts with emoji + expressions (plus click = boop, hold = pet).
-- **🚀 Market alerts** - Pilly watches trending every few minutes and calls out
+- **Market alerts** - Pilly watches trending every few minutes and calls out
   big pumps and dumps.
-- **🔊 Sound effects** - optional WebAudio blips (hop, scare, confetti, sad,
+- **Sound effects** - optional WebAudio blips (hop, scare, confetti, sad,
   sleep) - toggle in settings.
-- **🧠 Memory & stats** - Pilly counts jokes, coins, scares and days together,
+- **Memory & stats** - Pilly counts jokes, coins, scares and days together,
   and shares little facts from its life.
-- **🎨 Personalization** - rename Pilly, set a default mood, and the whole chat
+- **Personalization** - rename Pilly, set a default mood, and the whole chat
   (bubbles included) follows your theme color.
 - **Meme brain** - detects what you want and switches mode (from the chips, or just by typing it - `roast me`, `caption this: …`):
   - `meme this` → rewrites your text in meme-native language
@@ -43,12 +44,14 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 - **Short replies** - everything fits in a screenshot, never over-explains a joke.
 - **Hotkey** - `Ctrl+Shift+P` summons Pilly from anywhere.
 - **Start with Windows** - optional, from the tray menu.
+- **Auto-update** - Pilly checks GitHub for new releases when you open it and updates itself; the installed build restarts into the new version (the portable .exe links you to the releases page instead).
+- **Settings polish** - the window position is remembered automatically, with one-click **Reset window position** if Pilly ever lands off-screen (tray menu still has it too).
 
-## 🖼️ Screenshot
+## Screenshot
 
-![Pilly](assets/pilly.png)
+![Pilly chat](docs/screenshot-chat.png)
 
-## 🚀 Run it
+## Run it
 
 Requires **Node.js 20+**.
 
@@ -71,13 +74,13 @@ PILLY_TIER1_MODEL=...
 PILLY_TIER2_URL=...
 ...
 ```
-> 💡 Put any endpoint into `PILLY_TIER1_URL`, its key into `PILLY_TIER1_KEY` and
+> **Tip:** Put any endpoint into `PILLY_TIER1_URL`, its key into `PILLY_TIER1_KEY` and
 > its model into `PILLY_TIER1_MODEL` (most providers require one). Add more tiers
 > as fallbacks - they are tried in order, cheapest/free first.
 
 Tune with `PILLY_TEMPERATURE` and `PILLY_MAX_TOKENS`.
 
-**Or set it all in the app** - click ⚙️ in the chat window: 3 API slots
+**Or set it all in the app** - click **Settings** in the chat window: 3 API slots
 (URL / key / model), **Find free models**, a **Test connection** button and
 temperature. Saved on disk, no file edits.
 
@@ -96,7 +99,7 @@ temperature. Saved on disk, no file edits.
 
 Auth is `Bearer <key>`. Leave Model empty if the endpoint defaults it.
 
-## 📦 Build an installer
+## Build an installer
 
 ```bash
 npm run dist
@@ -104,13 +107,13 @@ npm run dist
 
 Outputs an NSIS installer + portable `.exe` in `dist/`.
 
-## 🧪 Tests
+## Tests
 
 ```bash
 npm test
 ```
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 **The chat window froze or stopped responding.**
 
@@ -149,7 +152,7 @@ clears itself.
 
 Deleting all of them gives you a fresh install-like state.
 
-## 🧠 How it's built
+## How it's built
 
 ```
 pillcrew-desktop/
@@ -165,7 +168,29 @@ pillcrew-desktop/
 └── .env.example
 ```
 
-## ⚠️ Disclaimer
+## Build & auto-update
+
+Build the Windows installers locally:
+
+```bash
+npm run dist        # builds the NSIS installer + portable .exe (no upload)
+```
+
+To build **and publish a GitHub release** (so Pilly can self-update), create a
+personal access token with the `repo` scope for your GitHub account and run:
+
+```bash
+# PowerShell (Windows)
+$env:GH_TOKEN="ghp_..."
+npm run dist:publish
+```
+
+The first run publishes a GitHub Release with the NSIS installer and a
+`latest.yml` manifest. Newer `dist:publish` runs upload a fresh version and
+Pilly's installed build detects it and updates itself. The portable `.exe`
+can't self-update - it links to the releases page instead.
+
+## Disclaimer
 
 Pilly is a fun tool for entertainment and education. It is **not financial advice (NFA)** - always do your own research.
 

@@ -390,14 +390,27 @@
           <span>Always on top</span>
           <input id="chatOnTop" type="checkbox" />
         </label>
-        <label class="row toggle">
-          <span>Remember window size &amp; position</span>
-          <input id="chatRemember" type="checkbox" checked disabled />
+        <label class="row"><span>Window position</span>
+          <em class="win-remember">remembered automatically</em>
         </label>
-        <p class="hint" style="margin-top:-2px;">Drag the bottom edge to stretch the chat taller. Its position is remembered automatically (right-click the tray icon → Reset window position to snap back).</p>
+        <p class="hint" style="margin-top:-2px;">Drag the bottom edge to stretch the chat taller. Its position is remembered automatically - or snap it back above the tray.</p>
+        <div class="settings-actions">
+          <button id="winResetBtn" class="ghost">↩️ Reset window position</button>
+        </div>
+      </div>
+
+      <div class="pet-block">
+        <div class="pet-title">⬆️ Updates</div>
+        <label class="row"><span>Version</span><span id="updVersion" class="upd-ver">—</span></label>
+        <div id="updStatus" class="status">—</div>
+        <div class="settings-actions">
+          <button id="updCheckBtn" class="ghost">🔍 Check for updates</button>
+          <button id="updInstallBtn" class="primary" hidden>🔄 Restart &amp; install</button>
+        </div>
+        <p class="hint" style="margin-top:-2px;">Pilly checks GitHub for new versions when you open it, and you can check manually. The installed build updates itself; the portable .exe links you to the releases page.</p>
       </div>
     </div>
-    <div class="settings-foot">Pilly v<span id="appVersion">1.0.2</span> · PillCrew</div>
+    <div class="settings-foot">Pilly v<span id="appVersion">—</span> · PillCrew</div>
   </div>
 
   <script src="renderer.js"></script>

@@ -1,3 +1,17 @@
+<div align="center">
+
+# Hi, I'm Chris
+
+**I build AI agents and automation for Solana. My work grew out of a long-running obsession with how online systems work, from game servers to backend tooling.**
+
+I started building tools and automation for online games and game servers in my early teens. Small scripts and bots turned into custom tooling, websites, and backend systems. Over time, that became larger software projects and product work.
+
+Now I focus on turning ideas into working software: AI agents, automation, and Solana-focused tools.
+
+</div>
+
+---
+
 ```text
 ██████╗ ██╗██╗     ██╗     ██╗   ██╗
 ██╔══██╗██║██║     ██║     ╚██╗ ██╔╝
@@ -13,22 +27,23 @@
 
 **A tiny green pill AI friend for Windows. Click it, chat with it, ask it about Solana - it answers like a sharp, terminally-online friend.**
 
-Live coin checks · 💼 Portfolio · 🔥 Trending · 🎲 Pick a coin · Meme brain · Free AI
+Live coin checks · Portfolio · Trending · Pick a coin · Meme brain · Free AI
 
 [![Release](https://img.shields.io/github/v/release/PillCrew/PillCrew?style=flat-square&color=4caf50)](https://github.com/PillCrew/PillCrew/releases)
 [![License](https://img.shields.io/badge/License-MIT-4caf50?style=flat-square)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-4caf50?style=flat-square)](CONTRIBUTING.md)
 
 <p align="center">
+  <img src="assets/00-cover.png" alt="Pilly Desktop - the proactive market companion" />
+</p>
+*Your chat buddy, now a proactive market companion - it watches, tracks, scores
+and follows the market for you.*
+
+<p align="center">
   <img src="assets/pilly-pet.gif" width="280" alt="Pilly - the animated taskbar pet" />
 </p>
-*Pilly, the 60fps taskbar pet - walking, hopping, celebrating green candles and
+*Pilly, the taskbar pet - walking, hopping, celebrating green candles and
 leaving a real, shareable track record.*
-
-<video src="assets/pilly-demo.mp4" controls loop muted width="100%"></video>
-*Pilly in action - pulling live coin data, roasting your picks and keeping a scorecard.*
-
-▶️ **Full walkthrough:** [watch the Pilly demo on Streamable](https://streamable.com/sicd62)
 
 </div>
 
@@ -51,50 +66,91 @@ taskbar** and drops a joke every few minutes.
 
 ---
 
+## What's new in v1.1.0
+
+Pilly is now a **living creature**, not just a pet. This release is all about
+the little things that make it feel alive on your screen - more animation,
+more personality, and a cleaner, more polished UI.
+
+### A living Pilly
+- **More animation** - Pilly blinks, sways, hops and celebrates green candles,
+  naps when you're away, and reacts when you poke it.
+- **Better look & expression** - cleaner blinking, glossier eyes, squints and
+  idle eye-darts. The little mark above its forehead now reads as a deliberate
+  detail, not a glitch.
+- **Fix: Pilly is never hidden behind the cloud.** When Pilly sits at the top
+  of the screen, the chat bubble now flips below it, so you always see the
+  whole creature.
+- **Fix: smoother idle reactions** - the sway / heart animations no longer
+  judder while Pilly waits.
+
+### Watchlist PnL summary
+- The watchlist now rolls your positions into a one-glance strip: **Avg**,
+  **Best**, **Worst** and how many tokens you're tracking - green when you're
+  up, red when you're down.
+
+### Polished panels
+- Every panel layout is tighter and cleaner - no broken spacing, no runaway
+  windows.
+- **Reset window position** - if Pilly ever lands off-screen, one click snaps
+  it back (also in the tray menu).
+
+### Automatic updates
+- Pilly now checks for new releases on startup and downloads them in the
+  background - install it with one click and you're always on the latest build.
+- The portable build can't self-update, so it points you straight to the
+  newest installer on GitHub instead.
+
+---
+
 ## What's new in v1.0.5
 
 Pilly levels up from a chat buddy to a **proactive market companion**. Everything
 in v1.0.4 is still there - live coin checks, trending and chat - and now Pilly
 also watches, tracks, scores and follows the market for you.
 
-### 📌 Watchlist & price alerts
+### Watchlist & price alerts
 - Watch any coin from the chat or a coin card in one click.
 - Set a **±% price alert** per coin; Pilly polls live prices and raises a native
   Windows notification the moment your level is hit.
 - Persists across restarts and follows you to every panel.
 
-### 💰 PnL tracking
+### PnL tracking
 - Your **entry price** is captured automatically the moment you watch a coin.
 - Live **PnL%** per position, colour-coded green / red, right in the watchlist.
 
-### 🏆 Pilly's Scorecard
+### Pilly's Scorecard
 - Every proactive call - **hot radar**, **Pilly's pick**, **whale signal**,
   **sniper** - is timestamped with the price at call time.
 - Picks are later **resolved win/loss** against live prices.
 - Tracks **total calls, win rate, average move and best call**. A real,
   on-chain-verifiable track record, not vibes.
 
-### 🐋 Whale Follow
+### Whale Follow
 - Follow whale wallets and let Pilly **diff their holdings between polls**.
 - Native alert when a followed whale opens a **NEW position** - an early
   accumulation signal.
 
-### 🔥 Radar (fresh launches)
+### Radar (fresh launches)
 - A live stream of brand-new Solana launches with **age, price and market cap**.
 - **NEW flags** highlight coins that just came up.
 
-### 🧮 Position-size calculator
+### Position-size calculator
 - Size a trade from **price, capital, risk % and stop-loss**, with breakeven
   worked out for you.
 
-### ⚙️ Deeper settings
+### Deeper settings
 - **Proactive features** toggles: hot-mover alerts, alert sound, morning brief
   (SOL + your PnL), Pilly's pick, sniper, whale alerts and portfolio mood.
 - **Pet & chat look**: pick a bubble style (default / light / glass / neon /
   comic / minimal), bubble text size and chat bubble style.
 - **Volume control** for Pilly's sounds.
 
-### 🗣️ Smarter chat
+| | | |
+| --- | --- | --- |
+| ![Settings - API](assets/features-settings-api.png) | ![Settings - Pet](assets/features-settings-pet.png) | ![Settings - Chat](assets/features-settings-chat.png) |
+
+### Smarter chat
 - The chat now understands **"watchlist"**, **"alerts"** and **"score"** commands,
   so you can manage your list, set price alerts and check Pilly's scorecard
   without leaving the conversation.
@@ -103,7 +159,7 @@ also watches, tracks, scores and follows the market for you.
 
 ## What's new in v1.0.4
 
-- **Pro animations** - Pilly is a 60fps canvas renderer: smooth walking with
+- **Pro animations** - Pilly is a canvas renderer with smooth walking,
   step-squash and rocking, soft landings, a talking mouth, richer eyes (pupils,
   gloss, squints, idle eye-darts), a soft radial shadow and crisp rendering on
   any DPI.
@@ -143,27 +199,27 @@ also watches, tracks, scores and follows the market for you.
   and an organic-score read from the public pump.fun / DexScreener / Jupiter
   APIs - then gives a trained pro read (I BUY / TRIM / hold / SELL with the
   real numbers).
-- **💼 Wallet portfolio** - paste your own Solana wallet address and Pilly shows
+- **Wallet portfolio** - paste your own Solana wallet address and Pilly shows
   your SOL + token holdings with real prices, weighted 24h change and total
   value (both Token and Token-2022 accounts are supported).
-- **🔥 Trending** - the top 10 movers on Solana right now with **real market
+- **Trending** - the top 10 movers on Solana right now with **real market
   caps** (GeckoTerminal + DexScreener + pump.fun fallbacks), no API key needed.
-- **🎲 Pick a coin** - Pilly rolls a random coin from the live trending feed,
+- **Pick a coin** - Pilly rolls a random coin from the live trending feed,
   pulls its full snapshot and tells you if it's a buy - with a roast.
-- **📌 Watchlist & price alerts** - watch any coin in one click, set a **±%**
+- **Watchlist & price alerts** - watch any coin in one click, set a **±%**
   price alert per coin, and let Pilly poll live prices and raise a native
   Windows notification when your level is hit. The list persists and follows you
   to every panel.
-- **💰 PnL tracking** - your entry price is captured automatically when you
+- **PnL tracking** - your entry price is captured automatically when you
   watch a coin; Pilly shows live **PnL%** per position, colour-coded green/red.
-- **🏆 Pilly's Scorecard** - every proactive call (hot radar, Pilly's pick, whale
+- **Pilly's Scorecard** - every proactive call (hot radar, Pilly's pick, whale
   signal, sniper) is timestamped at call time and later resolved win/loss
   against live prices - total calls, win rate, average move and best call.
-- **🐋 Whale Follow** - follow whale wallets; Pilly diffs their holdings between
+- **Whale Follow** - follow whale wallets; Pilly diffs their holdings between
   polls and alerts you when a whale opens a NEW position.
-- **🔥 Radar (fresh launches)** - a live stream of brand-new Solana launches with
+- **Radar (fresh launches)** - a live stream of brand-new Solana launches with
   age, price, market cap and NEW flags.
-- **🧮 Position-size calculator** - size a trade from price, capital, risk % and
+- **Position-size calculator** - size a trade from price, capital, risk % and
   stop-loss, with breakeven worked out.
 - **Meme lab** - rewrite, caption, name, react to or roast any coin, in Pilly's
   voice - from the chips under the input, or just by typing it (`roast me`,
@@ -190,7 +246,7 @@ npm run dist
 ```
 
 No API keys are required to try it - free tiers are the default. To add your
-own providers, open **⚙️ settings** in the app or edit `.env` (see
+own providers, open **Settings** in the app or edit `.env` (see
 [`.env.example`](pillcrew-desktop/.env.example)).
 
 > **No secrets live in this repo.** Real keys belong in a local `.env` (which

@@ -255,7 +255,7 @@ body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
 @keyframes dotPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes typingDot { 0%,80%,100% { transform: translateY(0); opacity: 0.5; } 40% { transform: translateY(-3px); opacity: 1; } }
 
-/* ---- Chat avatar mood badge (Etap 4) ---- */
+/* ---- Chat avatar mood badge (Stage 4) ---- */
 .pill-avatar .mood {
   position: absolute;
   top: -15px;
@@ -453,6 +453,7 @@ body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
 .settings-head button { background: transparent; border: none; color: var(--dim); font-size: 13px; cursor: pointer; }
 .settings-head button:hover { color: var(--text); }
 .settings .hint { color: var(--dim); font-size: 11px; margin-bottom: 10px; line-height: 1.45; }
+.settings .row .win-remember { font-style: normal; color: var(--dim); font-size: 11px; }
 .tier { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin-bottom: 8px; background: var(--panel); }
 .tier-title { font-size: 10.5px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
 .tier input {
@@ -713,6 +714,14 @@ body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
 }
 .wl-remove:hover { color: var(--red); }
 
+/* Watchlist portfolio PnL summary */
+.wl-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.wl-stat { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 4px; text-align: center; }
+.wl-stat small { display: block; font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+.wl-stat b { font-size: 12px; font-variant-numeric: tabular-nums; }
+.wl-stat b.up { color: var(--green); }
+.wl-stat b.down { color: var(--red); }
+
 /* ---- Pilly's scorecard (track record) ---- */
 .sc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
 .sc-cell { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 6px; text-align: center; }
@@ -762,7 +771,7 @@ body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
 .wr-entry::placeholder { color: var(--dim); }
 
 /* ---- Radar panel ---- */
-.radar-row { cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.radar-row { cursor: pointer; transition: border-color 0.15s, background 0.15s; grid-template-columns: minmax(0, 1fr) auto auto 24px; }
 .radar-row:hover { border-color: rgba(34, 197, 94, 0.5); background: rgba(34, 197, 94, 0.06); }
 .radar-row .wl-main strong em { color: var(--dim); font-style: normal; font-weight: 400; }
 .rad-new {
@@ -777,7 +786,7 @@ body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
   margin-left: 4px;
   vertical-align: 1px;
 }
-.rad-go { color: var(--green); font-size: 11px; text-align: center; }
+.rad-go { color: var(--green); font-size: 11px; text-align: center; animation: radarPulse 1.6s ease-in-out infinite; }
 .wl-mcap { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; font-size: 11px; }
 .wl-mcap small { font-size: 9px; color: var(--dim); }
 
@@ -786,3 +795,121 @@ body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
 .calc-line { font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
 .calc-line b { color: var(--c2, #4ade80); }
 .calc-sep { height: 1px; background: var(--border); margin: 10px 0; }
+
+/* ---- Scorecard: fix the stat grid (was stacking because .sc-grid had no grid) ---- */
+.sc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.sc-stats { display: block; margin-bottom: 4px; }
+.sc-cell {
+  position: relative;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 6px;
+  text-align: center;
+  animation: fadeUp 0.35s ease-out both;
+}
+.sc-cell:nth-child(1) { animation-delay: 0.02s; }
+.sc-cell:nth-child(2) { animation-delay: 0.07s; }
+.sc-cell:nth-child(3) { animation-delay: 0.12s; }
+.sc-cell:nth-child(4) { animation-delay: 0.17s; }
+.sc-cell:nth-child(5) { animation-delay: 0.22s; }
+.sc-cell:nth-child(6) { animation-delay: 0.27s; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.sc-cell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), transparent 65%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.sc-cell:hover::before { opacity: 1; }
+.sc-cell b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; transition: transform 0.15s ease; }
+.sc-cell:hover b { transform: scale(1.08); }
+.sc-cell span { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+.sc-cell.up b { color: var(--green); }
+.sc-cell.down b { color: var(--red); }
+.sc-winbar { height: 6px; border-radius: 6px; background: var(--panel-2); overflow: hidden; margin: 4px 0 10px; }
+.sc-winbar i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--c1, var(--green)), var(--c3, #6366f1)); background-size: 200% 100%; transition: width 0.6s ease; animation: winShimmer 2.2s linear infinite; }
+
+/* ---- v1.1.0: extra animations + polish ---- */
+/* Window open: gentle whole-window fade */
+body.app-open { animation: appIn 0.18s ease-out; }
+@keyframes appIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Overlay panels slide in from the right */
+.settings:not(.hidden) { animation: panelIn 0.16s ease-out; }
+@keyframes panelIn {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Panel headers: underline accent + icon pop */
+.settings-head { position: relative; padding-bottom: 9px; border-bottom: 1px solid var(--border); }
+.settings-head strong { font-size: 13.5px; display: inline-flex; align-items: center; gap: 7px; position: relative; }
+.settings-head strong::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 28px;
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--c1, var(--green)), var(--c3, #6366f1));
+}
+
+/* Buttons: press feedback + soft hover glow */
+.chip, .settings-actions button, .bar-actions button, .settings-head button,
+.t-fetch, .wl-remove, .scroll-down {
+  transition: transform 0.12s ease, color 0.15s, border-color 0.15s, background 0.15s, opacity 0.2s;
+}
+.chip:active, .settings-actions button:active, .bar-actions button:active,
+.scroll-down:active, .t-fetch:active { transform: scale(0.94); }
+.settings-actions .primary { box-shadow: 0 0 0 rgba(34,197,94,0); transition: box-shadow 0.2s ease, transform 0.12s ease, background 0.15s; }
+.settings-actions .primary:hover { box-shadow: 0 0 0 3px rgba(34,197,94,0.18); }
+.settings-actions .ghost:active, .t-fetch:active { transform: scale(0.97); }
+
+/* Chat bubbles: softer pop on send/receive (overrides earlier bubbleIn keyframes) */
+.bubble { animation: bubbleIn 0.24s cubic-bezier(0.2, 0.9, 0.3, 1); will-change: transform; }
+@keyframes bubbleIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Scorecard + list rows: stagger in, hover lift */
+.sc-row, .wl-row { transition: background 0.15s, border-color 0.15s, transform 0.15s; }
+.sc-row:hover, .wl-row:hover { background: rgba(34,197,94,0.05); transform: translateX(2px); }
+.sc-row { animation: rowIn 0.3s ease-out both; }
+.sc-row:nth-child(1) { animation-delay: 0.02s; }
+.sc-row:nth-child(2) { animation-delay: 0.06s; }
+.sc-row:nth-child(3) { animation-delay: 0.10s; }
+.sc-row:nth-child(4) { animation-delay: 0.14s; }
+.sc-row:nth-child(5) { animation-delay: 0.18s; }
+.sc-row:nth-child(6) { animation-delay: 0.22s; }
+.sc-row:nth-child(7) { animation-delay: 0.26s; }
+.sc-row:nth-child(8) { animation-delay: 0.30s; }
+@keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Live radar bolt: soft pulsing energy */
+@keyframes radarPulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; text-shadow: 0 0 0 rgba(34, 197, 94, 0); }
+  50% { transform: scale(1.25); opacity: 1; text-shadow: 0 0 8px rgba(34, 197, 94, 0.65); }
+}
+
+/* Win-rate bar: travelling sheen */
+@keyframes winShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* Quick-action chips pop in */
+.chip { animation: chipIn 0.25s ease-out both; }
+@keyframes chipIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Update status + version chip */
+.upd-ver { font-weight: 700; color: var(--c2, #4ade80); font-variant-numeric: tabular-nums; }
+.status.ok { color: var(--green); }
+.status.err { color: #fca5a5; }
+
+/* Coin cards: subtle lift on hover */
+.coin-card, .trend-card { transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s; }
+.coin-card:hover, .trend-card:hover { border-color: rgba(34,197,94,0.4); transform: translateY(-1px); }

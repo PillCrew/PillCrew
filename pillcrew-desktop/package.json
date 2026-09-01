@@ -1,11 +1,15 @@
 {
   "name": "pilly-desktop",
   "productName": "Pilly",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "Pilly - a tiny green pill AI friend that lives in your Windows taskbar. Free AI chat, live Solana coin checks, meme brain, watchlist & alerts.",
   "main": "main.js",
+  "private": true,
   "author": "PillCrew",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "homepage": "https://pillcrew.fun",
   "repository": {
     "type": "git",
@@ -16,7 +20,8 @@
     "icon": "node scripts/gen-icon.js",
     "postinstall": "node scripts/gen-icon.js",
     "test": "node --test src/*.test.js",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "dist:publish": "electron-builder --win --publish always"
   },
   "devDependencies": {
     "electron": "^31.7.7",
@@ -32,14 +37,31 @@
       "renderer/**",
       "assets/**"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "PillCrew",
+        "repo": "PillCrew"
+      }
+    ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "assets/pilly.png"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Pilly"
+      "shortcutName": "Pilly",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

@@ -55,6 +55,9 @@
 
   const history = []; // [{ role, content }] for context (capped)
 
+  // v1.1.0: gentle whole-window fade on open.
+  document.body.classList.add("app-open");
+
   const WELCOME_HTML = "Yo. I'm Pilly - the pill living in your taskbar. Tap the tray icon anytime. Paste a <em>Solana token address</em> (or a pump.fun link) and I'll pull its live data and give you a pro read. Try <em>🔥 trending</em>, <em>meme this</em>, <em>caption this</em> - or just talk.";
 
   // Pro icon set (inline SVG, stroke style, currentColor).
@@ -263,7 +266,7 @@
   };
   const fmtPct = (v) => (v == null || !isFinite(Number(v)) ? "" : `${v >= 0 ? "▲ +" : "▼ "}${Math.abs(v).toFixed(1)}%`);
 
-  // ---- Chat avatar mood badge (Etap 4): a quick emoji reaction pops over
+  // ---- Chat avatar mood badge (Stage 4): a quick emoji reaction pops over
   // the avatar when the market or the conversation turns strongly up/down.
   let avatarMoodTimer = null;
   const AVATAR_MOODS = { happy: "🎉", sad: "😢" };
@@ -292,7 +295,7 @@
   let faceBlink = performance.now() + 1800 + Math.random() * 2500;
   let faceBlinkUntil = 0;
   let faceAnim = null;
-  // Etap 6: avatar interactions - pupils follow the mouse, click = boop,
+  // Stage 6: avatar interactions - pupils follow the mouse, click = boop,
   // hold = petting.
   let facePupil = { x: 0, y: 0 };
   let boopUntil = 0, petting = false, pettingTimer = null;
@@ -718,7 +721,7 @@
     const rows = (w.tokens || []).slice(0, 8).map((t, i) => {
       const up = t.change24h == null || t.change24h >= 0;
       const pnl = pnlOf(t.mint, t.price);
-      return `<div class="wr-row" data-mint="${escapeHtml(t.mint)}"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(t.name)}${t.symbol ? ` <em>${escapeHtml(t.symbol)}</em>` : ""}</span><span class="tr-price">${t.price != null ? fmtUsd(t.price) : "—"}</span><span class="wr-pnl ${pnl ? (pnl.pct >= 0 ? "up" : "down") : ""}">${pnl ? fmtPnl(pnl.pct) : "—"}</span><input class="wr-entry" type="number" step="any" min="0" placeholder="entry" value="${pnl ? pnl.entry : ""}" title="Entry price (PnL)" /><span class="tr-vol">${t.usd != null ? fmtUsd(t.usd) : "no price"}</span></div>`;
+      return `<div class="wr-row" data-mint="${escapeHtml(t.mint)}"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(t.name)}${t.symbol ? ` <em>${escapeHtml(t.symbol)}</em>` : ""}</span><span class="tr-price">${t.price != null ? fmtUsd(t.price) : "-"}</span><span class="wr-pnl ${pnl ? (pnl.pct >= 0 ? "up" : "down") : ""}">${pnl ? fmtPnl(pnl.pct) : "-"}</span><input class="wr-entry" type="number" step="any" min="0" placeholder="entry" value="${pnl ? pnl.entry : ""}" title="Entry price (PnL)" /><span class="tr-vol">${t.usd != null ? fmtUsd(t.usd) : "no price"}</span></div>`;
     }).join("");
     const solRow = w.sol > 0
       ? `<div class="tr-row"><span class="tr-rank">◎</span><span class="tr-name">SOL</span><span class="tr-price">${w.sol.toFixed(4)}</span><span class="tr-chg"></span><span class="tr-vol">${w.solUsd > 0 ? fmtUsd(w.solUsd) : ""}</span></div>`
@@ -741,7 +744,7 @@
     if (!trimmed || sendBtn.disabled) return;
     addMsg("user", escapeHtml(trimmed));
     history.push({ role: "user", content: trimmed });
-    // Etap 3: let the pet know the mood of what the user just said.
+    // Stage 3: let the pet know the mood of what the user just said.
     const mood = guessMood(trimmed);
     if (mood !== "flat") {
       window.pilly.petMood({ kind: mood });
@@ -829,7 +832,7 @@
       typing.remove();
       if (res && res.reply) {
         const body = res.fallback
-          ? `${escapeHtml(res.reply)}<span class="fb-tag">⚡ local read — AI missed the tape</span>`
+          ? `${escapeHtml(res.reply)}<span class="fb-tag">⚡ local read - AI missed the tape</span>`
           : escapeHtml(res.reply);
         addMsg("bot", body);
         history.push({ role: "assistant", content: res.reply });
@@ -1070,7 +1073,7 @@
         if (watchStatusEl) watchStatusEl.textContent = "";
         return;
       }
-      watchRowsEl.innerHTML = list
+      const rowsHtml = list
         .map((it) => {
           const p = prices && prices[it.mint];
           const chg = p && p.change24h;
@@ -1091,6 +1094,27 @@
           </div>`;
         })
         .join("");
+
+      // Portfolio PnL summary - rolled up from every tracked token with an entry price.
+      let statsHtml = "";
+      const entered = [];
+      for (const it of list) {
+        const price = prices && prices[it.mint] ? prices[it.mint].price : null;
+        const pnl = pnlOf(it.mint, price);
+        if (pnl) entered.push({ sym: it.symbol || it.name || "coin", pct: pnl.pct });
+      }
+      if (entered.length) {
+        const avg = entered.reduce((a, x) => a + x.pct, 0) / entered.length;
+        const best = entered.reduce((a, x) => (x.pct > a.pct ? x : a), entered[0]);
+        const worst = entered.reduce((a, x) => (x.pct < a.pct ? x : a), entered[0]);
+        statsHtml = `<div class="wl-stats">
+          <div class="wl-stat"><small>Avg</small><b class="${avg >= 0 ? "up" : "down"}">${fmtPnl(avg)}</b></div>
+          <div class="wl-stat"><small>Best</small><b class="up">${escapeHtml(best.sym)} ${fmtPnl(best.pct)}</b></div>
+          <div class="wl-stat"><small>Worst</small><b class="down">${escapeHtml(worst.sym)} ${fmtPnl(worst.pct)}</b></div>
+          <div class="wl-stat"><small>Entries</small><b>${entered.length}/${list.length}</b></div>
+        </div>`;
+      }
+      watchRowsEl.innerHTML = statsHtml + rowsHtml;
       if (watchStatusEl) watchStatusEl.textContent = `${list.length} watched · refreshed ${new Date().toLocaleTimeString()}`;
       // wire row actions
       watchRowsEl.querySelectorAll(".wl-row").forEach((row) => {
@@ -1215,9 +1239,9 @@
           const up = c.change24h == null || c.change24h >= 0;
           const age = ageShort(c.createdAt);
           return `<div class="wl-row radar-row" data-mint="${escapeHtml(c.mint)}">
-            <div class="wl-main"><strong>${escapeHtml(c.name)}${c.symbol ? ` <em>${escapeHtml(c.symbol)}</em>` : ""}${isNew ? ` <span class="rad-new">NEW</span>` : ""}</strong><small>${c.price != null ? fmtUsd(c.price) : "— price"}</small></div>
+            <div class="wl-main"><strong>${escapeHtml(c.name)}${c.symbol ? ` <em>${escapeHtml(c.symbol)}</em>` : ""}${isNew ? ` <span class="rad-new">NEW</span>` : ""}</strong><small>${c.price != null ? fmtUsd(c.price) : "- price"}</small></div>
             <div class="wl-chg ${up ? "up" : "down"}">${c.change24h != null ? fmtPct(c.change24h) : ""}</div>
-            <div class="wl-mcap">${c.mcap != null ? fmtUsd(c.mcap) : "—"}${age ? `<small>${age}</small>` : ""}</div>
+            <div class="wl-mcap">${c.mcap != null ? fmtUsd(c.mcap) : "-"}${age ? `<small>${age}</small>` : ""}</div>
             <span class="rad-go">⚡</span>
           </div>`;
         })
@@ -1366,6 +1390,7 @@
       const winRate = st.winRate != null ? st.winRate + "%" : "-";
       const avg = st.avgPct != null ? scPct(st.avgPct) : "-";
       if (scStatsEl) {
+        const winPct = st.winRate != null ? Math.max(0, Math.min(100, st.winRate)) : 0;
         scStatsEl.innerHTML = `<div class="sc-grid">
           <div class="sc-cell"><b>${st.total != null ? st.total : 0}</b><span>picks</span></div>
           <div class="sc-cell up"><b>${st.wins != null ? st.wins : 0}</b><span>wins</span></div>
@@ -1373,7 +1398,8 @@
           <div class="sc-cell"><b>${winRate}</b><span>win rate</span></div>
           <div class="sc-cell"><b>${avg}</b><span>avg move</span></div>
           <div class="sc-cell"><b>${g.coins != null ? g.coins : 0}</b><span>coins read</span></div>
-        </div>`;
+        </div>
+        <div class="sc-winbar"><i style="width:${winPct}%"></i></div>`;
       }
       if (!picks.length) {
         scRowsEl.innerHTML = `<p class="hint">No picks recorded yet. Hot-radar flags and Pilly's picks will show up here with their outcome - receipts, on chain.</p>`;
@@ -1384,7 +1410,7 @@
             : `<span class="sc-open">open</span>`;
           const when = new Date(p.ts).toLocaleDateString();
           return `<div class="wl-row sc-row">
-            <div class="wl-main"><strong>${escapeHtml(p.symbol || p.name || "coin")} ${p.source === "hot" ? "🔥" : p.source === "sniper" ? "🔫" : p.source === "whale" ? "🐋" : "🎯"}</strong><small>${when} · ${p.price != null ? fmtUsd(p.price) : "—"} at call</small></div>
+            <div class="wl-main"><strong>${escapeHtml(p.symbol || p.name || "coin")} ${p.source === "hot" ? "🔥" : p.source === "sniper" ? "🔫" : p.source === "whale" ? "🐋" : "🎯"}</strong><small>${when} · ${p.price != null ? fmtUsd(p.price) : "-"} at call</small></div>
             <div class="sc-res">${res}</div>
           </div>`;
         }).join("");
@@ -1430,8 +1456,8 @@
         whaleRowsEl.innerHTML = `<p class="hint">No whales followed yet. Paste a smart-money wallet above - Pilly will ping you the moment it opens a new position.</p>`;
       } else {
         whaleRowsEl.innerHTML = list.map((w) => {
-          const last = w.lastSeen ? new Date(w.lastSeen).toLocaleTimeString() : "—";
-          return `<div class="wl-row wr-row" data-addr="${escapeHtml(w.address)}">
+          const last = w.lastSeen ? new Date(w.lastSeen).toLocaleTimeString() : "-";
+          return `<div class="wl-row sc-row" data-addr="${escapeHtml(w.address)}">
             <div class="wl-main"><strong>${escapeHtml(w.label || w.address)}</strong><small>${escapeHtml(w.address.slice(0, 6))}…${escapeHtml(w.address.slice(-4))} · ${(w.mints || []).length} holdings · seen ${last}</small></div>
             <button class="wl-remove" title="Unfollow">✕</button>
           </div>`;
@@ -1439,7 +1465,7 @@
       }
       whaleRowsEl.querySelectorAll(".wl-remove").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          const addr = btn.closest(".wr-row").dataset.addr;
+          const addr = btn.closest(".sc-row").dataset.addr;
           await window.pilly.whaleRemove(addr);
           setWhaleStatus("unfollowed", true);
           renderWhales();
@@ -1666,6 +1692,22 @@
   if (chatOnTop) chatOnTop.addEventListener("change", () => window.pilly.setAlwaysOnTop(chatOnTop.checked).catch(() => {}));
   // Chat message size applies instantly too.
   if (chatFontSize) chatFontSize.addEventListener("change", () => applyChatFontSize(chatFontSize.value));
+  // Window position is remembered automatically; this buttons snaps it back.
+  const winResetBtn = document.getElementById("winResetBtn");
+  if (winResetBtn) winResetBtn.addEventListener("click", async () => {
+    winResetBtn.disabled = true;
+    const t = winResetBtn.textContent;
+    winResetBtn.textContent = "↩️ Resetting…";
+    try {
+      await window.pilly.resetWindow();
+      setStatus("Window position reset ✓ - reopens above the tray.", true);
+    } catch (e) {
+      setStatus("Couldn't reset window position.", false);
+    } finally {
+      winResetBtn.disabled = false;
+      winResetBtn.textContent = t;
+    }
+  });
   document.getElementById("saveBtn").addEventListener("click", async () => {
     const s = readSettings();
     const r = await window.pilly.settingsSave(s);
@@ -1692,6 +1734,34 @@
     const el = document.getElementById("appVersion");
     if (el && v) el.textContent = v;
   }).catch(() => {});
+
+  // ---- Auto-update UI (v1.1.0) ----
+  const updVersionEl = document.getElementById("updVersion");
+  const updStatusEl = document.getElementById("updStatus");
+  const updCheckBtn = document.getElementById("updCheckBtn");
+  const updInstallBtn = document.getElementById("updInstallBtn");
+  const UPD_BADGE = { idle: "", checking: "…", available: "ok", downloading: "…", ready: "ok", latest: "ok", error: "err" };
+  function renderUpdateStatus(s) {
+    if (updVersionEl && s) updVersionEl.textContent = s.version || "—";
+    if (updStatusEl && s) {
+      updStatusEl.textContent = s.message || s.state || "—";
+      updStatusEl.className = "status" + (UPD_BADGE[s.state] ? " " + UPD_BADGE[s.state] : "");
+    }
+    if (updInstallBtn) updInstallBtn.hidden = !(s && s.state === "ready");
+  }
+  if (updCheckBtn) updCheckBtn.addEventListener("click", async () => {
+    updCheckBtn.disabled = true;
+    try {
+      const r = await window.pilly.updateCheck();
+      renderUpdateStatus(r && r.state);
+    } catch (e) { /* ignore */ }
+    setTimeout(() => { if (updCheckBtn) updCheckBtn.disabled = false; }, 1500);
+  });
+  if (updInstallBtn) updInstallBtn.addEventListener("click", async () => {
+    try { await window.pilly.updateInstall(); } catch (e) { /* ignore */ }
+  });
+  if (window.pilly.onUpdateStatus) window.pilly.onUpdateStatus(renderUpdateStatus);
+  window.pilly.updateState && window.pilly.updateState().then((s) => renderUpdateStatus(s)).catch(() => {});
 
   // Bring back the previous conversation (minimize/restart must not lose it).
   restoreChat();

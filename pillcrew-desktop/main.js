@@ -27,6 +27,7 @@ const WATCH = require("./src/watchlist");
 const PNL = require("./src/pnl");
 const PICKS = require("./src/picks");
 const WHALES = require("./src/whales");
+const { autoUpdater } = require("electron-updater");
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -49,7 +50,7 @@ function petOpts() {
   return (s && s.pet) || { theme: "green", size: "md", bubbles: true, bubbleSize: "md", walkMode: "taskbar", stopFreq: "normal", questions: true };
 }
 
-// ---- Etap 5: Pilly's memory & stats (persisted in userData) ----
+// ---- Stage 5: Pilly's memory & stats (persisted in userData) ----
 let STATS = null;
 function statsPath() { return path.join(userDataDir(), "pilly-stats.json"); }
 function loadStats() {
@@ -386,7 +387,7 @@ function startPet() {
   }
   // Tiny poops on the screen every 4-5 min (they vanish on their own).
   setTimeout(() => { if (petActive) { spawnPoop(); scheduleNextPoop(); } }, 150000 + Math.random() * 60000);
-  // Etap 4: proactive market alerts + ambient (morning greeting, weather).
+  // Stage 4: proactive market alerts + ambient (morning greeting, weather).
   scheduleMarketAlert();
   // v1.1.0: daily brief (SOL + your PnL) once per session.
   if (petOpts().dailyBrief !== false && !dailyBriefDone) {
@@ -450,6 +451,10 @@ const PET_JOKES = [
 let bubbleWin = null;
 let bubbleTimer = null;
 let petJokeTimer = null;
+// When the pill is against the top of the screen there is no room for the bubble
+// above him, so it flips to sit BELOW him (tail points up). Tracks the current
+// side so we only push the flip flag to the renderer when it actually changes.
+let bubbleFlip = false;
 // The very first bubble of a session used to lose its text: the window is
 // created lazily and the pet:joke was sent before bubble.html finished loading.
 // Queue the text here and deliver it on did-finish-load.
@@ -487,9 +492,13 @@ function ensureBubbleWin() {
   bubbleWin.setAlwaysOnTop(true, "screen-saver");
   bubbleWin.setIgnoreMouseEvents(true, { forward: true });
   bubbleReady = false;
+  bubbleFlip = false;
   bubbleWin.loadFile(path.join(__dirname, "renderer", "bubble.html"));
   bubbleWin.webContents.on("did-finish-load", () => {
     bubbleReady = true;
+    // Push the current side so a freshly-created window always matches where
+    // the bubble actually sits (it can't be flipped otherwise).
+    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:flip", bubbleFlip);
     if (bubblePendingJoke) {
       const t = bubblePendingJoke;
       bubblePendingJoke = null;
@@ -507,16 +516,38 @@ function positionBubble() {
   const ps = pet.size === "sm" ? 0.85 : pet.size === "lg" ? 1.2 : 1;
   // Pill top within the PET_H-tall pet window (pill is 23px tall, 11px from the bottom).
   const pillTop = PET_H - 11 - 23 * ps;
-  // The bubble sits 14px above the window's bottom edge. Use the CURRENT
-  // window height (it auto-grows to fit the text) so the bubble stays glued
-  // ~12px above the pill top no matter how tall the window became.
   const [, bh] = bubbleWin.getSize();
   const area = screen.getDisplayNearestPoint({ x: px, y: py }).workArea;
-  let y = py + pillTop - 12 - (bh - 14);
-  // NEVER let the bubble window leave the screen: a tall bubble next to a pet
-  // near the top of the monitor used to get its TOP clipped by the screen edge.
+
+  const pillTopAbs = py + pillTop;       // top edge of the pill
+  const pillBottomAbs = py + PET_H - 11;  // bottom edge of the pill
+  const spaceAbove = pillTopAbs - area.y;
+  const spaceBelow = area.y + area.height - pillBottomAbs;
+
+  // Prefer the side that fits the whole bubble; if neither does, use the roomier.
+  let flip = false;
+  if (spaceAbove >= bh) flip = false;
+  else if (spaceBelow >= bh) flip = true;
+  else flip = spaceBelow > spaceAbove;
+
+  let y;
+  if (!flip) {
+    // Bubble above the pill, tail pointing down at its top.
+    y = pillTopAbs - 12 - (bh - 14);
+  } else {
+    // Bubble below the pill, tail pointing up at its bottom. Symmetric with the
+    // above case: the content top lands 12px under the pill's bottom edge.
+    y = pillBottomAbs - 2;
+  }
+  // NEVER let the bubble window leave the screen.
   y = Math.max(area.y, Math.min(y, area.y + area.height - bh));
-  bubbleWin.setPosition(Math.round(px - 65), Math.round(y));
+  // Keep the 190px bubble on screen horizontally too (it's centred on the pill).
+  const x = Math.max(area.x + 2, Math.min(Math.round(px - 65), area.x + area.width - 190 - 2));
+  if (flip !== bubbleFlip) {
+    bubbleFlip = flip;
+    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:flip", flip);
+  }
+  bubbleWin.setPosition(x, Math.round(y));
 }
 
 // The bubble content measures itself and asks for a taller/shorter window so
@@ -529,7 +560,9 @@ ipcMain.on("bubble:resize", (event, h) => {
   const [, oldH] = bubbleWin.getSize();
   if (hh === oldH) return;
   bubbleWin.setSize(190, hh);
-  let ny = y + oldH - hh; // keep the bottom edge fixed
+  // Keep the anchored edge fixed: bottom when the bubble sits above Pilly, top
+  // when it sits below him (so the tail still points at the pill).
+  let ny = bubbleFlip ? y : y + oldH - hh;
   const area = screen.getDisplayNearestPoint({ x, y }).workArea;
   ny = Math.max(area.y, Math.min(ny, area.y + area.height - hh));
   bubbleWin.setPosition(x, ny);
@@ -613,7 +646,7 @@ function pickFleeTarget(c, dist) {
 async function petJokeTick() {
   if (!petActive || !petOpts().bubbles) return;
   let joke = localPetJoke();
-  // Etap 5: sometimes Pilly shares a little fact from his memory instead.
+  // Stage 5: sometimes Pilly shares a little fact from his memory instead.
   if (Math.random() < 0.18) {
     const s = loadStats();
     const facts = [
@@ -683,7 +716,7 @@ function sendPetTalking(on) {
   if (petWin && !petWin.isDestroyed()) petWin.webContents.send("pet:talking", !!on);
 }
 
-// Etap 2: Pilly reacts to live market data - green = happy, red = sad.
+// Stage 2: Pilly reacts to live market data - green = happy, red = sad.
 function sendPetMarket(m) {
   if (petActive && petWin && !petWin.isDestroyed()) {
     petWin.webContents.send("pet:market", m || { kind: "flat" });
@@ -799,7 +832,7 @@ function scheduleNextPoop() {
   }, delay);
 }
 
-// ---- Etap 4: proactive market alerts - Pilly watches trending and shouts
+// ---- Stage 4: proactive market alerts - Pilly watches trending and shouts
 // when something really moves (pure data, no AI round-trip). ----
 function scheduleMarketAlert() {
   if (!petActive || !petOpts().bubbles) return;
@@ -1078,7 +1111,7 @@ async function portfolioMoodTick() {
   } catch (e) { /* ignore */ }
 }
 
-// ---- Etap 4: ambient weather mood (free wttr.in, IP-based, no key) ----
+// ---- Stage 4: ambient weather mood (free wttr.in, IP-based, no key) ----
 async function refreshWeather() {
   try {
     const ctrl = new AbortController();
@@ -1493,7 +1526,7 @@ ipcMain.handle("pilly:pet:apply", (event, pet) => {
   if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:settings", p);
   return { ok: true };
 });
-// Etap 3: the chat renderer tells Pilly the mood of the conversation.
+// Stage 3: the chat renderer tells Pilly the mood of the conversation.
 ipcMain.handle("pilly:pet:mood", (event, m) => {
   const k = m && m.kind;
   if (k === "happy") bumpStat("happy");
@@ -1591,6 +1624,99 @@ ipcMain.handle("pilly:github", () => {
   return { ok: true };
 });
 ipcMain.handle("pilly:version", () => app.getVersion());
+
+// Forget the remembered window bounds so the next show snaps above the tray.
+ipcMain.handle("pilly:reset-window", () => {
+  resetWindowPosition();
+  return { ok: true };
+});
+
+// ---- Auto-updates from GitHub (v1.1.0) ----
+// electron-updater checks the PillCrew/PillCrew GitHub releases for a newer
+// version than the installed one, downloads it in the background and (after
+// the user confirms) restarts into the new build. Only the NSIS installer can
+// self-update; the portable build shows a message pointing at GitHub instead.
+let updateState = { state: "idle", version: app.getVersion(), message: "Ready." };
+
+function sendUpdateStatus() {
+  try {
+    if (win && !win.isDestroyed()) win.webContents.send("pilly:update:status", updateState);
+  } catch (e) { /* ignore */ }
+}
+
+function setUpdateStatus(patch) {
+  updateState = { ...updateState, ...patch };
+  sendUpdateStatus();
+}
+
+let updaterIsBusy = false;
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on("checking-for-update", () => setUpdateStatus({ state: "checking", message: "Checking for updates…" }));
+autoUpdater.on("update-available", (info) => setUpdateStatus({
+  state: "available",
+  version: info && info.version,
+  message: `Update ${info && info.version ? info.version : ""} is available. Downloading…`,
+}));
+autoUpdater.on("update-not-available", (info) => setUpdateStatus({
+  state: "latest",
+  version: (info && info.version) || app.getVersion(),
+  message: "You're on the latest version.",
+}));
+autoUpdater.on("download-progress", (p) => {
+  const pct = p && p.percent != null ? Math.round(p.percent) : 0;
+  setUpdateStatus({ state: "downloading", message: `Downloading update… ${pct}%` });
+});
+autoUpdater.on("update-downloaded", (info) => setUpdateStatus({
+  state: "ready",
+  version: info && info.version,
+  message: "Update downloaded. Restart to install it.",
+}));
+autoUpdater.on("error", (err) => setUpdateStatus({
+  state: "error",
+  message: err && err.message ? err.message : "Update check failed.",
+}));
+
+function checkForUpdates(manual) {
+  if (!app.isPackaged) {
+    if (manual) setUpdateStatus({ state: "error", message: "Updates only work in the installed app (the dev build doesn't self-update)." });
+    return;
+  }
+  // The portable build can't replace itself while running, so it can't
+  // auto-update. Point the user at GitHub instead of raising a cryptic error.
+  if (process.env.PORTABLE_EXECUTABLE_DIR) {
+    if (manual) setUpdateStatus({
+      state: "error",
+      message: "This is the portable build — it can't update itself. Download the newest installer from GitHub.",
+    });
+    return;
+  }
+  if (updaterIsBusy) return;
+  updaterIsBusy = true;
+  autoUpdater.checkForUpdates()
+    .catch((err) => setUpdateStatus({ state: "error", message: err && err.message ? err.message : "Update check failed." }))
+    .finally(() => { updaterIsBusy = false; });
+}
+
+ipcMain.handle("pilly:update:check", () => {
+  checkForUpdates(true);
+  return { ok: true, state: updateState };
+});
+ipcMain.handle("pilly:update:install", () => {
+  if (updateState.state === "ready") {
+    isQuitting = true;
+    autoUpdater.quitAndInstall(false, true);
+    return { ok: true };
+  }
+  return { ok: false, message: "No downloaded update to install yet." };
+});
+ipcMain.handle("pilly:update:state", () => updateState);
+ipcMain.handle("pilly:update:open", () => {
+  shell.openExternal("https://github.com/PillCrew/PillCrew/releases");
+  return { ok: true };
+});
+
 ipcMain.handle("pilly:quit", () => {
   isQuitting = true;
   app.quit();
@@ -1607,6 +1733,8 @@ app.whenReady().then(() => {
   watchTimer = setInterval(() => { watchPoll().catch(() => {}); }, 30000);
   trayInfoTimer = setInterval(() => { updateTrayInfo(null).catch(() => {}); }, 60000);
   watchPoll().catch(() => {});
+  // Look for a newer Pilly on GitHub (installed builds only).
+  checkForUpdates(false);
 });
 
 app.on("window-all-closed", () => { /* stay alive in the tray */ });
