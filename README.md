@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 # Hi, I'm Chris
 
@@ -422,16 +422,6 @@ node scripts/coin-lookup.mjs <token-address-or-url>
 # Watch new launches (min $50K market cap)
 node scripts/pumpfun-launch-watch.mjs --min-mcap 50000
 ```
-
----
-
-## Roadmap
-
-- Mobile-native experience polish
-- Multi-chain support (beyond Solana)
-- Agent personality presets and custom crews
-- Verdict history and backtesting
-- Community leaderboards
 
 ---
 

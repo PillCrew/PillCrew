@@ -181,7 +181,7 @@ personal access token with the `repo` scope for your GitHub account and run:
 
 ```bash
 # PowerShell (Windows)
-$env:GH_TOKEN="ghp_..."
+$env:GH_TOKEN="<your-github-token>"
 npm run dist:publish
 ```
 
