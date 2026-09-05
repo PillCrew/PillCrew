@@ -1,452 +1,60 @@
-﻿<div align="center">
+<div align="center">
 
-# Hi, I'm Chris
+# Hi, I'm Chris 👋
 
-**I build AI agents and automation for Solana. My work grew out of a long-running obsession with how online systems work, from game servers to backend tooling.**
+**I build AI agents and automation for Solana — tools that turn live market data into something you can actually use.**
 
-I started building tools and automation for online games and game servers in my early teens. Small scripts and bots turned into custom tooling, websites, and backend systems. Over time, that became larger software projects and product work.
+[![pillcrew.fun](https://img.shields.io/website?url=https%3A%2F%2Fpillcrew.fun&label=pillcrew.fun&style=flat-square&color=4caf50)](https://pillcrew.fun)
+[![GitHub followers](https://img.shields.io/github/followers/PillCrew?label=Follow&style=flat-square&color=4caf50)](https://github.com/PillCrew)
 
-Now I focus on turning ideas into working software: AI agents, automation, and Solana-focused tools.
+I started building tools and automation for online games and game servers in my early teens. Small scripts and bots turned into custom tooling, websites, and backend systems. Today I focus on turning ideas into working software: AI agents, automation, and Solana tools.
 
 </div>
 
 ---
 
-```text
-██████╗ ██╗██╗     ██╗     ██╗   ██╗
-██╔══██╗██║██║     ██║     ╚██╗ ██╔╝
-██████╔╝██║██║     ██║      ╚████╔╝
-██╔═══╝ ██║██║     ██║       ╚██╔╝
-██║     ██║███████╗███████╗   ██║
-╚═╝     ╚═╝╚══════╝╚══════╝   ╚═╝
-```
+## 🫧 Pilly — my main project
 
-<div align="center">
+<p align="center">
+  <img src="assets/00-cover.png" alt="Pilly Desktop - the proactive market companion" />
+</p>
 
-# 🫧 Pilly - the pill that lives in your taskbar
+**Pilly is a tiny green pill AI friend that lives in your Windows taskbar.** Click it, chat with it (free AI), paste a Solana token for an instant live read — it answers like a sharp, terminally-online friend.
 
-**A tiny green pill AI friend for Windows. Click it, chat with it, ask it about Solana - it answers like a sharp, terminally-online friend.**
-
-Live coin checks · Portfolio · Trending · Pick a coin · Meme brain · Free AI
+Live coin checks · Trending · Portfolio · Watchlist & PnL · Whale follow · Radar · Position sizing · Meme brain · Free AI
 
 [![Release](https://img.shields.io/github/v/release/PillCrew/PillCrew?style=flat-square&color=4caf50)](https://github.com/PillCrew/PillCrew/releases)
 [![License](https://img.shields.io/badge/License-MIT-4caf50?style=flat-square)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-4caf50?style=flat-square)](CONTRIBUTING.md)
 
-<p align="center">
-  <img src="assets/00-cover.png" alt="Pilly Desktop - the proactive market companion" />
-</p>
-*Your chat buddy, now a proactive market companion - it watches, tracks, scores
-and follows the market for you.*
-
-<p align="center">
-  <img src="assets/pilly-pet.gif" width="280" alt="Pilly - the animated taskbar pet" />
-</p>
-*Pilly, the taskbar pet - walking, hopping, celebrating green candles and
-leaving a real, shareable track record.*
-
-</div>
+📦 **[Download the latest release](https://github.com/PillCrew/PillCrew/releases/latest)** · 📖 **[Full docs, screenshots & changelog](pillcrew-desktop/README.md)**
 
 ---
 
-## What is Pilly?
+## Other projects
 
-Pilly is a **standalone Windows desktop app** that sits quietly in your **system
-tray** as a little animated pill. Tap it (or hit **Ctrl+Shift+P**) and a small
-chat window pops up right above the tray. Paste a Solana token address, get a
-live read, meme it, roast it - or just talk. It even **walks along your
-taskbar** and drops a joke every few minutes.
+### 🌐 pillcrew.fun — the web platform
+A trading desk staffed by **ten AI specialists**. Paste any Solana token and get instant analysis from a full crew — live market data, Crew Verdicts, charts, price alerts and PnL tracking.
+→ **[pillcrew.fun](https://pillcrew.fun)** · [docs](docs/) · [crew roster](docs/AGENTS.md) · [CLI scripts](scripts/)
 
-| | |
-| --- | --- |
-| ![Pilly chat](assets/features-chat.png) | ![Live trending](assets/features-trending.png) |
-| ![Watchlist & PnL](assets/features-watchlist.png) | ![Radar - fresh launches](assets/features-radar.png) |
-| ![Position-size calculator](assets/features-calc.png) | ![Pilly's Scorecard](assets/features-scorecard.png) |
-| ![Whale Follow](assets/features-whales.png) | ![Settings](assets/features-settings.png) |
+### 📜 deedchain
+The first benchmark of **report fidelity** for browser agents — does an agent's final report tell the truth about what it actually did?
+→ [github.com/PillCrew/deedchain](https://github.com/PillCrew/deedchain)
 
----
+### 🔗 claimchain
+Verify that an AI agent's **on-chain claims** are actually true — a claim-level groundedness checker for Solana and memecoin agents.
+→ [github.com/PillCrew/claimchain](https://github.com/PillCrew/claimchain)
 
-## What's new in v1.1.0
+### 🧹 Orbit-Timeline-Cleanser
+Bulk-clean your X timeline from your browser — delete your own posts, remove likes and undo reposts, all on your own device.
+→ [github.com/PillCrew/Orbit-Timeline-Cleanser](https://github.com/PillCrew/Orbit-Timeline-Cleanser)
 
-Pilly is now a **living creature**, not just a pet. This release is all about
-the little things that make it feel alive on your screen - more animation,
-more personality, and a cleaner, more polished UI.
-
-### A living Pilly
-- **More animation** - Pilly blinks, sways, hops and celebrates green candles,
-  naps when you're away, and reacts when you poke it.
-- **Better look & expression** - cleaner blinking, glossier eyes, squints and
-  idle eye-darts. The little mark above its forehead now reads as a deliberate
-  detail, not a glitch.
-- **Fix: Pilly is never hidden behind the cloud.** When Pilly sits at the top
-  of the screen, the chat bubble now flips below it, so you always see the
-  whole creature.
-- **Fix: smoother idle reactions** - the sway / heart animations no longer
-  judder while Pilly waits.
-
-### Watchlist PnL summary
-- The watchlist now rolls your positions into a one-glance strip: **Avg**,
-  **Best**, **Worst** and how many tokens you're tracking - green when you're
-  up, red when you're down.
-
-### Polished panels
-- Every panel layout is tighter and cleaner - no broken spacing, no runaway
-  windows.
-- **Reset window position** - if Pilly ever lands off-screen, one click snaps
-  it back (also in the tray menu).
-
-### Automatic updates
-- Pilly now checks for new releases on startup and downloads them in the
-  background - install it with one click and you're always on the latest build.
-- The portable build can't self-update, so it points you straight to the
-  newest installer on GitHub instead.
+### 🚀 Voyager Simulator
+A WebXR arcade space shooter built with A-Frame — playable on desktop and VR headsets.
+→ [github.com/PillCrew/voyager-simulator](https://github.com/PillCrew/voyager-simulator)
 
 ---
 
-## What's new in v1.0.5
+MIT © PillCrew
 
-Pilly levels up from a chat buddy to a **proactive market companion**. Everything
-in v1.0.4 is still there - live coin checks, trending and chat - and now Pilly
-also watches, tracks, scores and follows the market for you.
-
-### Watchlist & price alerts
-- Watch any coin from the chat or a coin card in one click.
-- Set a **±% price alert** per coin; Pilly polls live prices and raises a native
-  Windows notification the moment your level is hit.
-- Persists across restarts and follows you to every panel.
-
-### PnL tracking
-- Your **entry price** is captured automatically the moment you watch a coin.
-- Live **PnL%** per position, colour-coded green / red, right in the watchlist.
-
-### Pilly's Scorecard
-- Every proactive call - **hot radar**, **Pilly's pick**, **whale signal**,
-  **sniper** - is timestamped with the price at call time.
-- Picks are later **resolved win/loss** against live prices.
-- Tracks **total calls, win rate, average move and best call**. A real,
-  on-chain-verifiable track record, not vibes.
-
-### Whale Follow
-- Follow whale wallets and let Pilly **diff their holdings between polls**.
-- Native alert when a followed whale opens a **NEW position** - an early
-  accumulation signal.
-
-### Radar (fresh launches)
-- A live stream of brand-new Solana launches with **age, price and market cap**.
-- **NEW flags** highlight coins that just came up.
-
-### Position-size calculator
-- Size a trade from **price, capital, risk % and stop-loss**, with breakeven
-  worked out for you.
-
-### Deeper settings
-- **Proactive features** toggles: hot-mover alerts, alert sound, morning brief
-  (SOL + your PnL), Pilly's pick, sniper, whale alerts and portfolio mood.
-- **Pet & chat look**: pick a bubble style (default / light / glass / neon /
-  comic / minimal), bubble text size and chat bubble style.
-- **Volume control** for Pilly's sounds.
-
-| | | |
-| --- | --- | --- |
-| ![Settings - API](assets/features-settings-api.png) | ![Settings - Pet](assets/features-settings-pet.png) | ![Settings - Chat](assets/features-settings-chat.png) |
-
-### Smarter chat
-- The chat now understands **"watchlist"**, **"alerts"** and **"score"** commands,
-  so you can manage your list, set price alerts and check Pilly's scorecard
-  without leaving the conversation.
-
----
-
-## What's new in v1.0.4
-
-- **Pro animations** - Pilly is a canvas renderer with smooth walking,
-  step-squash and rocking, soft landings, a talking mouth, richer eyes (pupils,
-  gloss, squints, idle eye-darts), a soft radial shadow and crisp rendering on
-  any DPI.
-- **Market reactions** - check a coin, wallet or trending and Pilly reacts:
-  green = confetti + smile + bounce, red = frown + a tear. The chat avatar
-  feels it too.
-- **Ambient life** - day/night behavior (sleepy at night, peppy by day), dance
-  notes, idle gestures (waving, yawning), weather moods, a morning greeting and
-  faster naps when the mouse sits still.
-- **Cursor play** - in whole-monitor mode a fast poke spooks Pilly: jump, "!",
-  a short scared dash - then he calms down and stays clickable.
-- **Chat mood** - Pilly senses the mood of the conversation and the chat avatar
-  reacts with emoji + expressions.
-- **Proactive market alerts** - every few minutes Pilly watches trending and
-  calls out big pumps and dumps.
-- **Sound effects** - optional WebAudio blips for hops, scares and confetti
-  (toggle in settings).
-- **Memory & stats** - Pilly remembers how long you've been together and shares
-  little facts from its life.
-- **Personalization** - rename Pilly, set a default mood, and the whole chat
-  (bubbles included) follows your theme color.
-
----
-
-## What it does
-
-- **Lives in the system tray** - an animated pill icon (3-frame blink) and a
-  global hotkey (**Ctrl+Shift+P**) that summons the window from anywhere.
-- **Taskbar pet** - Pilly **walks your taskbar (or the whole monitor)**, pauses,
-  hops, follows your cursor with its eyes, drops jokes and occasionally asks
-  you a question about memecoins. In whole-monitor mode you can **grab and drag
-  him anywhere** (he gets annoyed about it) - and he even leaves the occasional
-  tiny poop. Pick a color (green, blue, purple, pink, orange) and a size - all
-  live.
-- **Live Solana coin checks** - paste a token address or a `pump.fun` link and
-  Pilly pulls live price, market cap, volume, liquidity, age, buy/sell counts
-  and an organic-score read from the public pump.fun / DexScreener / Jupiter
-  APIs - then gives a trained pro read (I BUY / TRIM / hold / SELL with the
-  real numbers).
-- **Wallet portfolio** - paste your own Solana wallet address and Pilly shows
-  your SOL + token holdings with real prices, weighted 24h change and total
-  value (both Token and Token-2022 accounts are supported).
-- **Trending** - the top 10 movers on Solana right now with **real market
-  caps** (GeckoTerminal + DexScreener + pump.fun fallbacks), no API key needed.
-- **Pick a coin** - Pilly rolls a random coin from the live trending feed,
-  pulls its full snapshot and tells you if it's a buy - with a roast.
-- **Watchlist & price alerts** - watch any coin in one click, set a **±%**
-  price alert per coin, and let Pilly poll live prices and raise a native
-  Windows notification when your level is hit. The list persists and follows you
-  to every panel.
-- **PnL tracking** - your entry price is captured automatically when you
-  watch a coin; Pilly shows live **PnL%** per position, colour-coded green/red.
-- **Pilly's Scorecard** - every proactive call (hot radar, Pilly's pick, whale
-  signal, sniper) is timestamped at call time and later resolved win/loss
-  against live prices - total calls, win rate, average move and best call.
-- **Whale Follow** - follow whale wallets; Pilly diffs their holdings between
-  polls and alerts you when a whale opens a NEW position.
-- **Radar (fresh launches)** - a live stream of brand-new Solana launches with
-  age, price, market cap and NEW flags.
-- **Position-size calculator** - size a trade from price, capital, risk % and
-  stop-loss, with breakeven worked out.
-- **Meme lab** - rewrite, caption, name, react to or roast any coin, in Pilly's
-  voice - from the chips under the input, or just by typing it (`roast me`,
-  `caption this: …`).
-- **Bring your own AI** - Pilly runs on **free AI tiers out of the box**, and
-  you can plug in your own keys for OpenRouter, Groq, Cerebras, NVIDIA NIM,
-  DeepSeek, Together, Mistral - or any OpenAI-compatible endpoint (even a local
-  Ollama server). Tiers are tried in order until one answers.
-
----
-
-## Quick start
-
-```bash
-cd pillcrew-desktop
-npm install
-npm start
-```
-
-Build a Windows installer with:
-
-```bash
-npm run dist
-```
-
-No API keys are required to try it - free tiers are the default. To add your
-own providers, open **Settings** in the app or edit `.env` (see
-[`.env.example`](pillcrew-desktop/.env.example)).
-
-> **No secrets live in this repo.** Real keys belong in a local `.env` (which
-> is git-ignored), never in the repository.
-
-Full docs for the desktop app: [pillcrew-desktop/README.md](pillcrew-desktop/README.md)
-
----
-
-<div align="center">
-
-# PillCrew - the web platform
-
-</div>
-
-**A trading desk staffed by ten AI specialists. Not one bot. A crew.**
-
-PillCrew is a free web platform that gives you a **team of ten specialized AI
-agents** for analyzing Solana memecoins. Paste any token and receive instant
-analysis in the style of each agent, from aggressive momentum calls to
-rigorous risk management, all backed by live market data.
-
-[![pillcrew.fun](https://img.shields.io/website?url=https%3A%2F%2Fpillcrew.fun&label=pillcrew.fun&style=flat-square&color=4caf50)](https://pillcrew.fun)
-
-> **Disclaimer:** PillCrew is a beta product for entertainment and education
-> only. It does not provide financial advice (NFA). Memecoins are highly
-> volatile; never invest more than you can afford to lose.
-
----
-
-## Why PillCrew is different
-
-Most tools give you one bot. PillCrew gives you a **crew** with opinions,
-and makes them argue in public.
-
-- **A crew, not a single bot.** Ten agents with different risk profiles look
-  at the same coin and disagree. You hear the bull case and the bear case.
-- **Live data everywhere.** Prices, market caps, volumes and multi-timeframe
-  moves refresh continuously on every screen, not just the chart.
-- **Crew Verdict.** The whole crew scans the trending coins and commits to
-  exactly one winner, with a real entry / stop / target plan.
-- **Zero friction.** No account, no wallet, no sign-up. Open the site, paste a
-  token, start analyzing.
-- **Squad mode and War Room.** Pit two agents against each other, or throw all
-  four into the room and watch them fight over your coin.
-
----
-
-## The crew
-
-| Agent | Callsign | Risk profile |
-| --- | --- | --- |
-| Max Rocket | The Degen | High risk, momentum first |
-| Dr. Delta | The Analyst | Data-driven, structure and timing |
-| Chad Bullington | The Bull | Maximalist upside |
-| Prof. HODL | The Risk Manager | Capital preservation, stops |
-| Whale Wanda | The Whale Tracker | Follows the biggest wallets |
-| Skeptic Sam | The Bear | Red flags and devil's advocate |
-| Meme Alchemist | The Memelord | Culture, virality, narrative |
-| Quant Quinn | The Quant | Numbers-based setup scoring |
-| Sniper Steve | The Sniper | Precision entries and exits |
-| News Nora | The News Scanner | Catalysts and headlines |
-
-Full roster and personalities: [docs/AGENTS.md](docs/AGENTS.md)
-
----
-
-## A verdict looks like this
-
-Crew Verdict is the signature feature. When the crew runs, three agents state
-their case, then the crew commits to one winner with a plan:
-
-```text
-Max Rocket: PANTS has the freshest 6h momentum on the board (+616%) with $3.1M
-             volume against $87K liquidity. That is real buying, not noise.
-Dr. Delta:  Cleanest tape in the scan. 1h still accelerating (+18.7%) while the
-             runners-up fade. A 35x volume/liquidity ratio is conviction.
-Prof. HODL: Passes every risk gate. Real liquidity depth, no mint/freeze red
-             flags, no bot-churn volume.
-
-THE CREW VERDICT: The standout is PANTS. It clears every risk check with real
-liquidity ($87K) and volume ($3.1M), beats EAGLE on fresh momentum (1h +18.7%
-vs +3.2%), and edges GOAT on pool depth (its $22.5K pool is a slip-and-die trap).
-Entry $0.0011 | Stop $0.00095 | Target $0.0016 | Horizon 2-6h
-Invalidation: under $0.0010. Biggest risk: +616% in 6h invites profit-taking,
-so respect the stop.
-
-NFA - dyor, size small. Memecoins are volatile.
-PICK: PANTS
-```
-
-Every verdict is one-click shareable to X, with the coin's contract address and
-live stats attached.
-
----
-
-## Screenshots
-
-| | |
-| --- | --- |
-| ![Trending on Solana](assets/trending.png) | ![Chat with an agent](assets/chat.png) |
-| ![Live callouts](assets/callouts.png) | ![Watchlist](assets/watchlist.png) |
-| ![Docs](assets/docs.png) | |
-
----
-
-## Capabilities
-
-### AI Agents
-
-- **Ten specialist agents**, each with a distinct analytical style and risk profile.
-- **Conversational chat** with any agent. Paste a token address or a `pump.fun` link.
-- **Squad mode** - two agents debate a single setup (bull vs. bear).
-- **War Room** - four agents analyze a coin in parallel.
-- **Safety Score** - a transparent 0-100 risk assessment.
-- **Crew Verdict** - a collective pick with configurable filters (market cap,
-  coin age, minimum volume) and a complete entry / stop / target plan.
-
-### Live Market Intelligence
-
-- **Trending on Solana** - a real-time, sortable market table.
-- **Professional charts** with an integrated swap widget on desktop and
-  one-tap trading on mobile.
-- **Smart alerts** - per-coin ±% alerts over 1m-24h timeframes, with live
-  popups and optional push notifications.
-- **Live callouts** - new launches streamed in real time, plus a trending feed.
-- **Portfolio analyzer** - inspect any wallet's holdings in seconds.
-- **Watchlist** - persistent coin tracking that follows you to every page.
-
----
-
-## Getting Started
-
-Visit **[pillcrew.fun](https://pillcrew.fun)** - no account, wallet, or
-installation required.
-
-| Step | Action |
-| --- | --- |
-| 1 | Open `pillcrew.fun` |
-| 2 | Choose an agent, or open **Trending** / **Watchlist** |
-| 3 | Paste a token address or a `pump.fun` link |
-| 4 | Request a full analysis, rug check, price target or safety audit |
-
----
-
-## Documentation
-
-- [Product documentation](docs/) - features, usage guide and FAQ.
-- [The crew roster](docs/AGENTS.md) - all ten agents, their callsigns and roles.
-- [Security policy](SECURITY.md) - how to report vulnerabilities.
-- [Contributing](CONTRIBUTING.md) - how to help improve the project.
-
----
-
-## Scripts
-
-Useful, dependency-free CLI tools (Node.js 18+). No keys, no accounts - they
-use the same public market APIs the platform itself reads.
-
-| Script | What it does |
-| --- | --- |
-| `pumpfun-launch-watch.mjs` | Streams brand-new pump.fun launches into your terminal in real time |
-| `dexscreener-trending.mjs` | Prints DexScreener's Trending tab with live prices, market caps and liquidity |
-| `coin-lookup.mjs` | Paste a token address or a pump.fun / dexscreener link, get a compact live snapshot |
-
-```bash
-# Top 10 trending right now
-node scripts/dexscreener-trending.mjs 10
-
-# Quick look at any coin
-node scripts/coin-lookup.mjs <token-address-or-url>
-
-# Watch new launches (min $50K market cap)
-node scripts/pumpfun-launch-watch.mjs --min-mcap 50000
-```
-
----
-
-## FAQ
-
-**Is an account required?**
-No. The platform works without sign-up.
-
-**Is a wallet required?**
-Only to execute swaps; all analysis is wallet-free.
-
-**Is this financial advice?**
-No. Pilly and PillCrew are for education and entertainment only. Always
-conduct your own research before trading.
-
----
-
-## License
-
-This repository is published under the [MIT License](LICENSE).
-
----
-
-<div align="center">
-
-© 2026 PillCrew · Not financial advice
-
-</div>
+*Pilly and PillCrew are for education and entertainment only — not financial advice (NFA).*
