@@ -4,7 +4,7 @@
 
 **I build AI agents and automation for Solana — tools that turn live market data into something you can actually use.**
 
-[![pillcrew.fun](https://img.shields.io/website?url=https%3A%2F%2Fpillcrew.fun&label=pillcrew.fun&style=flat-square&color=4caf50)](https://pillcrew.fun)
+[![pillcrew.fun](https://img.shields.io/badge/website-pillcrew.fun-4caf50?style=flat-square&logoColor=white)](https://pillcrew.fun)
 [![GitHub followers](https://img.shields.io/github/followers/PillCrew?label=Follow&style=flat-square&color=4caf50)](https://github.com/PillCrew)
 
 I started building tools and automation for online games and game servers in my early teens. Small scripts and bots turned into custom tooling, websites, and backend systems. Today I focus on turning ideas into working software: AI agents, automation, and Solana tools.
