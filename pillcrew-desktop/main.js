@@ -2033,6 +2033,16 @@ app.whenReady().then(() => {
   iconFrames = loadFrames();
   createWindow();
   createTray();
+  // Linux: GNOME hides tray icons unless the AppIndicator extension is
+  // installed, so a tray-only app looks like it never started. Surface the
+  // chat window once at launch on Linux.
+  if (process.platform === "linux") {
+    positionWindow();
+    if (win && !win.isDestroyed()) {
+      win.show();
+      win.focus();
+    }
+  }
   globalShortcut.register("CommandOrControl+Shift+P", () => toggleWindow());
   // Watchlist alerts poll + tray live-price tooltip.
   watchTimer = setInterval(() => { watchPoll().catch(() => {}); }, 30000);

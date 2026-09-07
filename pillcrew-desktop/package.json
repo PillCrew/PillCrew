@@ -32,6 +32,7 @@
   "build": {
     "appId": "fun.pillcrew.pilly",
     "productName": "Pilly",
+    "afterPack": "scripts/after-pack.js",
     "files": [
       "main.js",
       "preload.js",
@@ -76,6 +77,21 @@
       "maintainer": "PillCrew <contact@pillcrew.fun>",
       "synopsis": "A tiny green pill AI friend",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "afterInstall": "scripts/deb-after-install.sh",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libgbm1"
+      ]
     },
     "nsis": {
       "oneClick": false,

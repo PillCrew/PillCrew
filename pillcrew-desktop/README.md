@@ -100,6 +100,11 @@ activity diary and chat reminders.
 - **Fix: side-of-screen bubble.** When Pilly sits against the left or right edge
   of the screen, the thought bubble now appears beside it with the tail pointing
   at Pilly.
+- **Fix: Linux launch.** Both the `.deb` and the `.AppImage` now start out of the
+  box on Ubuntu — no manual `chown`/`chmod` of `chrome-sandbox` and no
+  `--no-sandbox` flag. The deb fixes the sandbox helper's permissions at install
+  time and declares `libgbm1`. The chat window also opens once at startup on
+  Linux (GNOME hides tray icons unless the AppIndicator extension is installed).
 
 ### v1.1.0
 
@@ -296,7 +301,13 @@ downloads the matching Electron binaries automatically.
   chmod +x Pilly-<version>-x86_64.AppImage
   ./Pilly-<version>-x86_64.AppImage
   ```
-  or install the package with `sudo apt install ./Pilly-<version>-amd64.deb`.
+  or install the package with `sudo apt install ./Pilly-<version>-amd64.deb`
+  and launch it from the application menu (or run `pilly-desktop`). Neither
+  format needs any manual `chown`/`chmod` or `--no-sandbox` step.
+
+  AppImages need FUSE, which Ubuntu no longer ships by default. If the AppImage
+  won't start, install it once: `sudo apt install libfuse2` (or run
+  `./Pilly-<version>-x86_64.AppImage --appimage-extract-and-run`).
 
 ## Tests
 
@@ -305,6 +316,21 @@ npm test
 ```
 
 ## Troubleshooting
+
+**Linux: the AppImage does nothing when I run it.** AppImages need FUSE, which
+Ubuntu doesn't install by default. Run `sudo apt install libfuse2` once, then
+try again. If you can't install packages, run
+`./Pilly-<version>-x86_64.AppImage --appimage-extract-and-run`.
+
+**Linux: the deb installed but Pilly won't open.** Run it from a terminal to see
+the error: `pilly-desktop`. If you see `error while loading shared libraries`,
+install the missing package (the deb declares `libgbm1`). The installer already
+sets the correct permissions on `chrome-sandbox`, so launching needs no manual
+`chown`/`chmod`.
+
+**Linux: no tray icon.** GNOME hides tray icons unless the **AppIndicator**
+extension is installed. Pilly opens its chat window once at launch so it's
+still reachable, and `Ctrl+Shift+P` toggles it any time.
 
 **The chat window froze or stopped responding.**
 
