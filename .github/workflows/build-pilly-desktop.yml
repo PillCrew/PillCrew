@@ -1,0 +1,77 @@
+name: Build Pilly Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pillcrew-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: pillcrew-desktop/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win
+          - os: macos-latest
+            target: mac
+          - os: ubuntu-latest
+            target: linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: pillcrew-desktop
+    env:
+      # macOS: build unsigned (no Apple Developer certificate). Users can
+      # still open it via right-click -> Open; signing/notarization can be
+      # added later when a certificate is available.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: pillcrew-desktop/package-lock.json
+      - run: npm ci
+      - name: Build ${{ matrix.target }}
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            win)   npm run dist ;;
+            mac)   npm run dist:mac ;;
+            linux) npm run dist:linux ;;
+          esac
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pilly-${{ matrix.target }}
+          path: |
+            pillcrew-desktop/dist/*.exe
+            pillcrew-desktop/dist/*.dmg
+            pillcrew-desktop/dist/*.zip
+            pillcrew-desktop/dist/*.AppImage
+            pillcrew-desktop/dist/*.deb
+            pillcrew-desktop/dist/*.blockmap
+            pillcrew-desktop/dist/latest*.yml
+          if-no-files-found: error
