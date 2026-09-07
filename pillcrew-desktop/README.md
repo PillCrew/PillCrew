@@ -279,7 +279,7 @@ npm test           # runs the test suite
 |---|---|---|
 | Windows | `npm run dist` | `Pilly-Setup-<version>.exe` + `Pilly-<version>-portable.exe` |
 | macOS | `npm run dist:mac` | `Pilly-<version>-mac.dmg` + `Pilly-<version>-mac.zip` (universal) |
-| Linux | `npm run dist:linux` | `Pilly-<version>-x64.AppImage` + `Pilly-<version>-amd64.deb` |
+| Linux | `npm run dist:linux` | `Pilly-<version>-x86_64.AppImage` + `Pilly-<version>-amd64.deb` |
 
 The build scripts use [electron-builder](https://www.electron.build/), which
 downloads the matching Electron binaries automatically.
@@ -293,8 +293,8 @@ downloads the matching Electron binaries automatically.
   app and choose **Open**, then confirm.
 - **Linux** - either run the AppImage:
   ```bash
-  chmod +x Pilly-<version>-x64.AppImage
-  ./Pilly-<version>-x64.AppImage
+  chmod +x Pilly-<version>-x86_64.AppImage
+  ./Pilly-<version>-x86_64.AppImage
   ```
   or install the package with `sudo apt install ./Pilly-<version>-amd64.deb`.
 
@@ -376,7 +376,7 @@ which runs the test suite and builds installers for all three platforms:
 
 - **Windows** - `Pilly-Setup-<version>.exe` + `Pilly-<version>-portable.exe`
 - **macOS** - `Pilly-<version>-mac.dmg` + `Pilly-<version>-mac.zip` (universal)
-- **Linux** - `Pilly-<version>-x64.AppImage` + `Pilly-<version>-amd64.deb`
+- **Linux** - `Pilly-<version>-x86_64.AppImage` + `Pilly-<version>-amd64.deb`
 
 The release assets (including `latest.yml`) are attached to the GitHub Release,
 so Pilly's installed Windows build detects the new version and updates itself.
