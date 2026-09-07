@@ -57,10 +57,13 @@ jobs:
       - name: Build ${{ matrix.target }}
         shell: bash
         run: |
+          # --publish never: build artifacts only. Releases are assembled
+          # and published manually from these artifacts, so CI must not try
+          # to push to GitHub Releases itself.
           case "${{ matrix.target }}" in
-            win)   npm run dist ;;
-            mac)   npm run dist:mac ;;
-            linux) npm run dist:linux ;;
+            win)   npm run dist -- --publish never ;;
+            mac)   npm run dist:mac -- --publish never ;;
+            linux) npm run dist:linux -- --publish never ;;
           esac
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
