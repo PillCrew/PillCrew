@@ -4,7 +4,7 @@
 
 # 💊 Pilly Desktop
 
-A tiny green pill AI friend that **lives in your Windows taskbar**. Click it, chat with it (free AI), and it answers like a sharp, terminally-online friend - short enough to screenshot.
+A tiny green pill AI friend that **lives in your taskbar or menu bar** (Windows, macOS and Linux). Click it, chat with it (free AI), and it answers like a sharp, terminally-online friend - short enough to screenshot.
 
 Pilly is an original PillCrew character - its own persona, prompts and meme brain.
 
@@ -65,6 +65,41 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 | ![Whale Follow](../assets/features-whales.png) | ![Settings](../assets/features-settings.png) | |
 
 ## What's new
+
+### v1.1.1
+
+Pilly goes **cross-platform** and learns to keep you focused. macOS and Ubuntu
+Linux are now first-class targets, and the pet gains a Pomodoro timer, an
+activity diary and chat reminders.
+
+#### Cross-platform
+- **macOS** - menu bar app with a universal (Intel + Apple Silicon) build.
+- **Ubuntu Linux** - tray app shipped as **AppImage** and **deb**.
+- **Start at login** works on all three platforms (Linux uses an XDG autostart
+  entry; Windows and macOS use native login items).
+- Platform-aware window placement (above the tray on Windows, under the menu
+  bar on macOS, bottom-right on Linux).
+
+#### Focus & activity
+- **Pomodoro** - start a session from the tray menu or the chat (`start focus`),
+  with custom lengths (`start focus 50`, `pomodoro 25/5`). Pause and resume any
+  time (`pause focus` / `resume focus`).
+- **Activity diary** - Pilly records your active minutes and can report your
+  day (`how was my day`) and your current day streak (`streak`).
+- **Morning digest** - a once-a-day recap of yesterday's focus and activity.
+- **Low battery** - Pilly looks sleepy and warns you when the battery is low.
+
+#### Reminders
+- Ask Pilly to **remind you** - "remind me in 10 minutes to check SOL" or
+  "remind me at 14:30". A native notification and a Pilly bubble fire when the
+  time comes.
+
+#### Polish & fixes
+- More life: a "love" mood (heart eyes) and an "eat" animation when Pilly finds
+  a coin.
+- **Fix: side-of-screen bubble.** When Pilly sits against the left or right edge
+  of the screen, the thought bubble now appears beside it with the tail pointing
+  at Pilly.
 
 ### v1.1.0
 
@@ -229,13 +264,39 @@ temperature. Saved on disk, no file edits.
 
 Auth is `Bearer <key>`. Leave Model empty if the endpoint defaults it.
 
-## Build an installer
+## Build from source
+
+Requires **Node.js 20+**. Electron apps don't cross-compile - build each
+platform on that platform (or on its CI runner).
 
 ```bash
-npm run dist
+cd pillcrew-desktop
+npm install        # installs dependencies and generates the tray icons
+npm test           # runs the test suite
 ```
 
-Outputs an NSIS installer + portable `.exe` in `dist/`.
+| Platform | Command | Output in `dist/` |
+|---|---|---|
+| Windows | `npm run dist` | `Pilly-Setup-<version>.exe` + `Pilly-<version>-portable.exe` |
+| macOS | `npm run dist:mac` | `Pilly-<version>-mac.dmg` + `Pilly-<version>-mac.zip` (universal) |
+| Linux | `npm run dist:linux` | `Pilly-<version>-x64.AppImage` + `Pilly-<version>-amd64.deb` |
+
+The build scripts use [electron-builder](https://www.electron.build/), which
+downloads the matching Electron binaries automatically.
+
+## Install
+
+- **Windows** - run `Pilly-Setup-<version>.exe`, or use the portable `.exe`
+  with no installation.
+- **macOS** - open the `.dmg` and drag Pilly into **Applications**. The build
+  is unsigned, so the first launch shows a Gatekeeper prompt: right-click the
+  app and choose **Open**, then confirm.
+- **Linux** - either run the AppImage:
+  ```bash
+  chmod +x Pilly-<version>-x64.AppImage
+  ./Pilly-<version>-x64.AppImage
+  ```
+  or install the package with `sudo apt install ./Pilly-<version>-amd64.deb`.
 
 ## Tests
 
@@ -291,34 +352,35 @@ pillcrew-desktop/
 ├── src/
 │   ├── ai.js          # free AI chain + short-reply clamp
 │   ├── pilly.js       # Pilly's persona + meme task briefs
-│   └── meme.js        # client-side request-type detection
+│   ├── meme.js        # client-side request-type detection
+│   ├── coins.js       # live Solana coin data
+│   ├── picks.js       # coin pick scoring
+│   ├── pnl.js         # entry-price / PnL tracking
+│   ├── settings.js    # persisted preferences
+│   ├── watchlist.js   # watchlist + price alerts
+│   ├── whales.js      # whale-wallet following
+│   ├── focus.js       # Pomodoro state machine
+│   ├── activity.js    # per-minute activity diary
+│   └── reminders.js   # one-shot chat reminders
 ├── renderer/          # chat window (animated pill, bubbles, chips)
 ├── scripts/gen-icon.js# zero-dep tray icon generator (pure Node)
 ├── assets/            # generated pill PNGs
 └── .env.example
 ```
 
-## Build & auto-update
+## Releases & auto-update
 
-Build the Windows installers locally:
+Pushing a `v*` tag triggers the
+[`build-pilly-desktop`](../.github/workflows/build-pilly-desktop.yml) workflow,
+which runs the test suite and builds installers for all three platforms:
 
-```bash
-npm run dist        # builds the NSIS installer + portable .exe (no upload)
-```
+- **Windows** - `Pilly-Setup-<version>.exe` + `Pilly-<version>-portable.exe`
+- **macOS** - `Pilly-<version>-mac.dmg` + `Pilly-<version>-mac.zip` (universal)
+- **Linux** - `Pilly-<version>-x64.AppImage` + `Pilly-<version>-amd64.deb`
 
-To build **and publish a GitHub release** (so Pilly can self-update), create a
-personal access token with the `repo` scope for your GitHub account and run:
-
-```bash
-# PowerShell (Windows)
-$env:GH_TOKEN="<your-github-token>"
-npm run dist:publish
-```
-
-The first run publishes a GitHub Release with the NSIS installer and a
-`latest.yml` manifest. Newer `dist:publish` runs upload a fresh version and
-Pilly's installed build detects it and updates itself. The portable `.exe`
-can't self-update - it links to the releases page instead.
+The release assets (including `latest.yml`) are attached to the GitHub Release,
+so Pilly's installed Windows build detects the new version and updates itself.
+The portable build can't self-update - it links to the releases page instead.
 
 ## Disclaimer
 

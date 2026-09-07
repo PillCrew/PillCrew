@@ -1,8 +1,8 @@
 {
   "name": "pilly-desktop",
   "productName": "Pilly",
-  "version": "1.1.0",
-  "description": "Pilly - a tiny green pill AI friend that lives in your Windows taskbar. Free AI chat, live Solana coin checks, meme brain, watchlist & alerts.",
+  "version": "1.1.1",
+  "description": "Pilly - a tiny green pill AI friend that lives in your taskbar or menu bar. Free AI chat, live Solana coin checks, meme brain, watchlist & alerts.",
   "main": "main.js",
   "private": true,
   "author": "PillCrew",
@@ -21,6 +21,8 @@
     "postinstall": "node scripts/gen-icon.js",
     "test": "node --test src/*.test.js",
     "dist": "electron-builder --win",
+    "dist:mac": "electron-builder --mac --universal",
+    "dist:linux": "electron-builder --linux",
     "dist:publish": "electron-builder --win --publish always"
   },
   "devDependencies": {
@@ -34,6 +36,7 @@
       "main.js",
       "preload.js",
       "src/**",
+      "!src/*.test.js",
       "renderer/**",
       "assets/**"
     ],
@@ -50,6 +53,29 @@
         "portable"
       ],
       "icon": "assets/pilly.png"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.finance",
+      "icon": "assets/pilly-1024.png",
+      "artifactName": "${productName}-${version}-mac.${ext}"
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-mac.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "icon": "assets/pilly-512.png",
+      "maintainer": "PillCrew <contact@pillcrew.fun>",
+      "synopsis": "A tiny green pill AI friend",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

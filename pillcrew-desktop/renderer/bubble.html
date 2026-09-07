@@ -118,12 +118,49 @@
     body.flip .bubble::after { bottom: auto; top: -6px; border-top: 0; border-bottom: 7px solid var(--tail, #10150f); }
     body.flip.bs-comic .bubble::after { top: -9px; border: 8px solid transparent; border-top: 0; border-bottom-color: #10150f; }
     body.flip.bs-comic .bubble::before { top: -5px; bottom: auto; border: 6px solid transparent; border-top: 0; border-bottom-color: #ffffff; }
+
+    /* When Pilly hugs the LEFT edge there's no room to his left, so the bubble
+       sits to his RIGHT - the tail points left at his side. Anchored to the
+       window's left so the tail stays closest to him. */
+    body.side-right .bubble { left: 14px; right: auto; top: 50%; bottom: auto; transform: translateY(-50%); }
+    body.side-right .bubble::after {
+      left: -6px; right: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+      border: 7px solid transparent; border-right-color: var(--tail, #10150f); border-left: 0;
+    }
+    body.side-right.bs-comic .bubble::after {
+      left: -9px; border: 8px solid transparent; border-right-color: #10150f; border-left: 0;
+    }
+    body.side-right.bs-comic .bubble::before {
+      content: ""; left: -5px; right: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+      border: 6px solid transparent; border-right-color: #ffffff; border-left: 0;
+    }
+
+    /* Pilly hugging the RIGHT edge: bubble to his LEFT, tail points right. */
+    body.side-left .bubble { right: 14px; left: auto; top: 50%; bottom: auto; transform: translateY(-50%); }
+    body.side-left .bubble::after {
+      right: -6px; left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+      border: 7px solid transparent; border-left-color: var(--tail, #10150f); border-right: 0;
+    }
+    body.side-left.bs-comic .bubble::after {
+      right: -9px; border: 8px solid transparent; border-left-color: #10150f; border-right: 0;
+    }
+    body.side-left.bs-comic .bubble::before {
+      content: ""; right: -5px; left: auto; top: 50%; bottom: auto; transform: translateY(-50%);
+      border: 6px solid transparent; border-left-color: #ffffff; border-right: 0;
+    }
   </style>
 </head>
 <body class="bs-default">
   <div class="bubble" id="bubble"></div>
   <script>
     const bubble = document.getElementById("bubble");
+    // Current bubble orientation: "above" | "below" | "right" | "left". Set by
+    // the main process depending on which screen edge Pilly sits against.
+    let orient = "above";
+    let styleClass = "bs-default";
+    function orientClass() {
+      return orient === "below" ? " flip" : orient === "right" ? " side-right" : orient === "left" ? " side-left" : "";
+    }
     function applyBubble(pet) {
       const s = pet && pet.bubbleSize === "sm" ? 0.85 : pet && pet.bubbleSize === "lg" ? 1.15 : 1;
       document.documentElement.style.setProperty("--bs", s);
@@ -131,16 +168,16 @@
       const ts = pet && pet.bubbleText === "sm" ? 10 : pet && pet.bubbleText === "lg" ? 14 : 12;
       document.documentElement.style.setProperty("--bt", ts + "px");
       const style = pet && pet.bubbleStyle ? pet.bubbleStyle : "default";
-      // Keep the current "flip" flag when re-applying styles (flip is set by
-      // the main process depending on where Pilly sits on the screen).
-      document.body.className = "bs-" + style + (flipped ? " flip" : "");
+      styleClass = "bs-" + style;
+      // Keep the current orientation when re-applying styles (it is set by the
+      // main process depending on where Pilly sits on the screen).
+      document.body.className = styleClass + orientClass();
       resizeToFit();
     }
-    let flipped = false;
-    function setFlip(on) {
-      if (on === flipped) return;
-      flipped = on;
-      document.body.classList.toggle("flip", on);
+    function setOrient(o) {
+      if (!o || o === orient) return;
+      orient = o;
+      document.body.className = styleClass + orientClass();
       resizeToFit();
     }
     // Grow/shrink the bubble window so the bubble text is NEVER cut off at the
@@ -162,7 +199,7 @@
     }
     if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyBubble);
     if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyBubble);
-    if (window.pilly && window.pilly.onPetFlip) window.pilly.onPetFlip(setFlip);
+    if (window.pilly && window.pilly.onPetOrient) window.pilly.onPetOrient(setOrient);
     if (window.pilly && window.pilly.onPetJoke) {
       window.pilly.onPetJoke((text) => {
         bubble.textContent = text;

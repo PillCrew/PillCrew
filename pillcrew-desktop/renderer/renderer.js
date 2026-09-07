@@ -97,6 +97,20 @@
   // Free-text questions that should pull the live trending feed instead of a generic reply.
   const TRENDING_INTENT = /(trending|what'?s hot|hot right now|top (coins|tokens)|what (should|can|do) i (buy|check|pick|watch)|pick (a )?(coin|token|winner)|roast (the )?(list|trending))/i;
 
+  // "remind me in 10 minutes to check SOL" -> set a one-shot reminder.
+  const REMINDER_INTENT = /(^|\s)(remind me|set a reminder|reminder|nag me|ping me)(\s|$)/i;
+
+  // Focus / pomodoro chat commands (v1.1.1).
+  const FOCUS_START_INTENT = /(^|\s)start\s+(a\s+)?(focus|pomodoro)\b/i;
+  const FOCUS_ALONE_INTENT = /^(focus|pomodoro|pomodoro timer|start focus timer)$/i;
+  const FOCUS_STOP_INTENT = /(stop|end|cancel)\s+(the\s+)?(focus|pomodoro)\b/i;
+  const FOCUS_STATUS_INTENT = /(focus|pomodoro)\s+(status|state|left|remaining)\b/i;
+  const FOCUS_PAUSE_INTENT = /(pause|hold)\s+(the\s+)?(focus|pomodoro|timer)\b/i;
+  const FOCUS_RESUME_INTENT = /(resume|continue|unpause)\s+(the\s+)?(focus|pomodoro|timer)\b/i;
+  const ACTIVITY_YESTERDAY_INTENT = /(yesterday|wczoraj)/i;
+  const ACTIVITY_TODAY_INTENT = /(how\s+(was\s+)?(my|the|your)\s+day|my\s+day|today|activity|stats|jak\s+(mi\s+)?posz[lł]o|podsumowan|podsumuj|dzisiaj|dzi[sś])/i;
+  const STREAK_INTENT = /(streak|in\s+a\s+row|z\s+rz[ęe]du|seria)/i;
+
   // Meme prompt prefixes (synced from pilly.js via IPC at startup).
   const MEME_PREFIX = {
     rewrite: "meme this: ",
@@ -269,7 +283,7 @@
   // ---- Chat avatar mood badge (Stage 4): a quick emoji reaction pops over
   // the avatar when the market or the conversation turns strongly up/down.
   let avatarMoodTimer = null;
-  const AVATAR_MOODS = { happy: "🎉", sad: "😢" };
+  const AVATAR_MOODS = { happy: "🎉", sad: "😢", love: "💗" };
   function setAvatarBadge(emoji) {
     const el = document.getElementById("pillMood");
     if (!el || !emoji) return;
@@ -282,7 +296,7 @@
   }
   function setAvatarMood(kind) {
     const emoji = AVATAR_MOODS[kind];
-    faceMood = kind === "happy" ? "happy" : kind === "sad" ? "sad" : "";
+    faceMood = kind === "happy" || kind === "love" ? kind : kind === "sad" ? "sad" : "";
     if (faceMood) faceMoodUntil = performance.now() + 2400;
     if (emoji) setAvatarBadge(emoji);
   }
@@ -409,14 +423,15 @@
     const eyeY = py + ph * 0.55;
     const lid = now < faceMoodUntil && faceMood === "sad" ? 0.6 : 0;
     const ppx = petting ? 0 : facePupil.x, ppy = petting ? 0 : facePupil.y;
-    drawFaceEye(faceCtx, px + pw * 0.28, eyeY, eyesOpen, mood === "happy", lid, ppx, ppy);
-    drawFaceEye(faceCtx, px + pw * 0.72, eyeY, eyesOpen, mood === "happy", lid, ppx, ppy);
+    const happyEyes = mood === "happy" || mood === "love";
+    drawFaceEye(faceCtx, px + pw * 0.28, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+    drawFaceEye(faceCtx, px + pw * 0.72, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
     const mx = W / 2, my = py + ph * 0.82;
     faceCtx.strokeStyle = "#0b0f0d";
     faceCtx.lineWidth = 1.6;
     faceCtx.lineCap = "round";
     faceCtx.beginPath();
-    if (mood === "happy") {
+    if (mood === "happy" || mood === "love") {
       faceCtx.moveTo(mx - 4.5, my - 1);
       faceCtx.quadraticCurveTo(mx, my + 2.6, mx + 4.5, my - 1);
     } else if (mood === "sad") {
@@ -446,6 +461,8 @@
   // so Pilly reacts to the mood of the conversation (no AI round-trip).
   function guessMood(text) {
     const s = String(text || "").toLowerCase();
+    // Heart emojis / "love you" -> the pet gets heart-eyes, not just a smile.
+    if (/💗|❤|💖|💕|😍/.test(text || "") || /\b(ilu|ily|love you|luv u|lysm)\b/.test(s)) return "love";
     const pos = ["moon", "green", "gain", "gains", "win", "profit", "pump", "lambo", "alpha", "diamond", "bull", "buy", "bought", "love", "sick", "wen", "yolo"];
     const neg = ["rug", "dump", "red", "loss", "lose", "rekt", "rip", "sad", "shit", "liq", "liquidated", "scam", "dead", "pain", "cope", "f"];
     const emojis = { "🚀": 2, "😂": 1, "🎉": 1, "🔥": 1, "😍": 1, "😢": -1, "💀": -1, "😭": -1 };
@@ -749,6 +766,97 @@
     if (mood !== "flat") {
       window.pilly.petMood({ kind: mood });
       setAvatarMood(mood);
+    }
+
+    // "remind me in 10 min to ..." sets a one-shot reminder (no AI round-trip).
+    if (!task && REMINDER_INTENT.test(trimmed)) {
+      const rem = await window.pilly.reminder(trimmed);
+      if (rem && rem.ok) {
+        addMsg("bot", `⏰ got it — I'll remind you: <b>${escapeHtml(rem.reminder.message)}</b>.`);
+        history.push({ role: "assistant", content: `Reminder set: ${rem.reminder.message}` });
+      } else {
+        addMsg("bot err", escapeHtml((rem && rem.message) || "Couldn't set that reminder."));
+      }
+      return;
+    }
+
+    // "start focus" / "pomodoro" -> kick off a focus session (no AI round-trip).
+    if (!task && FOCUS_STOP_INTENT.test(trimmed)) {
+      await window.pilly.focusStop();
+      addMsg("bot", "🛑 Focus off. Go stretch, then come back when you're ready.");
+      return;
+    }
+    if (!task && FOCUS_STATUS_INTENT.test(trimmed)) {
+      const s = await window.pilly.focusStatus();
+      if (s && s.phase !== "idle") {
+        const mm = Math.ceil(s.remainingMs / 60000);
+        const label = s.phase === "focus" ? "Focus" : "Break";
+        addMsg("bot", s.paused
+          ? `🍅 ${label} paused — ${mm} min left whenever you're ready.`
+          : `🍅 ${label} in progress — about ${mm} min left.`);
+      } else {
+        addMsg("bot", "🍅 No focus session right now. Say \"start focus\" to begin a 25-minute one.");
+      }
+      return;
+    }
+    if (!task && FOCUS_PAUSE_INTENT.test(trimmed)) {
+      const s = await window.pilly.focusPause();
+      if (s && s.paused) addMsg("bot", "⏸️ Focus paused. Take your time — say \"resume focus\" to continue.");
+      else addMsg("bot", "🍅 Nothing to pause right now.");
+      return;
+    }
+    if (!task && FOCUS_RESUME_INTENT.test(trimmed)) {
+      const s = await window.pilly.focusResume();
+      if (s && s.phase !== "idle" && !s.paused) addMsg("bot", "▶️ Back at it — the clock's running again.");
+      else if (s && s.phase === "idle") addMsg("bot", "🍅 Nothing to resume — say \"start focus\" to begin.");
+      return;
+    }
+    if (!task && (FOCUS_START_INTENT.test(trimmed) || FOCUS_ALONE_INTENT.test(trimmed))) {
+      // "start focus 50" / "pomodoro 25/5" -> one-off custom session length.
+      let minutes = null;
+      let breakMinutes = null;
+      const slash = trimmed.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
+      if (slash) {
+        minutes = parseInt(slash[1], 10);
+        breakMinutes = parseInt(slash[2], 10);
+      } else {
+        const single = trimmed.match(/(\d{1,3})/);
+        if (single) minutes = parseInt(single[1], 10);
+      }
+      const s = await window.pilly.focusStart(minutes, breakMinutes);
+      if (s && s.phase === "focus") {
+        addMsg("bot", `🍅 Focus started — ${s.plannedMin} min. I'll keep the chatter down.`);
+      } else if (s && (s.phase === "break" || s.phase === "long_break")) {
+        const mm = Math.ceil(s.remainingMs / 60000);
+        addMsg("bot", `🍅 Already on a ${s.phase.replace("_", " ")} — ${mm} min left.`);
+      }
+      return;
+    }
+
+    // "how was my day" / "jak mi poszło" -> activity diary summary (no AI round-trip).
+    if (!task && ACTIVITY_YESTERDAY_INTENT.test(trimmed)) {
+      const y = await window.pilly.activityYesterday();
+      if (y && y.total > 0) {
+        addMsg("bot", `📊 Yesterday: ${y.active} active min (${y.pct}%) of ${y.total} min logged.`);
+      } else {
+        addMsg("bot", "📊 No activity logged yesterday — today's a fresh start!");
+      }
+      return;
+    }
+    if (!task && ACTIVITY_TODAY_INTENT.test(trimmed)) {
+      const t = await window.pilly.activityToday();
+      if (t && t.total > 0) {
+        addMsg("bot", `📊 Today so far: ${t.active} active min (${t.pct}%) of ${t.total} min. Keep it up!`);
+      } else {
+        addMsg("bot", "📊 No activity logged yet today. Say \"start focus\" and let's get a session in.");
+      }
+      return;
+    }
+    if (!task && STREAK_INTENT.test(trimmed)) {
+      const s = await window.pilly.activityStreak();
+      if (s > 0) addMsg("bot", `🔥 You're on a ${s}-day streak with Pilly. Don't break it!`);
+      else addMsg("bot", "🔥 No streak yet — log some active minutes today to start one.");
+      return;
     }
 
     // Asked about trending / what to buy? Pull the live feed instead of a generic joke.

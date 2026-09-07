@@ -68,6 +68,7 @@
         dance: { squX: 1.08, squY: 0.93, mouth: 0.85, tilt: 0.12, annoyed: false, eyes: 1 },
         drag:  { squX: 1.02, squY: 0.98, mouth: -0.50, tilt: 0.16, annoyed: true, eyes: 1 },
         flee:  { squX: 1.00, squY: 1.02, mouth: 0.15, tilt: 0.00, annoyed: false, eyes: 1 },
+        eat:   { squX: 1.05, squY: 0.94, mouth: 0.90, tilt: 0.02, annoyed: false, eyes: 1 },
       };
       let state = "walk";
       let cur = { squX: 1, squY: 1, mouth: 0.3, tilt: 0, annoyed: false, eyes: 1 };
@@ -82,6 +83,8 @@
       let zzNext = performance.now() + 900;
       let talking = false; // mouth animates while a bubble is shown
       let landingUntil = 0; // brief squash after a hop lands
+      let eatUntil = 0; // munching a fresh coin (v1.1.1)
+      let crumbNext = 0; // gold crumbs cadence while eating
       let dartUntil = 0, dartNext = performance.now() + 2500 + Math.random() * 3500, dartX = 0, dartY = 0;
       let face = { px: 0, py: 0, excited: false, squint: false };
       // Stage 2: live market mood overlay - "up" (green) or "down" (red).
@@ -96,6 +99,8 @@
       let sweatNext = performance.now() + 500;
       let hover = false, clickUntil = 0;
       let spookStart = 0, spookUntil = 0, streakNext = performance.now() + 200;
+      // v1.1.1: battery-low reaction (Chromium Battery API; graceful no-op elsewhere).
+      let batteryLow = false;
 
       if (window.pilly && window.pilly.onPetDir) {
         window.pilly.onPetDir((d) => { petDirNow = d === -1 ? -1 : 1; });
@@ -108,12 +113,38 @@
           if (s === "hop") { hopStart = performance.now(); sfx("hop"); }
           if (s === "dance") { confetti(26); sfx("confetti"); }
           if (s === "sleep") sfx("sleep");
+          if (s === "eat") {
+            eatUntil = performance.now() + 1600;
+            sfx("coin");
+            particles.push({
+              type: "emoji", x: 40, y: 28, vx: 0.25, vy: -0.35,
+              size: 11, life: 0, max: 900, glyph: "🪙",
+            });
+          }
           state = PARAMS[s] ? s : "pause";
         });
       }
       if (window.pilly && window.pilly.onPetTalking) {
         window.pilly.onPetTalking((on) => { talking = !!on; });
       }
+      // v1.1.1: watch the battery and droop + warn once per discharge cycle.
+      async function batteryPoll() {
+        try {
+          if (!navigator.getBattery) return;
+          const b = await navigator.getBattery();
+          const low = !b.charging && b.level < 0.2;
+          if (low !== batteryLow) {
+            batteryLow = low;
+            if (window.pilly && window.pilly.petBattery) {
+              window.pilly.petBattery({ low });
+            }
+          }
+        } catch (e) {
+          /* ignore - battery API is a nice-to-have */
+        }
+      }
+      batteryPoll();
+      setInterval(batteryPoll, 60000);
       // A shared mood overlay used by market data (pet:market) and chat
       // sentiment (pet:mood): happy = confetti + smile + bounce,
       // sad = frown + droopy eyes + a tear.
@@ -121,10 +152,26 @@
         const kind = m && m.kind;
         const happy = kind === "up" || kind === "happy";
         const sad = kind === "down" || kind === "sad";
-        if (!happy && !sad) return;
-        market = happy ? "up" : "down";
-        marketUntil = performance.now() + 2400;
-        if (happy) {
+        const love = kind === "love";
+        if (!happy && !sad && !love) return;
+        market = love ? "love" : happy ? "up" : "down";
+        marketUntil = performance.now() + (love ? 2800 : 2400);
+        if (love) {
+          // heart-eyes + blush + a little flutter of hearts (v1.1.1)
+          for (let i = 0; i < 3; i++) {
+            setTimeout(() => {
+              particles.push({
+                type: "emoji", x: 30 + (Math.random() - 0.5) * 22, y: 16,
+                vx: (Math.random() - 0.5) * 0.3, vy: -0.5 - Math.random() * 0.3,
+                size: 8 + Math.random() * 3, life: 0, max: 900,
+                glyph: Math.random() < 0.7 ? "💗" : "💕",
+              });
+            }, i * 160);
+          }
+          sfx("boop");
+          bounceStart = performance.now();
+          bounceUntil = bounceStart + 500;
+        } else if (happy) {
           confetti(26);
           sfx("confetti");
           bounceStart = performance.now();
@@ -211,6 +258,7 @@
           size: 9 + Math.random() * 3, life: 0, max: 900,
           glyph: Math.random() < 0.6 ? "💗" : "✨",
         });
+        triggerMood({ kind: "love" });
         if (window.pilly) window.pilly.openChat();
       });
       document.addEventListener("mouseover", () => { hover = true; ensureAudio(); });
@@ -347,17 +395,39 @@
         ctx.closePath();
       }
 
-      function drawEye(ex, ey, open, excited, squint, pupilX, pupilY, lid) {
+      // A tiny heart path used for heart-shaped pupils (love mood).
+      function heartPath(x, y, s) {
+        ctx.beginPath();
+        ctx.moveTo(x, y + s * 0.35);
+        ctx.bezierCurveTo(x, y, x - s * 0.9, y - s * 0.4, x - s * 0.9, y - s * 0.9);
+        ctx.bezierCurveTo(x - s * 0.9, y - s * 1.5, x - s * 0.35, y - s * 1.7, x, y - s * 1.1);
+        ctx.bezierCurveTo(x + s * 0.35, y - s * 1.7, x + s * 0.9, y - s * 1.5, x + s * 0.9, y - s * 0.9);
+        ctx.bezierCurveTo(x + s * 0.9, y - s * 0.4, x, y, x, y + s * 0.35);
+        ctx.closePath();
+      }
+
+      function drawEye(ex, ey, open, excited, squint, pupilX, pupilY, lid, heart) {
         if (open) {
           ctx.fillStyle = "#0b0f0d";
           roundRect(ex - 3, ey - 3.5, 6, 7, 3);
           ctx.fill();
-          // pupil (white) - follows cursor, bigger when excited
-          const pr = excited ? 1.6 : 1.1;
-          ctx.fillStyle = "#fff";
-          ctx.beginPath();
-          ctx.arc(ex + pupilX, ey + pupilY, pr, 0, Math.PI * 2);
-          ctx.fill();
+          if (heart) {
+            // heart pupil (love mood) - a rosy heart instead of a white dot
+            ctx.fillStyle = "#f43f5e";
+            heartPath(ex + pupilX, ey + pupilY + 0.6, 1.9);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.75)";
+            ctx.beginPath();
+            ctx.arc(ex + pupilX - 0.5, ey + pupilY - 0.9, 0.5, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // pupil (white) - follows cursor, bigger when excited
+            const pr = excited ? 1.6 : 1.1;
+            ctx.fillStyle = "#fff";
+            ctx.beginPath();
+            ctx.arc(ex + pupilX, ey + pupilY, pr, 0, Math.PI * 2);
+            ctx.fill();
+          }
           // gloss highlight (pro touch)
           ctx.fillStyle = "rgba(255,255,255,0.55)";
           ctx.beginPath();
@@ -414,12 +484,21 @@
           ctx.fill();
           return;
         }
+        if (mood === "eat") {
+          // chomping mouth while munching a fresh coin
+          const ph = 0.5 + 0.5 * Math.sin((now / 1000) * 22);
+          ctx.fillStyle = "#0b0f0d";
+          ctx.beginPath();
+          ctx.ellipse(0, -5, 3, 0.8 + ph * 2.2, 0, 0, Math.PI * 2);
+          ctx.fill();
+          return;
+        }
         ctx.strokeStyle = "#0b0f0d";
         ctx.lineWidth = 1.5;
         ctx.lineCap = "round";
         ctx.beginPath();
-        if (mood === "happy") {
-          // smile
+        if (mood === "happy" || mood === "love") {
+          // smile (love gets the same warm grin, plus heart eyes + blush)
           ctx.moveTo(-4.5, -5.5);
           ctx.quadraticCurveTo(0, -3.2, 4.5, -5.5);
         } else if (mood === "sad") {
@@ -468,11 +547,22 @@
         else if (gesture === "wiggle" && now < gestureUntil) mood = "happy";
         else if (gesture === "curious" && now < gestureUntil) mood = "curious";
         else if (state === "flee") mood = "scared";
+        else if (state === "eat" && now < eatUntil) mood = "eat";
+        else if (batteryLow) mood = "sad"; // v1.1.1: droopy when the battery is low
+        const heartEyes = mood === "love";
         const eyesOpen = cur.eyes === 1 && !(now < blinkUntil) && !(gesture === "yawn" && now < gestureUntil);
         const eyeY = -14.5;
-        const lid = now < marketUntil && market === "down" ? 0.6 : 0;
-        drawEye(-11, eyeY, eyesOpen, face.excited, face.squint, face.px, face.py, lid);
-        drawEye(9, eyeY, eyesOpen, face.excited, face.squint, face.px, face.py, lid);
+        const lid = (now < marketUntil && market === "down") || batteryLow ? 0.6 : 0;
+        drawEye(-11, eyeY, eyesOpen, face.excited, face.squint, face.px, face.py, lid, heartEyes);
+        drawEye(9, eyeY, eyesOpen, face.excited, face.squint, face.px, face.py, lid, heartEyes);
+        if (heartEyes) {
+          // blush
+          ctx.fillStyle = "rgba(244, 63, 94, 0.30)";
+          ctx.beginPath();
+          ctx.ellipse(-14, -9.5, 3.1, 1.7, 0, 0, Math.PI * 2);
+          ctx.ellipse(14, -9.5, 3.1, 1.7, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
         if (cur.annoyed) {
           ctx.strokeStyle = "#0b0f0d";
           ctx.lineWidth = 1.6;
@@ -523,6 +613,12 @@
         } else if (state === "flee") {
           bodyY = -Math.abs(Math.sin(t * 20)) * 5; // panicked scurry
           rot = Math.sin(t * 9) * 0.1;
+        } else if (state === "eat") {
+          // munching: little bounce + squash in rhythm with the chomp
+          const ph = Math.sin(t * 22);
+          bodyY = -Math.abs(ph) * 1.8;
+          cur.squX = 1 + 0.05 * ph;
+          cur.squY = 1 - 0.06 * ph;
         } else if (state === "hop" && now - hopStart < HOP_MS) {
           const p = (now - hopStart) / HOP_MS;
           const h = Math.sin(p * Math.PI);
@@ -640,6 +736,14 @@
         ctx.scale(cur.squX * ps, cur.squY * ps);
         drawBody(now);
         ctx.restore();
+
+        // v1.1.1: a little battery badge while the laptop is running low.
+        if (batteryLow) {
+          ctx.font = "10px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+          ctx.fillText("🔋", 30, 22 + bodyY);
+        }
       }
 
       function updateParticles(now, dt) {
@@ -685,6 +789,23 @@
             vy: 0,
             size: 1.5 + Math.random() * 1.5,
             life: 0, max: 200,
+          });
+        }
+        // gold crumbs while munching a fresh coin
+        if (state === "eat" && now < eatUntil && now > crumbNext) {
+          crumbNext = now + 130;
+          particles.push({
+            type: "confetti",
+            x: 30 + (Math.random() - 0.5) * 24,
+            y: 24 + Math.random() * 12,
+            vx: (Math.random() - 0.5) * 0.7,
+            vy: 0.15 + Math.random() * 0.3,
+            rot: Math.random() * Math.PI,
+            vr: (Math.random() - 0.5) * 0.4,
+            size: 1.6 + Math.random() * 1.4,
+            color: "#fbbf24",
+            life: 0,
+            max: 420 + Math.random() * 260,
           });
         }
         for (let i = particles.length - 1; i >= 0; i--) {

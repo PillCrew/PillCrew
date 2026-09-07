@@ -1,10 +1,11 @@
 // Pilly - a tiny green pill AI friend that lives in your Windows taskbar.
 // Click the pill in the system tray to summon the chat (free AI, meme brain).
 const {
-  app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, globalShortcut, screen, shell, Notification, clipboard,
+  app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, globalShortcut, screen, shell, Notification, clipboard, powerMonitor,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 
 // Tiny .env loader (keeps keys out of the code).
 function loadEnv() {
@@ -27,6 +28,9 @@ const WATCH = require("./src/watchlist");
 const PNL = require("./src/pnl");
 const PICKS = require("./src/picks");
 const WHALES = require("./src/whales");
+const REMINDERS = require("./src/reminders");
+const FOCUS = require("./src/focus");
+const ACTIVITY = require("./src/activity");
 const { autoUpdater } = require("electron-updater");
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -99,7 +103,13 @@ let pillyPickTimer = null;
 let sniperTimer = null;
 let whaleTimer = null;
 let portfolioMoodTimer = null;
+let reminderTimer = null;
 let dailyBriefDone = false; // once per session
+// ---- v1.1.1: focus sessions + activity diary ----
+let focusDoc = { cfg: FOCUS.normalizeCfg(), state: FOCUS.emptyState(), digestDay: 0 };
+let focusTickTimer = null;
+let lastIdleSec = null; // powerMonitor.getSystemIdleTime() previous sample
+let batteryWarned = false; // one low-battery bubble per discharge cycle (v1.1.1)
 let pendingHotCoin = null; // { mint, symbol, name } for the clickable hot bubble
 const hotCooldown = new Map(); // mint -> last flagged time (no repeat within 30 min)
 const sniperCooldown = new Map(); // mint -> last sniper-flagged time
@@ -220,13 +230,26 @@ function positionWindow() {
       return;
     }
   } catch (e) { /* ignore */ }
-  // First run (or after "Reset window position"): sit above the tray icon.
+  // First run (or after "Reset window position"): sit near the tray icon.
+  // macOS puts the tray in the top menu bar (open below it); Linux tray icons
+  // don't expose getBounds() at all (fall back to the bottom-right corner).
   try {
-    const trayBounds = tray.getBounds();
+    const trayBounds = typeof tray.getBounds === "function" ? tray.getBounds() : null;
     const area = screen.getPrimaryDisplay().workArea;
     const [wpx, hpx] = w.getSize();
-    let x = trayBounds.x + trayBounds.width / 2 - wpx / 2;
-    let y = trayBounds.y - hpx - 10;
+    const hasTrayBounds = trayBounds && (trayBounds.width > 0 || trayBounds.height > 0);
+    let x;
+    let y;
+    if (process.platform === "darwin") {
+      x = hasTrayBounds ? trayBounds.x + trayBounds.width / 2 - wpx / 2 : area.x + area.width - wpx - 8;
+      y = hasTrayBounds ? trayBounds.y + trayBounds.height + 6 : area.y + 8;
+    } else if (process.platform === "linux" && !hasTrayBounds) {
+      x = area.x + area.width - wpx - 8;
+      y = area.y + area.height - hpx - 8;
+    } else {
+      x = trayBounds.x + trayBounds.width / 2 - wpx / 2;
+      y = trayBounds.y - hpx - 10;
+    }
     x = Math.max(area.x + 4, Math.min(x, area.x + area.width - wpx - 4));
     y = Math.max(area.y + 4, y);
     w.setPosition(Math.round(x), Math.round(y), false);
@@ -451,10 +474,12 @@ const PET_JOKES = [
 let bubbleWin = null;
 let bubbleTimer = null;
 let petJokeTimer = null;
-// When the pill is against the top of the screen there is no room for the bubble
-// above him, so it flips to sit BELOW him (tail points up). Tracks the current
-// side so we only push the flip flag to the renderer when it actually changes.
-let bubbleFlip = false;
+// Where the bubble sits relative to the pill. "above" (tail points down) and
+// "below" (tail points up) handle the top/bottom edges; "right"/"left" put the
+// bubble BESIDE the pill (tail points sideways) when he hugs the left/right edge
+// of the screen. Tracks the current side so we only push it to the renderer when
+// it actually changes.
+let bubbleOrient = "above";
 // The very first bubble of a session used to lose its text: the window is
 // created lazily and the pet:joke was sent before bubble.html finished loading.
 // Queue the text here and deliver it on did-finish-load.
@@ -492,13 +517,13 @@ function ensureBubbleWin() {
   bubbleWin.setAlwaysOnTop(true, "screen-saver");
   bubbleWin.setIgnoreMouseEvents(true, { forward: true });
   bubbleReady = false;
-  bubbleFlip = false;
+  bubbleOrient = "above";
   bubbleWin.loadFile(path.join(__dirname, "renderer", "bubble.html"));
   bubbleWin.webContents.on("did-finish-load", () => {
     bubbleReady = true;
     // Push the current side so a freshly-created window always matches where
-    // the bubble actually sits (it can't be flipped otherwise).
-    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:flip", bubbleFlip);
+    // the bubble actually sits (it can't be oriented otherwise).
+    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:orient", bubbleOrient);
     if (bubblePendingJoke) {
       const t = bubblePendingJoke;
       bubblePendingJoke = null;
@@ -516,56 +541,75 @@ function positionBubble() {
   const ps = pet.size === "sm" ? 0.85 : pet.size === "lg" ? 1.2 : 1;
   // Pill top within the PET_H-tall pet window (pill is 23px tall, 11px from the bottom).
   const pillTop = PET_H - 11 - 23 * ps;
-  const [, bh] = bubbleWin.getSize();
+  const [bw, bh] = bubbleWin.getSize();
   const area = screen.getDisplayNearestPoint({ x: px, y: py }).workArea;
 
-  const pillTopAbs = py + pillTop;       // top edge of the pill
-  const pillBottomAbs = py + PET_H - 11;  // bottom edge of the pill
+  const pillLeftAbs = px;                        // left edge of the pill
+  const pillRightAbs = px + PET_W;               // right edge of the pill
+  const pillTopAbs = py + pillTop;               // top edge of the pill
+  const pillBottomAbs = py + PET_H - 11;         // bottom edge of the pill
   const spaceAbove = pillTopAbs - area.y;
   const spaceBelow = area.y + area.height - pillBottomAbs;
+  const spaceLeft = pillLeftAbs - area.x;
+  const spaceRight = area.x + area.width - pillRightAbs;
 
-  // Prefer the side that fits the whole bubble; if neither does, use the roomier.
-  let flip = false;
-  if (spaceAbove >= bh) flip = false;
-  else if (spaceBelow >= bh) flip = true;
-  else flip = spaceBelow > spaceAbove;
+  // Pilly docked against the LEFT or RIGHT edge: a bubble above/below him would
+  // be pushed back on-screen and its tail would dangle off to the side of his
+  // head. Put the bubble BESIDE him instead (tail points at his side). A small
+  // margin still counts as "docked" so a pill a few px off the edge gets it too.
+  // Only when he is NOT also hugging the top/bottom edge (e.g. taskbar mode at
+  // the bottom-left corner) - there the above/below flip already works.
+  const EDGE = 24;
+  const nearLeft = spaceLeft < EDGE;
+  const nearRight = spaceRight < EDGE;
+  const nearTop = spaceAbove < EDGE;
+  const nearBottom = spaceBelow < EDGE;
+  let orient;
+  if (nearLeft && !nearTop && !nearBottom) orient = "right";
+  else if (nearRight && !nearTop && !nearBottom) orient = "left";
+  else if (spaceAbove >= bh) orient = "above";
+  else if (spaceBelow >= bh) orient = "below";
+  else orient = spaceBelow > spaceAbove ? "below" : "above";
 
-  let y;
-  if (!flip) {
-    // Bubble above the pill, tail pointing down at its top.
-    y = pillTopAbs - 12 - (bh - 14);
+  let x, y;
+  if (orient === "right" || orient === "left") {
+    // Bubble beside the pill, vertically centred on him so the tail lines up.
+    const pillMid = (pillTopAbs + pillBottomAbs) / 2;
+    y = Math.round(pillMid - bh / 2);
+    // The tail tip sits 8px inside the window's near edge; back off 2px so the
+    // tip ends up ~6px from Pilly's side (matches the above/below gap).
+    x = orient === "right" ? pillRightAbs - 2 : pillLeftAbs - bw + 2;
   } else {
-    // Bubble below the pill, tail pointing up at its bottom. Symmetric with the
-    // above case: the content top lands 12px under the pill's bottom edge.
-    y = pillBottomAbs - 2;
+    if (orient === "above") {
+      // Bubble above the pill, tail pointing down at its top.
+      y = pillTopAbs - 12 - (bh - 14);
+    } else {
+      // Bubble below the pill, tail pointing up at its bottom.
+      y = pillBottomAbs - 2;
+    }
+    x = Math.round(px - (bw - PET_W) / 2); // centred on the pill
   }
   // NEVER let the bubble window leave the screen.
+  x = Math.max(area.x + 2, Math.min(x, area.x + area.width - bw - 2));
   y = Math.max(area.y, Math.min(y, area.y + area.height - bh));
-  // Keep the 190px bubble on screen horizontally too (it's centred on the pill).
-  const x = Math.max(area.x + 2, Math.min(Math.round(px - 65), area.x + area.width - 190 - 2));
-  if (flip !== bubbleFlip) {
-    bubbleFlip = flip;
-    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:flip", flip);
+  if (orient !== bubbleOrient) {
+    bubbleOrient = orient;
+    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:orient", orient);
   }
-  bubbleWin.setPosition(x, Math.round(y));
+  bubbleWin.setPosition(Math.round(x), Math.round(y));
 }
 
 // The bubble content measures itself and asks for a taller/shorter window so
-// text is never clipped. Bottom edge stays anchored (tail still points at the
-// pill); positionBubble() then places it correctly for any height.
+// text is never clipped. After resizing, re-anchor on the pill: for above/below
+// this keeps the anchored edge (and the tail) glued to him, for side bubbles it
+// keeps them vertically centred.
 ipcMain.on("bubble:resize", (event, h) => {
   if (!bubbleWin || bubbleWin.isDestroyed()) return;
   const hh = Math.max(160, Math.min(340, Math.round(Number(h) || 160)));
-  const [x, y] = bubbleWin.getPosition();
   const [, oldH] = bubbleWin.getSize();
   if (hh === oldH) return;
   bubbleWin.setSize(190, hh);
-  // Keep the anchored edge fixed: bottom when the bubble sits above Pilly, top
-  // when it sits below him (so the tail still points at the pill).
-  let ny = bubbleFlip ? y : y + oldH - hh;
-  const area = screen.getDisplayNearestPoint({ x, y }).workArea;
-  ny = Math.max(area.y, Math.min(ny, area.y + area.height - hh));
-  bubbleWin.setPosition(x, ny);
+  positionBubble();
 });
 
 function showPetJoke(text) {
@@ -732,8 +776,46 @@ function playPetSound(type) {
   } catch (e) { /* ignore */ }
 }
 
+// v1.1.1: Pilly munches a coin he just found (Pilly Pick / Sniper). The pet
+// state machine picks this up on the next tick and the renderer plays a short
+// "eat" animation before drifting back to its normal walk/pause cycle.
+function petEat() {
+  if (!petActive || !petWin || petWin.isDestroyed()) return;
+  const now = Date.now();
+  petState = "eat";
+  petStateStart = now;
+  petStateEnd = now + 1600;
+  petTarget = null;
+}
+
+// v1.1.1: reminders - fire once, then vanish. Native notification + a Pilly
+// bubble (when the pet is on) + a ding. Works even with the pet turned off.
+function checkReminders() {
+  let due;
+  try {
+    due = REMINDERS.dueNow(userDataDir(), Date.now());
+  } catch (e) {
+    return;
+  }
+  for (const r of due || []) {
+    bumpStat("reminders");
+    try {
+      if (Notification.isSupported()) {
+        new Notification({ title: "Pilly reminder", body: r.message }).show();
+      }
+    } catch (e) { /* ignore */ }
+    if (petActive && petOpts().bubbles) {
+      showPetJoke(`⏰ reminder: ${r.message}`);
+    } else {
+      sendToChat("pilly:reminder-fired", r);
+    }
+    playPetSound("alert");
+  }
+}
+
 async function petQuestionTick() {
   if (!petActive || petOpts().questions === false) return;
+  if (focusBusy()) return; // v1.1.1: no idle chatter during a focus session
   let q = localPetQuestion();
   try {
     const r = await AI.respond(
@@ -781,6 +863,7 @@ function scheduleNextQuestion() {
   const delay = 180000 + Math.floor(Math.random() * 120000);
   petQuestionTimer = setTimeout(() => {
     if (!petActive || petOpts().questions === false) return;
+    if (focusBusy()) { scheduleNextQuestion(); return; } // v1.1.1: skip chatter during focus
     petQuestionTick();
     scheduleNextQuestion();
   }, delay);
@@ -977,6 +1060,7 @@ async function pillyPickTick() {
     pendingHotCoin = { mint: coin.mint, symbol: coin.symbol, name: coin.name };
     bumpStat("pillypick");
     PICKS.record(userDataDir(), { mint: coin.mint, symbol: coin.symbol, name: coin.name, price: coin.price, source: "pick" });
+    petEat();
     showHotCoin(`🎯 my pick: ${coin.symbol}${coin.change24h != null ? ` (${coin.change24h >= 0 ? "+" : ""}${coin.change24h.toFixed(0)}% 24h)` : ""}. tap me for the details.`);
   } catch (e) { /* ignore */ }
 }
@@ -1024,6 +1108,7 @@ async function sniperTick() {
       price: target.price,
       source: "sniper",
     });
+    petEat();
     showHotCoin(
       `🔫 JUST LAUNCHED: ${target.symbol || target.name}${target.mcap != null ? ` · mcap ${fmtCompact(target.mcap)}` : ""} - tap to snipe it.`
     );
@@ -1153,6 +1238,49 @@ function startTrayAnim() {
   }, 450);
 }
 
+// ---- Cross-platform "start at login" (v1.1.1) ----
+// Windows and macOS use Electron's login-item API. Linux has no such API, so
+// we manage an XDG autostart .desktop entry instead.
+function linuxAutostartPath() {
+  const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
+  return path.join(base, "autostart", "pilly.desktop");
+}
+function getAutoLaunch() {
+  if (process.platform === "linux") return fs.existsSync(linuxAutostartPath());
+  return app.getLoginItemSettings().openAtLogin;
+}
+function setAutoLaunch(enabled) {
+  if (process.platform === "linux") {
+    try {
+      const p = linuxAutostartPath();
+      if (enabled) {
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        // AppImage runs from a temporary mount, so process.execPath is
+        // ephemeral. Prefer the stable $APPIMAGE path when available (deb
+        // installs fall back to the real binary at process.execPath).
+        const bin = process.env.APPIMAGE || process.execPath;
+        fs.writeFileSync(p, [
+          "[Desktop Entry]",
+          "Type=Application",
+          "Name=Pilly",
+          "Comment=Pilly - a tiny green pill AI friend",
+          `Exec="${bin}"`,
+          "Terminal=false",
+          "X-GNOME-Autostart-enabled=true",
+          "",
+        ].join("\n"), "utf8");
+      } else {
+        fs.rmSync(p, { force: true });
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  app.setLoginItemSettings({ openAtLogin: enabled });
+  return true;
+}
+
 function createTray() {
   if (!iconFrames.length) iconFrames = loadFrames();
   tray = new Tray(iconFrames[0] || nativeImage.createEmpty());
@@ -1161,19 +1289,32 @@ function createTray() {
   const menu = Menu.buildFromTemplate([
     { label: "Open chat", click: () => toggleWindow() },
     { type: "separator" },
+    { label: "Focus", submenu: [
+      { label: "Start focus", click: () => focusStart() },
+      { label: "Pause focus", click: () => focusPause() },
+      { label: "Resume focus", click: () => focusResume() },
+      { label: "Stop focus", click: () => focusStop() },
+    ] },
     { label: "Reset window position", click: () => resetWindowPosition() },
     { type: "separator" },
     {
-      label: "Start with Windows",
+      label: process.platform === "win32" ? "Start with Windows" : "Start at login",
       type: "checkbox",
-      checked: app.getLoginItemSettings().openAtLogin,
-      click: (item) => { app.setLoginItemSettings({ openAtLogin: item.checked }); },
+      checked: getAutoLaunch(),
+      click: (item) => { setAutoLaunch(item.checked); },
     },
     { type: "separator" },
     { label: "Quit Pilly", click: () => { isQuitting = true; app.quit(); } },
   ]);
-  tray.setContextMenu(menu);
-  tray.on("click", () => toggleWindow());
+  if (process.platform === "darwin") {
+    // macOS: a set context menu swallows left-clicks, so the chat window would
+    // never open. Left-click toggles the window; right-click shows the menu.
+    tray.on("click", () => toggleWindow());
+    tray.on("right-click", () => tray.popUpContextMenu(menu));
+  } else {
+    tray.setContextMenu(menu);
+    tray.on("click", () => toggleWindow());
+  }
   startTrayAnim();
 }
 
@@ -1260,8 +1401,130 @@ async function updateTrayInfo(prices) {
       parts.push(`${w0.symbol || w0.name || "coin"} ${fmtCompact(p.price)}${p.change24h != null ? ` (${p.change24h >= 0 ? "+" : ""}${p.change24h.toFixed(1)}%)` : ""}`);
     }
     if (items.length > 1) parts.push(`+${items.length - 1} watched`);
+    // v1.1.1: surface a running focus countdown in the tooltip.
+    const focus = focusDoc.state.phase !== "idle" ? FOCUS.remaining(focusDoc.state, Date.now()) : null;
+    if (focus && focus.remainingMs > 0) {
+      const mm = Math.ceil(focus.remainingMs / 60000);
+      parts.push(`🍅 ${focus.phase === "focus" ? "focus" : "break"} ${mm}m`);
+    }
     tray.setToolTip(parts.length ? `Pilly · ${parts.join(" · ")}` : "Pilly - tap to chat");
   } catch (e) { /* ignore */ }
+}
+
+// ---- v1.1.1: focus sessions + activity diary ----
+function focusBusy() {
+  return focusDoc.state.phase !== "idle";
+}
+
+function focusStatusPayload() {
+  return { ...FOCUS.remaining(focusDoc.state, Date.now()), cfg: focusDoc.cfg };
+}
+
+function broadcastFocusStatus() {
+  const payload = focusStatusPayload();
+  sendToChat("pilly:focus:status", payload);
+  if (petWin && !petWin.isDestroyed()) petWin.webContents.send("pet:focus", payload);
+  return payload;
+}
+
+function focusStart(minutes, breakMinutes) {
+  if (focusDoc.state.phase === "focus") {
+    return broadcastFocusStatus(); // already going - don't reset the clock
+  }
+  // Optional one-off override from chat ("start focus 50" / "pomodoro 25/5").
+  let cfg = focusDoc.cfg;
+  const m = Math.round(Number(minutes));
+  if (Number.isFinite(m) && m > 0) {
+    cfg = { ...focusDoc.cfg, focusMin: Math.min(180, m) };
+    const b = Math.round(Number(breakMinutes));
+    if (Number.isFinite(b) && b > 0) cfg.breakMin = Math.min(60, b);
+  }
+  focusDoc.state = FOCUS.startPhase(focusDoc.state, "focus", Date.now(), cfg);
+  FOCUS.saveDoc(userDataDir(), focusDoc);
+  bumpStat("focusStarted");
+  const payload = broadcastFocusStatus();
+  showPetJoke(`🍅 Focus on! ${payload.plannedMin} min — I'll keep quiet.`);
+  playPetSound("coin");
+  return payload;
+}
+
+function focusStop() {
+  focusDoc.state = FOCUS.stopState(focusDoc.state, Date.now(), focusDoc.cfg);
+  FOCUS.saveDoc(userDataDir(), focusDoc);
+  return broadcastFocusStatus();
+}
+
+function focusPause() {
+  const before = focusDoc.state;
+  focusDoc.state = FOCUS.pauseState(focusDoc.state, Date.now());
+  if (focusDoc.state !== before) FOCUS.saveDoc(userDataDir(), focusDoc);
+  return broadcastFocusStatus();
+}
+
+function focusResume() {
+  const before = focusDoc.state;
+  focusDoc.state = FOCUS.resumeState(focusDoc.state, Date.now());
+  if (focusDoc.state !== before) FOCUS.saveDoc(userDataDir(), focusDoc);
+  return broadcastFocusStatus();
+}
+
+// Runs every 60s: samples system idle time to (a) record this minute in the
+// local activity diary and (b) roll the pomodoro machine over. Privacy-safe -
+// it only ever sees idle duration, never what the user typed or clicked.
+function focusTick() {
+  const now = Date.now();
+
+  let idleSec = null;
+  try {
+    idleSec = powerMonitor.getSystemIdleTime();
+  } catch (e) {
+    idleSec = null;
+  }
+
+  let active = true;
+  if (idleSec != null) {
+    active = idleSec < 60;
+    // Returning to the keyboard after a long silence quietly starts a focus.
+    const resumeEdge =
+      lastIdleSec != null &&
+      lastIdleSec >= focusDoc.cfg.idleResumeMin * 60 &&
+      idleSec < 10;
+    if (resumeEdge) {
+      focusDoc.state = FOCUS.maybeAutoStartState(focusDoc.state, now, focusDoc.cfg, lastIdleSec * 1000);
+    }
+    lastIdleSec = idleSec;
+  }
+
+  ACTIVITY.record(userDataDir(), now, active);
+
+  const before = focusDoc.state.phase;
+  focusDoc.state = FOCUS.tickState(focusDoc.state, now, focusDoc.cfg);
+  if (focusDoc.state.phase !== before) {
+    FOCUS.saveDoc(userDataDir(), focusDoc);
+    if (focusDoc.state.phase === "break" || focusDoc.state.phase === "long_break") {
+      const long = focusDoc.state.phase === "long_break";
+      const mins = long ? focusDoc.cfg.longBreakMin : focusDoc.cfg.breakMin;
+      showPetJoke(`🍅 Nice focus! ${long ? "Long" : "Short"} break — ${mins} min.`);
+      playPetSound("coin");
+      bumpStat("focusDone");
+    }
+  }
+  broadcastFocusStatus();
+  updateTrayInfo(null).catch(() => {});
+
+  // Morning digest: yesterday's activity, once per day after 05:00.
+  const nowDate = new Date(now);
+  const dayStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
+  if (focusDoc.digestDay !== dayStart && nowDate.getHours() >= 5) {
+    focusDoc.digestDay = dayStart;
+    FOCUS.saveDoc(userDataDir(), focusDoc);
+    const y = ACTIVITY.yesterdayStats(userDataDir(), now);
+    if (y.total > 0) {
+      const streak = ACTIVITY.streakDays(userDataDir(), now);
+      const streakTxt = streak > 0 ? ` 🔥 ${streak}-day streak!` : "";
+      showPetJoke(`📊 Yesterday: ${y.active} active min (${y.pct}%) — ${focusDoc.state.completed} 🍅 done.${streakTxt}`);
+    }
+  }
 }
 
 // ---- IPC: talk to Pilly ----
@@ -1444,6 +1707,30 @@ ipcMain.handle("pilly:pnl:set", (event, mint, entry) =>
 ipcMain.handle("pilly:pnl:remove", (event, mint) => PNL.remove(userDataDir(), String(mint || "").trim()));
 ipcMain.handle("pilly:pnl:all", () => PNL.all(userDataDir()));
 
+// ---- IPC: reminders (v1.1.1) ----
+ipcMain.handle("pilly:reminder", (event, text) => {
+  const parsed = REMINDERS.parseReminder(String(text || ""));
+  if (!parsed) {
+    return { ok: false, message: "Couldn't understand that. Try: \"remind me in 10 minutes to check SOL\"." };
+  }
+  const r = REMINDERS.add(userDataDir(), parsed);
+  if (!r.ok) return { ok: false, message: "That time is already in the past." };
+  return { ok: true, reminder: r.reminder };
+});
+ipcMain.handle("pilly:reminders:list", () => REMINDERS.list(userDataDir()));
+ipcMain.handle("pilly:reminders:remove", (event, id) => REMINDERS.remove(userDataDir(), String(id || "").trim()));
+
+// ---- IPC: focus + activity diary (v1.1.1) ----
+ipcMain.handle("pilly:focus:status", () => focusStatusPayload());
+ipcMain.handle("pilly:focus:config", () => focusDoc.cfg);
+ipcMain.handle("pilly:focus:start", (event, minutes, breakMinutes) => focusStart(minutes, breakMinutes));
+ipcMain.handle("pilly:focus:stop", () => focusStop());
+ipcMain.handle("pilly:focus:pause", () => focusPause());
+ipcMain.handle("pilly:focus:resume", () => focusResume());
+ipcMain.handle("pilly:activity:today", () => ACTIVITY.todayStats(userDataDir(), Date.now()));
+ipcMain.handle("pilly:activity:yesterday", () => ACTIVITY.yesterdayStats(userDataDir(), Date.now()));
+ipcMain.handle("pilly:activity:streak", () => ACTIVITY.streakDays(userDataDir(), Date.now()));
+
 // ---- IPC: Pilly's scorecard (track record) + clipboard ----
 ipcMain.handle("pilly:picks", () => {
   const picks = PICKS.list(userDataDir());
@@ -1533,6 +1820,17 @@ ipcMain.handle("pilly:pet:mood", (event, m) => {
   else if (k === "sad") bumpStat("sad");
   if (petActive && petWin && !petWin.isDestroyed()) {
     petWin.webContents.send("pet:mood", m || { kind: "flat" });
+  }
+  return { ok: true };
+});
+// v1.1.1: the pet window reports battery state; warn once per discharge cycle.
+ipcMain.handle("pilly:pet:battery", (event, info) => {
+  const low = !!(info && info.low);
+  if (low && !batteryWarned) {
+    batteryWarned = true;
+    showPetJoke("🔋 battery's low — plug me in!");
+  } else if (!low) {
+    batteryWarned = false; // charging again -> re-arm for the next cycle
   }
   return { ok: true };
 });
@@ -1723,8 +2021,15 @@ ipcMain.handle("pilly:quit", () => {
   return { ok: true };
 });
 
+// Linux + Wayland (Ubuntu 22.04+/24.04 default): without this Chromium feature
+// flag, globalShortcut (CommandOrControl+Shift+P) silently fails to register
+// when Electron runs on the native Wayland backend. Harmless under X11/XWayland.
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
+}
+
 app.whenReady().then(() => {
-  app.setAppUserModelId("fun.pillcrew.pilly");
+  if (process.platform === "win32") app.setAppUserModelId("fun.pillcrew.pilly");
   iconFrames = loadFrames();
   createWindow();
   createTray();
@@ -1733,6 +2038,13 @@ app.whenReady().then(() => {
   watchTimer = setInterval(() => { watchPoll().catch(() => {}); }, 30000);
   trayInfoTimer = setInterval(() => { updateTrayInfo(null).catch(() => {}); }, 60000);
   watchPoll().catch(() => {});
+  // Reminders poll every 10s (fire-once, then removed).
+  reminderTimer = setInterval(checkReminders, 10000);
+  checkReminders();
+  // Focus sessions + activity diary: sample idle time every minute (v1.1.1).
+  focusDoc = FOCUS.loadDoc(userDataDir());
+  focusTickTimer = setInterval(focusTick, 60000);
+  focusTick();
   // Look for a newer Pilly on GitHub (installed builds only).
   checkForUpdates(false);
 });

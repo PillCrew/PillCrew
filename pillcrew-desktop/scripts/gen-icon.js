@@ -122,10 +122,18 @@ function main() {
     fs.writeFileSync(path.join(OUT_DIR, `pilly-${i}.png`), png);
     console.log(`wrote assets/pilly-${i}.png`);
   }
-  // A 256px version for the window/installer icon (smooth supersampled).
-  const big = drawFrameSmooth(0, 256, 8, 4);
-  fs.writeFileSync(path.join(OUT_DIR, "pilly.png"), encodePNG(256, 256, big));
-  console.log("wrote assets/pilly.png (256px)");
+  // Large app icons: 256px (Windows installer/window), 512px (Linux) and
+  // 1024px (macOS). All smooth and supersampled.
+  const large = [
+    { file: "pilly.png", size: 256, scale: 8 },
+    { file: "pilly-512.png", size: 512, scale: 16 },
+    { file: "pilly-1024.png", size: 1024, scale: 32 },
+  ];
+  for (const { file, size, scale } of large) {
+    const rgba = drawFrameSmooth(0, size, scale, 4);
+    fs.writeFileSync(path.join(OUT_DIR, file), encodePNG(size, size, rgba));
+    console.log(`wrote assets/${file} (${size}px)`);
+  }
 }
 
 main();
