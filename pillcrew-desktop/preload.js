@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("pilly", {
   radar: () => ipcRenderer.invoke("pilly:radar"),
   spark: (mint) => ipcRenderer.invoke("pilly:spark", mint),
   openExternal: (url) => ipcRenderer.invoke("pilly:openExternal", url),
+  img: (url) => ipcRenderer.invoke("pilly:img", url), // v1.1.2: logo fetch that bypasses CDN CORP blocks
   solPrice: () => ipcRenderer.invoke("pilly:solprice"),
   // reminders (v1.1.1)
   reminder: (text) => ipcRenderer.invoke("pilly:reminder", text),

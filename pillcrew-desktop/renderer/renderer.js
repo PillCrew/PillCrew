@@ -602,18 +602,40 @@
   }
 
   // A card whose avatar URL dies (expired CDN link, a host that refuses the
-  // renderer) retries once through the site resolver before giving up, so the
-  // badge stays an actual coin logo instead of a broken-image glyph. The
-  // resolver is the only party that can dig these logos out server-side.
+  // renderer) retries once through the site resolver, then through the main
+  // process, before giving up - so the badge stays an actual coin logo instead
+  // of a broken-image glyph. The resolver digs logos out server-side; the main
+  // process fetch is not subject to the CORP/ORB rules that make the browser
+  // drop coin-CDN loads, and paints a data URL instead.
   function wireCoinImage(img, coin) {
     if (!img) return;
-    img.addEventListener("error", () => {
-      const resolved =
-        coin && coin.mint ? `https://pillcrew.fun/api/img?mint=${encodeURIComponent(coin.mint)}` : null;
-      if (resolved && img.src !== resolved) {
-        img.src = resolved;
+    const mint = coin && coin.mint ? coin.mint : null;
+    const original = img.src || null;
+    const resolver = mint ? `https://pillcrew.fun/api/img?mint=${encodeURIComponent(mint)}` : null;
+    const proxied = [];
+    if (original) proxied.push(original);
+    if (resolver && resolver !== original) proxied.push(resolver);
+    let stage = 0; // 0 = the original load just failed, 1 = resolver tried directly
+    img.addEventListener("error", async () => {
+      if (img.dataset.imgDone === "1") return;
+      if (stage === 0 && resolver) {
+        stage = 1;
+        img.src = resolver;
         return;
       }
+      // Direct loads are exhausted: hand the URLs to the main-process fetcher.
+      while (proxied.length) {
+        const url = proxied.shift();
+        try {
+          const r = await window.pilly.img(url);
+          if (r && r.ok && r.src) {
+            img.dataset.imgDone = "1";
+            img.src = r.src;
+            return;
+          }
+        } catch (e) { /* try the next source */ }
+      }
+      img.dataset.imgDone = "1";
       img.remove();
     });
   }

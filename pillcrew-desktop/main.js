@@ -1,7 +1,7 @@
 // Pilly - a tiny green pill AI friend that lives in your Windows taskbar.
 // Click the pill in the system tray to summon the chat (free AI, meme brain).
 const {
-  app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, globalShortcut, screen, shell, Notification, clipboard, powerMonitor,
+  app, Tray, Menu, BrowserWindow, nativeImage, ipcMain, globalShortcut, screen, shell, Notification, clipboard, powerMonitor, dialog, net,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -418,6 +418,16 @@ function watchWindowSurvival(w, what, rebuild, wanted) {
     // A reload is enough: the window, its position and its bounds all survive.
     setTimeout(() => { try { if (!wc.isDestroyed()) wc.reload(); } catch (err) { /* ignore */ } }, 400);
   });
+  // A renderer can also stop answering without crashing (a wedged animation
+  // loop, a GPU hang): no event fires for that, the window keeps painting its
+  // last frame and every click on it dies - "clicking Pilly sometimes does
+  // nothing until the pet is switched off and on again". Crash it on purpose
+  // so the recovery above takes over.
+  wc.on("unresponsive", () => {
+    if (isQuitting) return;
+    console.warn(`[pilly] the renderer of ${what} stopped responding - forcing a restart`);
+    try { wc.forcefullyCrashRenderer(); } catch (err) { /* ignore */ }
+  });
   wc.on("destroyed", () => {
     if (isQuitting) return;
     // Tearing a window down on purpose (switching the pet off, quitting) is not a
@@ -500,11 +510,24 @@ function chatState(w) {
 // caller decided "already open, leave it alone" and the user had a window they
 // could not reach without switching the pet off and on again.
 function revealWindow(force) {
-  const w = ensureWindow();
-  if (!w || w.isDestroyed()) return null;
-  if (w.isMinimized()) w.restore();
+  let w = ensureWindow();
+  if (!w || w.isDestroyed()) {
+    // The survival net may be tearing the window down right now (native
+    // teardown, then a rebuild a moment later). ensureWindow() is idempotent,
+    // so ask again before giving up on the click.
+    w = ensureWindow();
+    if (!w || w.isDestroyed()) return null;
+  }
+  // Every step is best effort on its own: a window can die between two calls
+  // here, and a click that fell into that gap must not throw and vanish.
+  try { if (w.isMinimized()) w.restore(); } catch (e) { /* ignore */ }
   positionWindow();
-  if (force || !w.isVisible()) w.show();
+  try {
+    if (force || !w.isVisible()) w.show();
+  } catch (e) {
+    // The window died mid-reveal; the survival net rebuilds it and (because
+    // chatWanted survives) shows it again. Nothing else to do here.
+  }
   raiseWindow(w);
   return w;
 }
@@ -2809,6 +2832,37 @@ ipcMain.handle("pilly:github", async () => {
 });
 ipcMain.handle("pilly:version", () => app.getVersion());
 
+// Coin APIs hand out avatars on CDNs that refuse the browser (CORP/ORB headers,
+// 403 challenge pages) while the bytes themselves are fine. The renderer's
+// <img> can never get past those, so the main process fetches instead - no page
+// context, no CORP - and hands back a data URL the img paints directly. Tight
+// timeout, https-only and an image/* sniff so a dead link can never stall a
+// card or paint junk into the chat.
+ipcMain.handle("pilly:img", async (e, url) => {
+  if (typeof url !== "string" || !/^https:\/\//i.test(url)) return { ok: false };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await net.fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
+        Accept: "image/*",
+      },
+    });
+    if (!res.ok) return { ok: false };
+    const type = (res.headers.get("content-type") || "").toLowerCase();
+    if (!type.startsWith("image/")) return { ok: false };
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > 2 * 1024 * 1024) return { ok: false };
+    return { ok: true, src: `data:${type};base64,${buf.toString("base64")}` };
+  } catch (err) {
+    return { ok: false };
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 // Forget the remembered window bounds so the next show snaps above the tray.
 ipcMain.handle("pilly:reset-window", () => {
   resetWindowPosition();
@@ -2857,6 +2911,62 @@ function sendUpdateStatus() {
 function setUpdateStatus(patch) {
   updateState = { ...updateState, ...patch };
   sendUpdateStatus();
+}
+
+// ---- Update install recovery (v1.1.2) ----
+// quitAndInstall() hands the pending installer to the OS and quits; when the OS
+// blocks that installer (Windows Smart App Control, an antivirus verdict) the
+// app silently vanishes and the user stays on the old version with no idea why.
+// A marker parked before quitting turns that silence into a readable dialog on
+// the next start: same version as when we left = the install never happened.
+function updateMarkerPath() {
+  return path.join(userDataDir(), "update-attempt.json");
+}
+
+function writeUpdateAttemptMarker(targetVersion) {
+  try {
+    fs.writeFileSync(updateMarkerPath(), JSON.stringify({
+      fromVersion: app.getVersion(),
+      targetVersion: String(targetVersion || ""),
+      at: Date.now(),
+    }));
+  } catch (e) { /* a marker failure must never block the update itself */ }
+}
+
+function handleUpdateAttemptMarker() {
+  let marker = null;
+  try { marker = JSON.parse(fs.readFileSync(updateMarkerPath(), "utf8")); } catch (e) { return; }
+  const from = String(marker.fromVersion || "");
+  const target = String(marker.targetVersion || "");
+  const now = app.getVersion();
+  if (!from || !target || from !== now || target === now) {
+    // The version moved on since the marker was written (the update worked), or
+    // the marker is stale/unreadable: nothing to recover.
+    try { fs.rmSync(updateMarkerPath(), { force: true }); } catch (e) { /* ignore */ }
+    return;
+  }
+  // Still on the version that started the update: the installer never ran.
+  const blame = process.platform === "win32"
+    ? "Windows (Smart App Control) blocked the downloaded installer."
+    : "The operating system blocked the downloaded installer.";
+  setUpdateStatus({
+    state: "error",
+    version: target,
+    message: `Update ${target} could not be installed. Download it from GitHub instead.`,
+  });
+  dialog.showMessageBox({
+    type: "warning",
+    title: "Pilly update",
+    message: `Pilly could not update to ${target}.`,
+    detail: `${blame}\n\nThe update itself was downloaded fine - only the install step failed. Download the newest installer from GitHub and run it: it is the same file the updater already fetched.`,
+    buttons: ["Open download page", "OK"],
+  }).then((r) => {
+    if (r.response === 0) openExternal("https://github.com/PillCrew/PillCrew/releases");
+  }).catch(() => { /* the dialog is best effort */ }).finally(() => {
+    // Only after the user has been told: a crash before the dialog must
+    // re-announce on the next start, not be lost.
+    try { fs.rmSync(updateMarkerPath(), { force: true }); } catch (e) { /* ignore */ }
+  });
 }
 
 let updaterIsBusy = false;
@@ -2922,6 +3032,10 @@ ipcMain.handle("pilly:update:check", () => {
 });
 ipcMain.handle("pilly:update:install", () => {
   if (updateState.state === "ready") {
+    // Park the expectation first: if the installer the OS runs for us is
+    // blocked (Smart App Control, an antivirus), the app vanishes with nothing
+    // installed - the marker makes the next start say so out loud.
+    writeUpdateAttemptMarker(updateState.version);
     isQuitting = true;
     autoUpdater.quitAndInstall(false, true);
     return { ok: true };
@@ -3014,6 +3128,9 @@ app.whenReady().then(() => {
   focusTick();
   // Look for a newer Pilly on GitHub (installed builds only).
   checkForUpdates(false);
+  // v1.1.2: if the previous session quit to install an update and the version
+  // did not change, the installer was blocked - say so instead of staying mute.
+  handleUpdateAttemptMarker();
   // Windows and Linux do not emit before-quit when the machine is shut down or
   // the user logs out (Electron documents that for Windows), so without this the
   // window-survival watchers read the OS tearing our windows down as a crash:

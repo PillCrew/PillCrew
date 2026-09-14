@@ -434,6 +434,23 @@ Pilly feels **more alive** and behaves more politely on macOS.
   `overrides` entry, and `npm audit --omit=dev` on the production tree reports
   nothing. See [Dependencies & security](#dependencies--security) for the full
   runtime list and for the two majors that are deliberately deferred.
+- **Coin logos survive a refusing CDN** - coin cards load their avatars straight
+  from coin-CDN hosts that can answer with a `Cross-Origin-Resource-Policy`
+  header, which makes the browser drop the image even though it is fine. The
+  cards now retry through the site resolver and then through a main-process
+  fetch (which is not subject to the browser's CORP rules and paints a data
+  URL), so a refusing host ends in the resolver's logo, not a broken-image
+  glyph.
+- **An update the OS refuses to install is no longer silent** - installing a
+  downloaded update hands the installer to the OS and quits; when the OS blocks
+  that installer (Smart App Control on Windows) the app vanished with nothing
+  installed and no word about it. The updater now parks a note before quitting,
+  and the next start checks it: still on the old version means the installer
+  never ran, and Pilly says so with a dialog that links to the downloads page.
+- **A wedged pet page revives itself** - a renderer that stops responding (the
+  rare "clicking Pilly does nothing until you switch him off and on" state) is
+  now caught by Chromium's own unresponsive signal and reloaded in place - the
+  same recovery that already handles a renderer crash.
 
 ### v1.1.1
 
@@ -1032,6 +1049,9 @@ which runs the test suite and builds installers for all three platforms:
 The release assets (including `latest.yml`) are attached to the GitHub Release,
 so Pilly's installed Windows build detects the new version and updates itself.
 The portable build can't self-update - it links to the releases page instead.
+If the OS blocks the installer the updater hands over (Smart App Control), the
+next start detects that the version didn't change and says so with a link to
+the downloads page, instead of failing silently.
 
 ## Disclaimer
 
