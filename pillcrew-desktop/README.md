@@ -664,7 +664,10 @@ downloads the matching Electron binaries automatically.
 ## Install
 
 - **Windows** - run `Pilly-Setup-<version>.exe`, or use the portable `.exe`
-  with no installation.
+  with no installation. The builds are unsigned, so Windows may show a
+  SmartScreen "unknown publisher" prompt - click **More info → Run anyway**.
+  On a PC with **Smart App Control** enabled, Windows can refuse to start a
+  freshly published release at all; see **Troubleshooting** below.
 - **macOS** - open the `.dmg` and drag Pilly into **Applications**. The build
   is unsigned, so the first launch shows a Gatekeeper prompt: right-click the
   app and choose **Open**, then confirm. Because the bundle isn't signed with a
@@ -723,6 +726,52 @@ For an unsigned build, the terminal equivalent of the right-click-Open dance is:
 ```bash
 xattr -dr com.apple.quarantine /Applications/Pilly.app
 ```
+
+### Signing the Windows build (Smart App Control and SmartScreen)
+
+Windows 11 asks Microsoft's cloud about every program it hasn't seen before. If
+the cloud has no confident verdict **and** the file carries no valid signature,
+**Smart App Control** refuses to run it - you get `Application control policy
+has blocked this file` and the app never starts. This hits *new* files hardest:
+an installer published weeks ago has usually been seen often enough to have a
+verdict, while the release you just uploaded has none. Smart App Control has no
+per-app exception, and nothing in the app itself can talk its way out - it is a
+signing problem, and [Microsoft's own answer](https://support.microsoft.com/windows/smart-app-control-frequently-asked-questions)
+is "ask the developer to sign the app".
+
+Since June 2023 code-signing keys must live in FIPS 140-2 hardware, so shipping
+a `.pfx` in a CI secret is no longer practical; use a cloud signing service
+instead. electron-builder supports it directly, so signing is credentials plus
+configuration:
+
+```jsonc
+"win": {
+  "target": ["nsis", "portable"],
+  "icon": "assets/pilly.png",
+  "signAndEditExecutable": true,
+  "azureSignOptions": {
+    "endpoint": "https://weu.codesigning.azure.net",
+    "codeSigningAccountName": "<trusted-signing-account>",
+    "certificateProfileName": "<profile>"
+  }
+}
+```
+
+[Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/) is
+the CI-friendly route: Microsoft-issued short-lived certificates, billed per
+month, needs identity verification and a service principal in the workflow
+(`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`). A CA that offers
+HSM-based signing (Certum, SSL.com, ...) works too. Check a finished build
+before shipping it:
+
+```powershell
+Get-AuthenticodeSignature "dist\Pilly-Setup-<version>.exe" |
+  Format-List Status, SignerCertificate
+```
+
+`Status` must be `Valid`. A signature also silences the SmartScreen "Windows
+protected your PC" prompt; the "unknown publisher" label disappears with
+reputation (an EV certificate, or enough downloads).
 
 ## Tests
 
@@ -796,6 +845,33 @@ sets the correct permissions on `chrome-sandbox`, so launching needs no manual
 **Linux: no tray icon.** GNOME hides tray icons unless the **AppIndicator**
 extension is installed. Pilly opens its chat window once at launch so it's
 still reachable, and `Ctrl+Alt+P` toggles it any time.
+
+**Windows: Smart App Control blocked the installer.** Windows 11's **Smart App
+Control** checks every program it doesn't know against Microsoft's cloud. It has
+no verdict for a file published an hour ago, and no per-app exception - so it
+blocks it, usually with "Inteligentna kontrola aplikacji / Smart App Control
+blocked this app". That's also why an *older* Pilly installer still starts while
+the newest one doesn't: the old file has earned a verdict by now. Your options:
+
+- **Turn Smart App Control off** - Windows Security → **App & browser control**
+  → **Smart App Control** → **Off**. Recent Windows versions let you turn it
+  back on later without reinstalling Windows.
+- **Wait** - the block usually lifts once Microsoft's cloud has seen the new
+  file often enough (the period varies, from minutes to days).
+- **Sign the build** - the real fix, and it's on our side: see
+  [Signing the Windows build](#signing-the-windows-build-smart-app-control-and-smartscreen).
+- **Use another machine or OS** in the meantime - the macOS/Linux builds are
+  unaffected by this policy.
+
+If an in-app update seems to do nothing after Pilly restarts (a Windows block
+dialog appeared, the version didn't change), it's the same policy: get the
+installer from [Releases](https://github.com/PillCrew/PillCrew/releases) once
+the block clears, or use one of the options above.
+
+**Windows: "Windows protected your PC".** That's SmartScreen, not Smart App
+Control, and it's only a warning: click **More info → Run anyway**. It stops
+appearing for a release as its reputation grows, and never appears at all once
+the build is code-signed.
 
 **The chat window froze or stopped responding.**
 
