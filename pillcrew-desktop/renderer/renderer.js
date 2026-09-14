@@ -224,6 +224,8 @@
   function clearChat() {
     messagesEl.querySelectorAll(".msg").forEach((m) => m.remove());
     history.length = 0;
+    cardCoins.clear();
+    cardSparks.clear();
     try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* ignore */ }
     addMsg("bot", WELCOME_HTML);
     scrollDownBtn.hidden = true;
@@ -308,7 +310,11 @@
   let faceMoodUntil = 0;
   let faceBlink = performance.now() + 1800 + Math.random() * 2500;
   let faceBlinkUntil = 0;
+  let faceBlinkStart = 0; // eased lid (v1.1.2)
+  let faceBlinkAgainAt = 0; // double-blink follow-up (v1.1.2)
   let faceAnim = null;
+  const faceBornAt = performance.now(); // greeting pop-in (v1.1.2)
+  let faceDart = { x: 0, y: 0 }, faceDartUntil = 0, faceDartNext = performance.now() + 4000 + Math.random() * 4000;
   // Stage 6: avatar interactions - pupils follow the mouse, click = boop,
   // hold = petting.
   let facePupil = { x: 0, y: 0 };
@@ -349,6 +355,14 @@
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
+  // 0 = wide open, 1 = fully shut; a sine keeps the lid moving smoothly.
+  function faceBlinkAmount(now) {
+    if (!faceBlinkStart || now >= faceBlinkUntil) return 0;
+    const p = (now - faceBlinkStart) / Math.max(1, faceBlinkUntil - faceBlinkStart);
+    if (p <= 0 || p >= 1) return 0;
+    return Math.sin(p * Math.PI);
+  }
+
   function drawFaceEye(ctx, ex, ey, open, happy, lid, px, py) {
     if (open) {
       rr(ctx, ex - 3.5, ey - 4, 7, 8, 3.5);
@@ -396,7 +410,14 @@
     } else if (petting) {
       squish = 1 + 0.07 * Math.sin(t * 11);
     }
-    const pw = 46 / squish, ph = 20 * squish;
+    // v1.1.2: greeting pop-in (mirrors the taskbar pet's birth spring).
+    let pop = 1;
+    if (now - faceBornAt < 640) {
+      const p = (now - faceBornAt) / 640;
+      const ease = 1 - Math.pow(1 - p, 3);
+      pop = 0.72 + 0.28 * ease + 0.1 * Math.sin(p * Math.PI) * (1 - p);
+    }
+    const pw = 46 / squish * pop, ph = 20 * squish * pop;
     const px = (W - pw) / 2, cy = H / 2 + bob, py = cy - ph / 2;
     faceCtx.save();
     faceCtx.translate(W / 2, cy);
@@ -419,10 +440,13 @@
     faceCtx.fill();
     faceCtx.globalAlpha = 1;
     const mood = now < faceMoodUntil ? faceMood : defaultFaceMood;
-    const eyesOpen = !(now < faceBlinkUntil);
+    const eyesOpen = true;
     const eyeY = py + ph * 0.55;
-    const lid = now < faceMoodUntil && faceMood === "sad" ? 0.6 : 0;
-    const ppx = petting ? 0 : facePupil.x, ppy = petting ? 0 : facePupil.y;
+    const droop = now < faceMoodUntil && faceMood === "sad" ? 0.6 : 0;
+    const lid = Math.max(droop, faceBlinkAmount(now));
+    // v1.1.2: pupils glance around on their own every so often.
+    const ppx = petting ? 0 : (now < faceDartUntil ? faceDart.x : facePupil.x);
+    const ppy = petting ? 0 : (now < faceDartUntil ? faceDart.y : facePupil.y);
     const happyEyes = mood === "happy" || mood === "love";
     drawFaceEye(faceCtx, px + pw * 0.28, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
     drawFaceEye(faceCtx, px + pw * 0.72, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
@@ -448,8 +472,23 @@
     if (faceAnim || !faceCtx) return;
     const loop = (now) => {
       if (now > faceBlink) {
-        faceBlinkUntil = now + 160;
+        const slow = Math.random() < 0.2;
+        faceBlinkStart = now;
+        faceBlinkUntil = now + (slow ? 300 : 180);
         faceBlink = now + 1800 + Math.random() * 2600;
+        // v1.1.2: occasional quick double-blink.
+        faceBlinkAgainAt = Math.random() < 0.22 ? faceBlinkUntil + 180 : 0;
+      } else if (faceBlinkAgainAt && now > faceBlinkAgainAt) {
+        faceBlinkAgainAt = 0;
+        faceBlinkStart = now;
+        faceBlinkUntil = now + 130;
+      }
+      // v1.1.2: idle pupil dart - the avatar glances around by itself.
+      if (now > faceDartNext) {
+        faceDart.x = (Math.random() - 0.5) * 2.6;
+        faceDart.y = (Math.random() - 0.5) * 1.6;
+        faceDartUntil = now + 320;
+        faceDartNext = now + 3400 + Math.random() * 4200;
       }
       drawFace(now);
       requestAnimationFrame(loop);
@@ -489,6 +528,29 @@
 
   const cardSparks = new Map(); // mint -> {points, dir}
   const cardCoins = new Map(); // mint -> last coin object (for PnL re-render)
+  // Both maps are keyed by mint and would otherwise grow for the whole session, so
+  // they are capped. cardCoins also has to stay ordered by recency: re-opening a
+  // coin has to move it to the back, because the calculator reads the last entry as
+  // "the coin I was just looking at".
+  const CARD_CACHE_MAX = 60;
+  function trimCardCaches() {
+    for (const m of [cardCoins, cardSparks]) {
+      while (m.size > CARD_CACHE_MAX) m.delete(m.keys().next().value);
+    }
+  }
+  function rememberCoin(coin) {
+    const mint = coin && coin.mint;
+    if (!mint) return;
+    cardCoins.delete(mint);
+    cardCoins.set(mint, coin);
+    trimCardCaches();
+  }
+  function rememberSpark(mint, spark) {
+    if (!mint) return;
+    cardSparks.delete(mint);
+    cardSparks.set(mint, spark);
+    trimCardCaches();
+  }
 
   function pnlChipHtml(mint, price) {
     const p = pnlOf(mint, price);
@@ -516,34 +578,60 @@
     slot.innerHTML = sparkSvg(spark.points, spark.dir);
   }
 
-  function addCoinCard(coin, opts) {
-    const card = addEl("msg bot");
-    const read = (opts && opts.read) || "";
+  // The coin-card markup lives in exactly one place: a fresh card and the ↻
+  // refresh / live-tick re-render both build it from here, so a field added or
+  // fixed once shows up in both (this used to be two hand-mirrored copies that had
+  // already drifted). Every API-supplied string goes through escapeHtml - including
+  // the ones that only reach a class name.
+  function coinCardInnerHtml(coin) {
     const up = coin.change24h == null || coin.change24h >= 0;
     const parts = [];
     if (coin.image) parts.push(`<img class="cc-img" src="${escapeHtml(coin.image)}" />`);
     parts.push(`<div class="cc-main"><strong>${escapeHtml(coin.name)}</strong>${coin.symbol ? ` <span class="cc-sym">${escapeHtml(coin.symbol)}</span>` : ""}</div>`);
     parts.push(`<div class="cc-price ${up ? "up" : "down"}">${coin.price != null ? fmtUsd(coin.price) : "-"}</div>`);
-    card.innerHTML = `<div class="coin-card"><div class="cc-top">${parts.join("")}<div class="cc-side">${pnlChipHtml(coin.mint, coin.price)}${
+    const grade = coin.rug ? String(coin.rug.grade).toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+    return `<div class="cc-top">${parts.join("")}<div class="cc-side">${pnlChipHtml(coin.mint, coin.price)}${
       coin.mcap != null ? `<div class="cc-stat">mcap <b>${fmtUsd(coin.mcap)}</b></div>` : ""
     }${coin.change24h != null ? `<div class="cc-stat">24h <b class="${up ? "up" : "down"}">${fmtPct(coin.change24h)}</b></div>` : ""}</div></div><div class="cc-spark"></div><div class="cc-grid">${
       coin.volume24h != null ? `<div class="cc-stat">vol <b>${fmtUsd(coin.volume24h)}</b></div>` : ""
     }${coin.liquidityUsd != null ? `<div class="cc-stat">liq <b>${fmtUsd(coin.liquidityUsd)}</b></div>` : ""}${
-      coin.age ? `<div class="cc-stat">age <b>${coin.age}</b></div>` : ""
+      coin.age ? `<div class="cc-stat">age <b>${escapeHtml(coin.age)}</b></div>` : ""
     }${coin.buys24h != null && coin.sells24h != null ? `<div class="cc-stat">txns <b>${Number(coin.buys24h).toLocaleString()}B/${Number(coin.sells24h).toLocaleString()}S</b></div>` : ""}${
-      coin.organicScore != null ? `<div class="cc-stat">organic <b>${coin.organicScore}/100</b></div>` : ""
-    }${coin.rug ? `<div class="cc-stat rug rg-${String(coin.rug.grade).toLowerCase()}">rug <b>${coin.rug.grade} ${coin.rug.score}</b></div>` : ""}</div></div>`;
-    const img = card.querySelector(".cc-img");
-    if (img) img.addEventListener("error", () => img.remove(), { once: true });
+      coin.organicScore != null ? `<div class="cc-stat">organic <b>${escapeHtml(coin.organicScore)}/100</b></div>` : ""
+    }${coin.rug ? `<div class="cc-stat rug rg-${grade}">rug <b>${escapeHtml(coin.rug.grade)} ${escapeHtml(coin.rug.score)}</b></div>` : ""}</div>`;
+  }
+
+  // A card whose avatar URL dies (expired CDN link, a host that refuses the
+  // renderer) retries once through the site resolver before giving up, so the
+  // badge stays an actual coin logo instead of a broken-image glyph. The
+  // resolver is the only party that can dig these logos out server-side.
+  function wireCoinImage(img, coin) {
+    if (!img) return;
+    img.addEventListener("error", () => {
+      const resolved =
+        coin && coin.mint ? `https://pillcrew.fun/api/img?mint=${encodeURIComponent(coin.mint)}` : null;
+      if (resolved && img.src !== resolved) {
+        img.src = resolved;
+        return;
+      }
+      img.remove();
+    });
+  }
+
+  function addCoinCard(coin, opts) {
+    const card = addEl("msg bot");
+    const read = (opts && opts.read) || "";
+    card.innerHTML = `<div class="coin-card">${coinCardInnerHtml(coin)}</div>`;
+    wireCoinImage(card.querySelector(".cc-img"), coin);
     const mint = coin.mint;
     if (mint) {
-      cardCoins.set(mint, coin);
+      rememberCoin(coin);
       const cached = cardSparks.get(mint);
       if (cached) drawSpark(card, cached);
       else {
         window.pilly.spark(mint).then((s) => {
           if (s && s.points && s.points.length >= 2) {
-            cardSparks.set(mint, s);
+            rememberSpark(mint, s);
             drawSpark(card, s);
           }
         }).catch(() => {});
@@ -561,6 +649,10 @@
       `<button type="button" class="cc-watch icon-only" data-act="copy" data-mint="${escapeHtml(mint)}" title="Copy mint">${ICONS.copy}</button>`;
     card.appendChild(foot);
     refreshWatchLabel(foot);
+    // addEl() persisted the chat while the card was still an empty div, so the
+    // stored snapshot was a blank bubble - a restart then restored a card with
+    // nothing in it. Persist again now that the content and the buttons are in.
+    persistChat();
   }
 
   async function refreshWatchLabel(foot) {
@@ -579,22 +671,8 @@
   function renderCardBody(cardEl, coin) {
     const bodyEl = cardEl && cardEl.querySelector(".coin-card");
     if (!bodyEl) return;
-    const up = coin.change24h == null || coin.change24h >= 0;
-    const parts = [];
-    if (coin.image) parts.push(`<img class="cc-img" src="${escapeHtml(coin.image)}" />`);
-    parts.push(`<div class="cc-main"><strong>${escapeHtml(coin.name)}</strong>${coin.symbol ? ` <span class="cc-sym">${escapeHtml(coin.symbol)}</span>` : ""}</div>`);
-    parts.push(`<div class="cc-price ${up ? "up" : "down"}">${coin.price != null ? fmtUsd(coin.price) : "-"}</div>`);
-    bodyEl.innerHTML = `<div class="cc-top">${parts.join("")}<div class="cc-side">${pnlChipHtml(coin.mint, coin.price)}${
-      coin.mcap != null ? `<div class="cc-stat">mcap <b>${fmtUsd(coin.mcap)}</b></div>` : ""
-    }${coin.change24h != null ? `<div class="cc-stat">24h <b class="${up ? "up" : "down"}">${fmtPct(coin.change24h)}</b></div>` : ""}</div></div><div class="cc-spark"></div><div class="cc-grid">${
-      coin.volume24h != null ? `<div class="cc-stat">vol <b>${fmtUsd(coin.volume24h)}</b></div>` : ""
-    }${coin.liquidityUsd != null ? `<div class="cc-stat">liq <b>${fmtUsd(coin.liquidityUsd)}</b></div>` : ""}${
-      coin.age ? `<div class="cc-stat">age <b>${coin.age}</b></div>` : ""
-    }${coin.buys24h != null && coin.sells24h != null ? `<div class="cc-stat">txns <b>${Number(coin.buys24h).toLocaleString()}B/${Number(coin.sells24h).toLocaleString()}S</b></div>` : ""}${
-      coin.organicScore != null ? `<div class="cc-stat">organic <b>${coin.organicScore}/100</b></div>` : ""
-    }${coin.rug ? `<div class="cc-stat rug rg-${String(coin.rug.grade).toLowerCase()}">rug <b>${coin.rug.grade} ${coin.rug.score}</b></div>` : ""}</div>`;
-    const img = bodyEl.querySelector(".cc-img");
-    if (img) img.addEventListener("error", () => img.remove(), { once: true });
+    bodyEl.innerHTML = coinCardInnerHtml(coin);
+    wireCoinImage(bodyEl.querySelector(".cc-img"), coin);
     drawSpark(cardEl, cardSparks.get(coin.mint) || null);
   }
 
@@ -652,7 +730,7 @@
             if (rb) rb.dataset.read = fresh.read || "";
             const wb = foot && foot.querySelector('[data-act="watch"]');
             if (wb) wb.dataset.price = fresh.coin.price != null ? fresh.coin.price : "";
-            cardCoins.set(mint, fresh.coin);
+            rememberCoin(fresh.coin);
             renderCardBody(cardEl, fresh.coin);
             cc.innerHTML = ICONS.check;
             setTimeout(() => { cc.innerHTML = ICONS.refresh; }, 1100);
@@ -720,13 +798,15 @@
     }
   });
 
-  function addTrendingCard(list) {
+  function addTrendingCard(list, note) {
     const card = addEl("msg bot");
     const rows = list.slice(0, 10).map((c, i) => {
       const up = c.change24h == null || c.change24h >= 0;
       return `<div class="tr-row"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(c.name)}${c.symbol ? ` <em>${escapeHtml(c.symbol)}</em>` : ""}</span><span class="tr-price">${c.price != null ? fmtUsd(c.price) : "-"}</span><span class="tr-chg ${up ? "up" : "down"}">${fmtPct(c.change24h)}</span><span class="tr-mcap">${c.mcap != null ? fmtUsd(c.mcap) : "-"}${c.volume24h != null ? `<small>vol ${fmtUsd(c.volume24h)}</small>` : ""}</span></div>`;
     }).join("");
-    card.innerHTML = `<div class="trend-card"><div class="tr-head">🔥 Trending on Solana</div><div class="tr-headrow"><span class="tr-rank">#</span><span class="tr-name">Coin</span><span class="tr-price">Price</span><span class="tr-chg">24h</span><span class="tr-mcap">Mkt Cap<small>vol</small></span></div>${rows}</div>`;
+    const foot = note ? `<div class="tr-note">${escapeHtml(note)}</div>` : "";
+    card.innerHTML = `<div class="trend-card"><div class="tr-head">🔥 Trending on Solana</div><div class="tr-headrow"><span class="tr-rank">#</span><span class="tr-name">Coin</span><span class="tr-price">Price</span><span class="tr-chg">24h</span><span class="tr-mcap">Mkt Cap<small>vol</small></span></div>${rows}${foot}</div>`;
+    persistChat(); // addEl() stored this card empty - re-store it once it has rows
   }
 
   const walletRenders = new WeakMap(); // cardEl -> re-render fn (keeps entry edits live)
@@ -754,6 +834,7 @@
     const render = () => { card.innerHTML = walletCardHtml(w); };
     render();
     walletRenders.set(card, render);
+    persistChat(); // addEl() stored this card empty - re-store it once it has rows
   }
 
   async function send(text, task) {
@@ -964,14 +1045,27 @@
       const data = await window.pilly.trending();
       typing.remove();
       if (data && data.list && data.list.length) {
-        addTrendingCard(data.list);
+        // A stale list is served when the feed blips, and it has to say so - a
+        // read of the market that is silently out of date is a trap, not a favour.
+        addTrendingCard(
+          data.list,
+          data.stale
+            ? `the live feed just missed - these are the numbers from ${new Date(data.staleAt || Date.now()).toLocaleTimeString()}, ask again for a fresh read`
+            : ""
+        );
         const chgs = data.list.map((c) => c.change24h).filter((c) => c != null && isFinite(c));
         if (chgs.length) {
           const avg = chgs.reduce((s, c) => s + c, 0) / chgs.length;
           setAvatarMood(avg >= 0.5 ? "happy" : avg <= -0.5 ? "sad" : null);
         }
+      } else if (data && data.rateLimited) {
+        addMsg("bot err", "The trending API is throttling me right now - give it a few seconds and ask again.");
+        return;
       } else {
-        addMsg("bot err", "Trending feed is unavailable right now.");
+        addMsg("bot err", "Trending feed is unavailable right now - the upstream API did not answer. Try again in a moment.");
+        // Nothing to read from, so there is nothing to ask the model: a rundown
+        // written from memory would be invented coins with invented numbers.
+        return;
       }
       const res = await window.pilly.chat({
         text: userText || "give me the rundown",
@@ -1007,7 +1101,9 @@
       const data = await window.pilly.trending();
       if (!data || !data.list || !data.list.length) {
         typing.remove();
-        addMsg("bot err", "Trending feed is unavailable right now.");
+        addMsg("bot err", data && data.rateLimited
+          ? "The trending API is throttling me right now - give it a few seconds and try again."
+          : "I have nothing to pick from - the trending feed did not answer. Try again in a moment.");
         return;
       }
       const pick = data.list[Math.floor(Math.random() * data.list.length)];
@@ -1091,7 +1187,13 @@
     document.body.classList.add("fs-" + s);
   }
 
-  document.getElementById("minBtn").addEventListener("click", () => window.close());
+  // v1.1.2: hide through main instead of window.close(). A renderer close tears
+  // the window down on Windows without emitting the window's "close" event, so
+  // nothing recorded that the user wanted him hidden and the survival net rebuilt
+  // and re-showed the chat (he "opened again by himself" a moment after hiding).
+  document.getElementById("minBtn").addEventListener("click", () => {
+    window.pilly.hideChat().catch(() => { /* the window is going away regardless */ });
+  });
   document.getElementById("quitBtn").addEventListener("click", () => {
     if (confirm("Close Pilly? This will close the app.")) window.pilly.quit();
   });
@@ -1100,7 +1202,33 @@
     const r = await window.pilly.petToggle();
     document.getElementById("petBtn").classList.toggle("active", !!r.active);
   });
-  document.getElementById("clearBtn").addEventListener("click", clearChat);
+  // v1.1.2: the tray can switch the pet on/off too, so the button follows along
+  // instead of showing the opposite of what is actually on the taskbar.
+  window.pilly.onPetActive((on) => {
+    document.getElementById("petBtn").classList.toggle("active", !!on);
+  });
+
+  // v1.1.2: a reminder that fires while Pilly is off (or his bubbles are off) is
+  // pushed here instead of into a pet bubble. Before this listener existed the
+  // text only ever reached the OS notification, and a desktop in Do Not Disturb
+  // swallowed it whole - the reminder was simply gone when you came back.
+  window.pilly.onReminderFired((r) => {
+    const text = String((r && (r.message || r.text)) || "").trim();
+    if (!text) return;
+    addMsg("bot", `⏰ Reminder — <b>${escapeHtml(text)}</b>`);
+    // Also Pilly's own line in the AI history, so answering "done" right after
+    // makes sense to him (same trick as his proactive questions below).
+    history.push({ role: "assistant", content: "I reminded you: " + text });
+    if (history.length > 16) history.splice(0, history.length - 16);
+  });
+
+  // v1.1.2: focus sessions started from the tray say so in the chat. The app
+  // only sets `announce` on a deliberate click - the 60s status tick pushes a
+  // bare payload, so it never writes a line here.
+  window.pilly.onFocusStatus((s) => {
+    if (s && s.announce) addMsg("bot", escapeHtml(String(s.announce)));
+  });  document.getElementById("clearBtn").addEventListener("click", clearChat);
+
   document.getElementById("gitBtn").addEventListener("click", () => window.pilly.github());
 
   messagesEl.addEventListener("scroll", () => {
@@ -1109,14 +1237,6 @@
   scrollDownBtn.addEventListener("click", () => {
     scrollToBottom(true);
     scrollDownBtn.hidden = true;
-  });
-
-  window.pilly.onSuggest((type) => {
-    // Tray "Meme mode": prefill the rewrite prompt so the user just types
-    // their text and hits Enter.
-    if (type === "meme") input.value = MEME_PREFIX.rewrite;
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
   });
 
   // Pilly's proactive questions (every 3-5 min while the pet is on) land in
@@ -1318,6 +1438,7 @@
   const radarEl = document.getElementById("radar");
   const radarRowsEl = document.getElementById("radarRows");
   const radarStatusEl = document.getElementById("radarStatus");
+  const radarHintEl = document.getElementById("radarHint");
   let radarTimer = null;
   let lastRadarMints = new Set();
 
@@ -1328,15 +1449,29 @@
   }
 
   let radarBusy = false;
+  // The launch floor comes from main.js (COINS.MIN_FRESH_MCAP) so the number in the
+  // UI cannot drift away from the number the filter uses.
+  function floorLabel(v) {
+    const n = Number(v);
+    return isFinite(n) && n > 0 ? `$${Math.round(n / 1000)}K` : "the floor";
+  }
   async function renderRadar() {
     if (!radarRowsEl || radarBusy) return;
     radarBusy = true;
     try {
       const data = await window.pilly.radar();
       const list = Array.isArray(data && data.list) ? data.list : [];
+      const hidden = Number(data && data.hidden) || 0;
+      const floor = floorLabel(data && data.floor);
+      if (radarHintEl)
+        radarHintEl.textContent = `Newest coins on pump.fun above ${floor} - anything cheaper is a launch nobody has bought yet. Click a row for its full live card. Refreshes while open.`;
       if (!list.length) {
-        radarRowsEl.innerHTML = `<p class="hint">No fresh launches right now - give it a minute.</p>`;
-        if (radarStatusEl) radarStatusEl.textContent = "";
+        // An empty radar is normal: pump.fun coins start near $2.8K, so most
+        // launches sit under the floor. Say so - silence would read as a bug.
+        radarRowsEl.innerHTML = `<p class="hint">Nothing above ${floor} yet${
+          hidden ? ` - this batch's ${hidden} smaller launch${hidden === 1 ? "" : "es"} filtered out` : ""
+        }. Fresh coins start low and cross the floor once real money shows up.</p>`;
+        if (radarStatusEl) radarStatusEl.textContent = `0 fresh · ${floor}+ only`;
         return;
       }
       const seen = new Set(lastRadarMints);
@@ -1354,7 +1489,8 @@
           </div>`;
         })
         .join("");
-      if (radarStatusEl) radarStatusEl.textContent = `${list.length} fresh · updated ${new Date().toLocaleTimeString()}`;
+      if (radarStatusEl)
+        radarStatusEl.textContent = `${list.length} fresh · ${floor}+ only · updated ${new Date().toLocaleTimeString()}`;
       radarRowsEl.querySelectorAll(".radar-row").forEach((row) => {
         row.addEventListener("click", async () => {
           const mint = row.dataset.mint;
@@ -1428,13 +1564,22 @@
     const price = Number(calcPrice.value);
     let solUsd = null;
     try { solUsd = await window.pilly.solPrice(); } catch (e) { /* ignore */ }
-    const solPriceUsd = solUsd && solUsd.price ? Number(solUsd.price) : null;
+    const solPriceUsd = solUsd && isFinite(Number(solUsd.price)) && Number(solUsd.price) > 0
+      ? Number(solUsd.price)
+      : null;
     if (!isFinite(sol) || sol <= 0) {
       calcOut.innerHTML = `<p class="hint">Enter SOL to spend.</p>`;
     } else {
       const value = solPriceUsd ? sol * solPriceUsd : null;
-      const tokens = isFinite(price) && price > 0 ? sol * (value || 1) / price : null;
-      calcOut.innerHTML = `<div class="calc-line">${fmtNum(sol)} SOL${solPriceUsd ? ` ≈ <b>${fmtUsd(value)}</b>` : ""}</div>${tokens != null ? `<div class="calc-line">→ <b>${fmtNum(tokens)} tokens</b> @ ${fmtUsd(price)}</div>` : `<div class="calc-line hint">add coin price to get tokens</div>`}`;
+      // A token count is only honest when both prices are real: falling back to a
+      // fake SOL price of 1 silently invented a number (and would have said "1 SOL
+      // = $1"). No SOL price -> no token estimate, just a hint.
+      const haveCoinPrice = isFinite(price) && price > 0;
+      const tokens = haveCoinPrice && value != null ? value / price : null;
+      const hint = haveCoinPrice
+        ? "live SOL price unavailable - hit ↻"
+        : "add coin price to get tokens";
+      calcOut.innerHTML = `<div class="calc-line">${fmtNum(sol)} SOL${solPriceUsd ? ` ≈ <b>${fmtUsd(value)}</b>` : ""}</div>${tokens != null ? `<div class="calc-line">→ <b>${fmtNum(tokens)} tokens</b> @ ${fmtUsd(price)}</div>` : `<div class="calc-line hint">${hint}</div>`}`;
     }
     const risk = Number(calcRisk.value);
     const stop = Number(calcStop.value);
@@ -1610,10 +1755,20 @@
   // ---- Settings panel ----
   const TIERS = ["tier1", "tier2", "tier3"];
 
+  // v1.1.2: the tier inputs only exist after the overlay has been built once.
+  // readSettings() runs on Save and Test, so it must never invent empty tiers -
+  // an empty key there would wipe API keys the user already saved. Remember the
+  // last known values and fall back to them instead of throwing.
+  let knownTiers = null;
+
   function buildTierRows(settings) {
+    knownTiers = TIERS.map((_, i) => {
+      const t = (settings.tiers && settings.tiers[i]) || { url: "", key: "", model: "", auth: "bearer" };
+      return { url: t.url || "", key: t.key || "", model: t.model || "", auth: "bearer" };
+    });
     tierRowsEl.innerHTML = "";
     TIERS.forEach((_, i) => {
-      const t = (settings.tiers && settings.tiers[i]) || { url: "", key: "", model: "", auth: "bearer" };
+      const t = knownTiers[i];
       const row = document.createElement("div");
       row.className = "tier";
       row.innerHTML = `
@@ -1670,6 +1825,8 @@
   function readSettings() {
     const tiers = TIERS.map((_, i) => {
       const r = tierRowsEl.children[i];
+      // No row yet (Save/Test before the overlay rendered): keep what is saved.
+      if (!r) return (knownTiers && knownTiers[i]) || { url: "", key: "", model: "", auth: "bearer" };
       return {
         url: r.querySelector(".t-url").value.trim(),
         key: r.querySelector(".t-key").value.trim(),
@@ -1695,7 +1852,7 @@
         stopFreq: petStopFreq.value,
         questions: petQuestions.checked,
         sounds: petSounds.checked,
-        // v1.1.0 proactive features - MUST be included here or Save() would
+        // v1.0.5 proactive features - MUST be included here or Save() would
         // silently reset all five toggles back to their defaults.
         hotAlerts: petHotAlerts.checked,
         hotPct: Number(petHotPct.value) || 10,
@@ -1819,6 +1976,9 @@
   document.getElementById("saveBtn").addEventListener("click", async () => {
     const s = readSettings();
     const r = await window.pilly.settingsSave(s);
+    // Keep the fallback snapshot in step with what was just persisted, so a Save
+    // that runs without the rows on screen re-posts the same values.
+    if (r.ok) knownTiers = s.tiers;
     applyPetTheme(s.pet);
     if (r.ok) setStatus("Saved ✓", true);
     else setStatus("Save failed: " + (r.error || ""), false);
@@ -1835,6 +1995,9 @@
     applyPetTheme(s && s.pet);
     applyBubbleStyle(s && s.chat);
     applyChatFontSize((s && s.chat && s.chat.fontSize) || "normal");
+    // v1.1.2: the pet's run state survives a restart, so light the button up if
+    // the main process already restored him.
+    document.getElementById("petBtn").classList.toggle("active", !!(s && s.pet && s.pet.on));
   }).catch(() => {});
 
   // Show the app version in the settings footer.
@@ -1897,7 +2060,7 @@
           if (!fresh || !fresh.coin) return;
           const old = cardCoins.get(mint);
           const changed = !old || old.price !== fresh.coin.price || old.change24h !== fresh.coin.change24h;
-          cardCoins.set(mint, fresh.coin);
+          rememberCoin(fresh.coin);
           const rb = cardEl.querySelector('[data-act="read"]');
           if (rb) rb.dataset.read = fresh.read || "";
           const wbtn = cardEl.querySelector('[data-act="watch"]');
@@ -1907,7 +2070,7 @@
             // Restored cards have no cached sparkline - fetch it once.
             if (!cardSparks.has(mint)) {
               window.pilly.spark(mint).then((s) => {
-                if (s && s.points && s.points.length >= 2) { cardSparks.set(mint, s); drawSpark(cardEl, s); }
+                if (s && s.points && s.points.length >= 2) { rememberSpark(mint, s); drawSpark(cardEl, s); }
               }).catch(() => {});
             }
           }
@@ -1917,6 +2080,21 @@
       cardTickBusy = false;
     }
   }
+  // v1.1.2: the main process cannot read the OS "reduce motion" switch on every
+  // platform, so the renderers report it - and the pet window may not even exist
+  // when the app starts. Reported on load and whenever the user flips the
+  // switch, so the tray icon calms down without a restart.
+  function reportMotionPref() {
+    try {
+      const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const send = () => {
+        if (window.pilly.setUiPrefs) window.pilly.setUiPrefs({ reduceMotion: mq.matches });
+      };
+      send();
+      if (mq.addEventListener) mq.addEventListener("change", send);
+    } catch (e) { /* no matchMedia on this runtime - keep the default */ }
+  }
+  reportMotionPref();
   setInterval(tickCards, 15000);
   loadPnl();
 })();

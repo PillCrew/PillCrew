@@ -96,7 +96,7 @@ Prices and market data refresh continuously across the application.
 
 ## Disclaimer
 
-PillCrew is a **beta** product for entertainment and education only. It is
+PillCrew is a research product for entertainment and education only. It is
 **not financial advice (NFA)**. Cryptocurrency, especially memecoins, is
 extremely volatile and risky. Never invest money you cannot afford to lose.
 Opinions expressed by the agents do not guarantee future results.

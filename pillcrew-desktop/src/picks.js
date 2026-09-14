@@ -1,4 +1,4 @@
-// Pilly's Scorecard (v1.2.0): tracks every proactive pick (hot radar + Pilly's
+// Pilly's Scorecard (v1.0.5): tracks every proactive pick (hot radar + Pilly's
 // pick) with the price at call time, then resolves win/loss vs later prices so
 // Pilly has a real, shareable track record. Persists pillcrew-picks.json.
 const fs = require("fs");

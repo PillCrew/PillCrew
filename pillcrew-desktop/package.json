@@ -1,7 +1,7 @@
 {
   "name": "pilly-desktop",
   "productName": "Pilly",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Pilly - a tiny green pill AI friend that lives in your taskbar or menu bar. Free AI chat, live Solana coin checks, meme brain, watchlist & alerts.",
   "main": "main.js",
   "private": true,
@@ -20,6 +20,8 @@
     "icon": "node scripts/gen-icon.js",
     "postinstall": "node scripts/gen-icon.js",
     "test": "node --test src/*.test.js",
+    "verify:anim": "electron scripts/verify-anim.js",
+    "verify:boot": "electron scripts/verify-boot.js",
     "dist": "electron-builder --win",
     "dist:mac": "electron-builder --mac --universal",
     "dist:linux": "electron-builder --linux",
@@ -28,6 +30,10 @@
   "devDependencies": {
     "electron": "^31.7.7",
     "electron-builder": "^25.1.8"
+  },
+  "//": "overrides.js-yaml: reached at runtime through electron-updater (it parses latest.yml), so the copy inside app.asar is what matters - 4.3.1 is the last vulnerable release, 4.3.2 fixes the maxTotalMergeKeys CPU exhaustion (GHSA-2883-xcg3-v3hh). Both consumers ask for ^4.1.0, so the pin stays inside the same major.",
+  "overrides": {
+    "js-yaml": "^4.3.2"
   },
   "build": {
     "appId": "fun.pillcrew.pilly",
@@ -62,7 +68,16 @@
       ],
       "category": "public.app-category.finance",
       "icon": "assets/pilly-1024.png",
-      "artifactName": "${productName}-${version}-mac.${ext}"
+      "artifactName": "${productName}-${version}-mac.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "LSApplicationCategoryType": "public.app-category.finance",
+        "NSHighResolutionCapable": true,
+        "LSMinimumSystemVersion": "10.15"
+      }
     },
     "dmg": {
       "artifactName": "${productName}-${version}-mac.${ext}"

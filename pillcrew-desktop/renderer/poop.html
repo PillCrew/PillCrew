@@ -42,8 +42,11 @@
       30% { opacity: 0.9; }
       100% { opacity: 0; transform: translate(-50%, -20px) scale(1.25); }
     }
-    /* Fade everything out just before main destroys the window. */
+    /* Fade everything out just before main destroys the window. The stink puff
+       loops forever, so the animation has to be stopped here - left running, its
+       own keyframes kept popping the emoji back up over the fading window. */
     body.fade .poop, body.fade .stink { opacity: 0; transition: opacity 0.6s ease; }
+    body.fade .stink { animation: none; }
   </style>
 </head>
 <body>

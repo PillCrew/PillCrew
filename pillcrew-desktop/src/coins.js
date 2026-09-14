@@ -17,12 +17,15 @@ async function fetchJson(url, ms = 9000, retries = 2) {
     const timer = setTimeout(() => ctrl.abort(), ms);
     try {
       const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: ctrl.signal });
-      if (res.status === 429) {
+      // 429 is the documented rate limit; 5xx and 408 are the transient upstream
+      // failures a CDN in front of these free APIs returns now and then. Giving up
+      // on the first 502 is how a healthy feed reports itself as "unavailable".
+      if (res.status === 429 || res.status >= 500 || res.status === 408) {
         if (attempt < retries) {
           await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
           continue;
         }
-        return { rateLimited: true };
+        return res.status === 429 ? { rateLimited: true } : null;
       }
       if (!res.ok) return null;
       return await res.json();
@@ -51,6 +54,32 @@ const fmtUsd = (v) => {
 };
 const fmtPct = (v) => (v == null || !isFinite(Number(v)) ? "-" : `${Number(v) >= 0 ? "+" : ""}${Number(v).toFixed(1)}%`);
 
+// ---- coin avatars ----
+// pump.fun's image CDN (imagedelivery.net) only serves signed URLs: a browser
+// asking for one gets 403 text/plain and Chrome drops the load outright
+// (net::ERR_BLOCKED_BY_ORB), so a row carrying that link paints no avatar at
+// all. Anything in this list is replaced by the site's resolver, which finds
+// the logo server-side and hands back a real image.
+const DEAD_IMAGE_HOSTS = ["imagedelivery.net"];
+const RESOLVER = "https://pillcrew.fun/api/img?mint=";
+
+function isDeadImageHost(url) {
+  if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return false;
+  try {
+    return DEAD_IMAGE_HOSTS.includes(new URL(url).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+// A URL we can actually paint, or the resolver for the same mint. Null only when
+// there is no mint to resolve either, so callers keep their own "no avatar" path.
+function coinImage(src, mint) {
+  const url = typeof src === "string" && src.trim() ? src.trim() : null;
+  if (url && !isDeadImageHost(url)) return url;
+  return mint ? `${RESOLVER}${encodeURIComponent(mint)}` : null;
+}
+
 // ---- detection ----
 function detectMint(text) {
   if (!text) return null;
@@ -78,7 +107,7 @@ async function fromPump(mint) {
   return {
     name: j.name || "",
     symbol: (j.symbol || "").slice(0, 12),
-    image: j.image_uri || null,
+    image: coinImage(j.image_uri, mint),
     mcap,
     price: Number(j.raydium_pool?.open_market_pool_info?.market_pool_price) || null,
     volume24h: Number(j.volume_24) || 0,
@@ -217,7 +246,7 @@ function buildCoinRead(coin) {
 }
 
 /**
- * RugGuard (v1.2.0): deterministic 0-100 rug-risk score built from on-chain
+ * RugGuard (v1.0.5): deterministic 0-100 rug-risk score built from on-chain
  * + exchange signals. Higher = riskier. Pure function, never throws.
  * @returns {{score:number, grade:'LOW'|'MED'|'HIGH'|'CRITICAL', reasons:string[]} | null}
  */
@@ -374,6 +403,9 @@ async function fetchCoinContext(mint) {
  */
 async function fetchTrendingTop(limit = 8) {
   const j = await fetchJson(`https://api.geckoterminal.com/api/v2/networks/solana/trending_pools?page=1`);
+  // fetchJson reports a hard rate limit instead of pretending the feed was empty,
+  // so the caller can say "throttled" rather than "broken".
+  const rateLimited = !!(j && j.rateLimited);
   const pools = Array.isArray(j?.data) ? j.data : [];
   const list = [];
   for (const p of pools.slice(0, limit)) {
@@ -426,6 +458,7 @@ async function fetchTrendingTop(limit = 8) {
   return {
     list,
     context: lines.length ? lines.join("\n") : "trending unavailable right now",
+    rateLimited,
   };
 }
 
@@ -434,7 +467,7 @@ async function fetchTrendingTop(limit = 8) {
  * Free: public RPC for balances + DexScreener batch for prices. No keys.
  * @returns {Promise<{wallet, sol, solUsd, tokens, totalUsd, context, ok:true} | null>}
  */
-const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
+const RPC = require("./rpc");
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -443,7 +476,9 @@ async function rpcCall(method, params) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 9000);
   try {
-    const res = await fetch(SOLANA_RPC, {
+    // PILLY_RPC_URL (v1.1.2) points this at a private endpoint - the public one
+    // rate-limits precisely the users who ask for balances and whale diffs.
+    const res = await fetch(RPC.rpcUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
       signal: ctrl.signal,
@@ -488,6 +523,10 @@ async function fetchWalletPortfolio(address) {
   if (!isPubkey(addr)) return null;
 
   const bal = await rpcCall("getBalance", [addr]);
+  // getBalance returns lamports as a JSON number, so it is already a double by
+  // the time we see it. That is exact up to 2^53 lamports (about 9.007M SOL);
+  // past that only a treasury-sized wallet would round, and this feeds a
+  // display figure rather than a signed amount.
   const lamports = Number(bal && bal.result && bal.result.value);
   const sol = isFinite(lamports) ? lamports / 1e9 : 0;
 
@@ -607,6 +646,10 @@ async function fetchWalletPortfolio(address) {
 // what it could price, never throws.
 async function fetchPrices(mints) {
   const out = {};
+  // Liquidity of the pair we kept, used only to pick the winner inside this
+  // function - `out` is handed to the watchlist/tray/IPC, so the sentinel stays
+  // out here instead of travelling with the price.
+  const keptLiq = {};
   const arr = [...new Set((mints || []).filter(Boolean))];
   if (!arr.length) return out;
   for (let i = 0; i < arr.length; i += 30) {
@@ -623,7 +666,7 @@ async function fetchPrices(mints) {
         // Keep the MOST LIQUID pair per mint - the first result is often a
         // tiny/new pool with a nonsense price (SOL showed $0.0059 instead of
         // ~$105 because of a fresh wrapped-SOL pool).
-        if (!cur || liq > (cur._liq || 0)) {
+        if (!cur || liq > (keptLiq[mint] || 0)) {
           out[mint] = {
             price,
             change24h: p.priceChange && p.priceChange.h24 != null ? Number(p.priceChange.h24) : null,
@@ -631,8 +674,8 @@ async function fetchPrices(mints) {
             symbol: ((p.baseToken && p.baseToken.symbol) || "").slice(0, 12),
             mcap: p.marketCap != null ? Number(p.marketCap) : null,
             volume24h: p.volume && p.volume.h24 != null ? Number(p.volume.h24) : null,
-            _liq: liq,
           };
+          keptLiq[mint] = liq;
         }
       }
     }
@@ -696,24 +739,46 @@ async function fetchSpark(mint) {
   return { points, dir: points[points.length - 1] >= points[0] ? "up" : "down" };
 }
 
+// The fresh-launch dust floor. pump.fun coins are born at roughly $2.8-3k of
+// market cap, and its feed is sorted newest-first, so the top of the list is
+// always the cheapest coins - ones nobody has bought yet. Pilly surfaces fresh
+// launches as snipe material ("JUST LAUNCHED", the Radar panel, the hot bubble),
+// and a tip about a coin with no buyers is at best noise and at worst the kind of
+// call that makes a trader's tool embarrassing. Anything under this market cap is
+// therefore never shown as a fresh launch, and a coin whose market cap cannot be
+// determined is dropped too: the floor is a promise, and an unknown cannot keep it.
+const MIN_FRESH_MCAP = 7000;
+function aboveFreshFloor(coin) {
+  const mcap = Number(coin && coin.mcap);
+  return isFinite(mcap) && mcap >= MIN_FRESH_MCAP;
+}
+
 // Fresh pump.fun launches for the radar (pump.fun new-feed first, DexScreener
-// latest token profiles as fallback). Returns { list, context }.
+// latest token profiles as fallback), above MIN_FRESH_MCAP only.
+// Returns { list, context, hidden } - `hidden` is how many of that feed's newest
+// coins the floor dropped, so the UI can say so instead of looking broken.
 async function fetchNewCoins(limit = 12) {
   let list = [];
+  let hidden = 0;
+  // Ask for several pages' worth: the newest coins are the cheapest ones, so a
+  // request for exactly `limit` rows would mostly return the dust this floor
+  // exists to hide. 50 is the feed's own cap.
+  const want = Math.min(limit * 4, 50);
   const j = await fetchJson(
-    `https://frontend-api-v3.pump.fun/coins?offset=0&limit=${Math.min(limit, 25)}&sort=created_timestamp&order=DESC`,
+    `https://frontend-api-v3.pump.fun/coins?offset=0&limit=${want}&sort=created_timestamp&order=DESC`,
     10000,
     1
   );
   const arr = Array.isArray(j) ? j : Array.isArray(j && j.data) ? j.data : [];
-  for (const c of arr.slice(0, limit)) {
+  const candidates = [];
+  for (const c of arr.slice(0, want)) {
     if (!c || !c.mint) continue;
     const mcap = Number(c.usd_market_cap);
-    list.push({
+    candidates.push({
       mint: c.mint,
       name: c.name || "",
       symbol: (c.symbol || "").slice(0, 12),
-      image: c.image_uri || null,
+      image: coinImage(c.image_uri, c.mint),
       price:
         Number(c.raydium_pool?.open_market_pool_info?.market_pool_price) ||
         (c.price != null ? Number(c.price) : null),
@@ -722,20 +787,22 @@ async function fetchNewCoins(limit = 12) {
       createdAt: c.created_timestamp ? Number(c.created_timestamp) : null,
     });
   }
+  hidden = candidates.filter((c) => !aboveFreshFloor(c)).length;
+  list = candidates.filter(aboveFreshFloor).slice(0, limit);
   if (!list.length) {
     const prof = await fetchJson(`https://api.dexscreener.com/token-profiles/latest/v1`, 10000, 1);
     const pl = Array.isArray(prof) ? prof : [];
-    const mints = pl.slice(0, limit).map((p) => p && p.tokenAddress).filter(Boolean);
+    const mints = pl.slice(0, want).map((p) => p && p.tokenAddress).filter(Boolean);
     const prices = mints.length ? await fetchPrices(mints) : {};
-    list = pl
-      .slice(0, limit)
+    const fallback = pl
+      .slice(0, want)
       .map((p) => {
         const pr = p && prices[p.tokenAddress];
         return {
           mint: p.tokenAddress,
           name: (pr && pr.name) || "",
           symbol: (pr && pr.symbol) || ((p && p.symbol) || "").slice(0, 12),
-          image: (p && p.icon) || null,
+          image: coinImage(p && p.icon, p.tokenAddress),
           price: pr && pr.price != null ? pr.price : null,
           mcap: pr && pr.mcap != null ? pr.mcap : null,
           volume24h: pr && pr.volume24h != null ? pr.volume24h : null,
@@ -743,14 +810,19 @@ async function fetchNewCoins(limit = 12) {
         };
       })
       .filter((c) => c.mint);
+    // The count describes the feed the list actually came from, not both of them.
+    hidden = fallback.filter((c) => !aboveFreshFloor(c)).length;
+    list = fallback.filter(aboveFreshFloor).slice(0, limit);
   }
-  // Keep only items with at least a price or mcap (real, tradeable coins).
-  list = list.filter((c) => (c.price != null && c.price > 0) || (c.mcap != null && c.mcap > 0));
   const lines = list.map(
     (c, i) =>
       `${i + 1}. ${c.name}${c.symbol ? ` (${c.symbol})` : ""}${c.price != null ? ` ${fmtUsd(c.price)}` : ""}${c.mcap != null ? ` mcap ${fmtUsd(c.mcap)}` : ""}${c.volume24h != null ? ` vol ${fmtUsd(c.volume24h)}` : ""}`
   );
-  return { list, context: lines.length ? lines.join("\n") : "no fresh launches right now" };
+  return {
+    list,
+    context: lines.length ? lines.join("\n") : "no fresh launches above the market-cap floor right now",
+    hidden,
+  };
 }
 
 module.exports = {
@@ -767,4 +839,6 @@ module.exports = {
   isPubkey,
   fmtUsd,
   fmtPct,
+  MIN_FRESH_MCAP,
+  aboveFreshFloor,
 };

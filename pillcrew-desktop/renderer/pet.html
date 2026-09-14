@@ -33,10 +33,54 @@
       const ctx = canvas.getContext("2d");
       // Logical size 60x64 CSS px; crisp on any DPI.
       const W = 60, H = 64;
-      const DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-      canvas.width = W * DPR;
-      canvas.height = H * DPR;
-      ctx.scale(DPR, DPR);
+      // Dragging Pilly between screens with different scale factors (a Retina
+      // MacBook and a plain external monitor) changes devicePixelRatio. The
+      // canvas used to keep the backing store it was born with, so he went
+      // blurry/aliased on whichever screen he was not created on.
+      function applyDpr() {
+        const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+        if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
+          canvas.width = W * dpr;
+          canvas.height = H * dpr;
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      applyDpr();
+      let dprQuery = null;
+      function onDprChange() {
+        applyDpr();
+        watchDpr();
+      }
+      function watchDpr() {
+        if (dprQuery && dprQuery.removeEventListener) dprQuery.removeEventListener("change", onDprChange);
+        dprQuery = null;
+        try {
+          dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+          dprQuery.addEventListener("change", onDprChange);
+        } catch (e) { dprQuery = null; }
+      }
+      watchDpr();
+      window.addEventListener("resize", applyDpr);
+
+      // v1.1.2: respect the OS "reduce motion" setting. He stays alive - he
+      // still blinks, sways, looks around and says hi - but the gestures that
+      // fling the whole pill around (spin, wiggle, giggle) stay out of the idle
+      // rotation, which is the part nobody asked for.
+      const motionQuery = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+      let reduceMotion = !!(motionQuery && motionQuery.matches);
+      const CALM_GESTURES = ["wave", "yawn", "stretch", "peek", "curious", "heart"];
+      // The main process cannot read this preference on every platform, so the
+      // renderers report it. Reported again whenever the user flips the switch,
+      // so turning it on calms the tray icon too without a restart.
+      function reportMotionPref() {
+        try {
+          if (window.pilly && window.pilly.setUiPrefs) window.pilly.setUiPrefs({ reduceMotion: !!reduceMotion });
+        } catch (e) { /* main process already gone */ }
+      }
+      reportMotionPref();
+      if (motionQuery && motionQuery.addEventListener) {
+        motionQuery.addEventListener("change", (e) => { reduceMotion = !!e.matches; reportMotionPref(); });
+      }
 
       const THEMES = {
         green: { c1: "#22c55e", c2: "#34d399", c3: "#6366f1" },
@@ -51,12 +95,20 @@
       function applyPetSettings(pet) {
         theme = (pet && THEMES[pet.theme]) || THEMES.green;
         ps = pet && pet.size === "sm" ? 0.85 : pet && pet.size === "lg" ? 1.2 : 1;
-        enableDrag(!!(pet && pet.walkMode === "screen"));
         soundsOn = !pet || pet.sounds !== false;
         soundVol = pet && pet.soundVol != null ? Math.max(0, Math.min(100, Number(pet.soundVol))) : 60;
         defaultMood = pet && pet.mood === "happy" ? "happy" : pet && pet.mood === "sad" ? "sad" : "";
       }
-      if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyPetSettings);
+      if (window.pilly && window.pilly.petSettings) {
+        // The reply can fail (main busy, a settings file it cannot read), and this
+        // window has no console the user can open, so it is handled instead of left
+        // to an unhandled rejection. Nothing here is load-bearing: a pet with no
+        // settings still gets the default theme, size and sounds, and pick-up is
+        // not a setting at all - the drag section arms it on its own.
+        Promise.resolve(window.pilly.petSettings()).then(applyPetSettings).catch((err) => {
+          console.warn("Pilly could not read his pet settings:", err && err.message ? err.message : err);
+        });
+      }
       if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyPetSettings);
 
       // ---- target params per state (smoothed toward each frame) ----
@@ -76,10 +128,43 @@
       let cursor = { x: 0, y: 0 };
       let hopStart = 0;
       const HOP_MS = 720;
+      const HOP_ANTIC = 0.16; // share of the hop spent coiling before the launch
+      // Squash/stretch keyframes for a hop: [progress, squX, squY].
+      // Coil -> uncoil into a stretch -> neutral at the apex -> squash on
+      // contact. Interpolating between keyframes keeps the shape continuous,
+      // so the phases never snap into each other.
+      const HOP_SHAPE = [
+        [0.00, 1.00, 1.00],
+        [0.16, 1.20, 0.78],
+        [0.30, 0.88, 1.14],
+        [0.55, 1.00, 1.00],
+        [0.85, 0.96, 1.05],
+        [1.00, 1.06, 0.96],
+      ];
+      const hopKf = { x: 1, y: 1 };
+      function hopShapeAt(p, out) {
+        for (let i = 0; i < HOP_SHAPE.length - 1; i++) {
+          const a = HOP_SHAPE[i], b = HOP_SHAPE[i + 1];
+          if (p <= b[0]) {
+            const u = (p - a[0]) / (b[0] - a[0] || 1);
+            out.x = a[1] + (b[1] - a[1]) * u;
+            out.y = a[2] + (b[2] - a[2]) * u;
+            return out;
+          }
+        }
+        const last = HOP_SHAPE[HOP_SHAPE.length - 1];
+        out.x = last[1];
+        out.y = last[2];
+        return out;
+      }
       let particles = [];
       let last = performance.now();
+      const bornAt = performance.now(); // birth pop-in (v1.1.2)
+      let birthDustDone = false;
       let blinkNext = performance.now() + 1500 + Math.random() * 2500;
       let blinkUntil = 0;
+      let blinkStart = 0; // when the current blink began (v1.1.2: eased lid)
+      let blinkAgainAt = 0; // double-blink follow-up (v1.1.2)
       let zzNext = performance.now() + 900;
       let talking = false; // mouth animates while a bubble is shown
       let landingUntil = 0; // brief squash after a hop lands
@@ -94,13 +179,177 @@
       let defaultMood = ""; // resting mouth mood from settings (neutral/happy/sad)
       // Stage 3: ambient life - dance notes, idle gestures, flee, hover/click.
       let noteNext = performance.now() + 600;
-      let gesture = "", gestureUntil = 0, gestureNext = performance.now() + 12000 + Math.random() * 10000;
+      let gesture = "", gestureUntil = 0, gestureStart = 0, gestureNext = performance.now() + 12000 + Math.random() * 10000;
+      // v1.1.2: the coin flip only counts as caught once per toss.
+      let coinCaught = false;
+      // A gesture firing twice in a row reads as a stutter, not as life.
+      let lastGesture = "", gestureChain = "";
+      // Some gestures flow naturally into the next one - a yawn into a stretch,
+      // a wave into a happy wiggle. Chaining them makes idle time feel scripted
+      // by someone who knows the character.
+      const GESTURE_COMBO = { yawn: "stretch", wave: "wiggle", stretch: "curious", coin: "giggle" };
+      // How long each gesture runs - shared by the idle scheduler and the
+      // "you came back" greeting.
+      const GESTURE_MS = {
+        peek: 1300, sneeze: 700, heart: 1500, stretch: 1000,
+        wiggle: 900, giggle: 950, spin: 820, coin: 1250,
+      };
+
+      // v1.1.2: Pilly lives on your clock. A pet who yawns exactly as often at
+      // 2am as at 9am reads as a random-number generator; weighting his idle
+      // behaviour by the time of day is what makes him feel like he shares your
+      // day. Every gesture keeps a non-zero weight in every part of the day -
+      // he is drowsy at night, not broken - only the odds move.
+      // Takes an optional epoch timestamp (the harness passes a known hour); the
+      // default is the wall clock. It must NOT be handed the render loop's
+      // performance.now() - that counts from page load, so he would live through
+      // a whole "day" in eleven hours of uptime instead of following yours.
+      function dayPart(ms) {
+        const h = new Date(ms === undefined ? Date.now() : ms).getHours();
+        if (h >= 5 && h < 10) return "morning";
+        if (h >= 10 && h < 17) return "day";
+        if (h >= 17 && h < 23) return "evening";
+        return "night";
+      }
+      const DAY_PART_GESTURES = {
+        // just woken up: peppy, waving, wiggling, up for anything
+        morning: [["wave", 4], ["wiggle", 3], ["giggle", 3], ["stretch", 2], ["curious", 2], ["coin", 2], ["heart", 1], ["peek", 1], ["sneeze", 1], ["yawn", 1], ["spin", 1]],
+        // deep in the work day: watchful and curious (and counting the coins)
+        day: [["curious", 4], ["coin", 3], ["peek", 3], ["sneeze", 2], ["wave", 2], ["wiggle", 2], ["stretch", 1], ["heart", 1], ["yawn", 1], ["giggle", 1], ["spin", 1]],
+        // winding down: stretching, softer
+        evening: [["stretch", 3], ["yawn", 3], ["peek", 2], ["curious", 2], ["heart", 2], ["wave", 2], ["coin", 1], ["wiggle", 1], ["sneeze", 1], ["giggle", 1], ["spin", 1]],
+        // late: sleepy but still himself
+        night: [["yawn", 5], ["stretch", 4], ["peek", 3], ["heart", 2], ["curious", 2], ["coin", 1], ["wave", 1], ["sneeze", 1], ["wiggle", 1], ["giggle", 1], ["spin", 1]],
+      };
+      // The same idea applied to pacing: he takes longer between idle moments
+      // late at night and is quickest in the morning.
+      const DAY_PART_PACE = { morning: 0.7, day: 1, evening: 1.15, night: 1.7 };
+      // v1.1.2: at night his lids sit a little lower. The gesture weights already
+      // make him yawn more after midnight, but you can only see that once every
+      // twenty seconds; a permanently drowsy lid is the same information, always
+      // on screen, and it is the cheapest way to make him share your day.
+      function nightDroop(ms) {
+        return dayPart(ms) === "night" ? 0.3 : 0;
+      }
+      function pickWeighted(table) {
+        let total = 0;
+        for (const [, w] of table) total += w;
+        let r = Math.random() * total;
+        for (const [name, w] of table) { r -= w; if (r <= 0) return name; }
+        return table[table.length - 1][0];
+      }
+      // Decide what he does next: a combo follow-up first (a real continuation
+      // of what he just did), otherwise a weighted pick for the time of day that
+      // is never the gesture he just finished. Reduce-motion always wins.
+      function pickIdleGesture(part) {
+        let pick = gestureChain || "";
+        gestureChain = "";
+        for (let tries = 0; tries < 4 && (!pick || pick === lastGesture); tries++) {
+          pick = pickWeighted(DAY_PART_GESTURES[part] || DAY_PART_GESTURES.day);
+        }
+        if (reduceMotion && CALM_GESTURES.indexOf(pick) < 0) {
+          const pool = CALM_GESTURES.filter((g) => g !== lastGesture);
+          pick = pool[(Math.random() * pool.length) | 0];
+        }
+        return pick;
+      }
+      // Start a gesture by name: sets the timing, fires its particles and - 80%
+      // of the time - queues the natural follow-up (a wave into a wiggle, a yawn
+      // into a stretch), so the idle loop reads like a character instead of a
+      // random generator.
+      function startGesture(name, now) {
+        gesture = name;
+        lastGesture = name;
+        gestureStart = now;
+        gestureUntil = now + (GESTURE_MS[name] || 1100);
+        gestureChain = "";
+        if (name === "coin") coinCaught = false;
+        // A new gesture owns the whole body: the squash and the wobble the last
+        // one left behind would otherwise fight it (a spin started right after a
+        // landing would not turn).
+        landingUntil = 0;
+        wobbleStart = 0;
+        wobbleUntil = 0;
+        if (GESTURE_COMBO[name] && Math.random() < 0.8) {
+          gestureChain = GESTURE_COMBO[name];
+          gestureNext = gestureUntil + 260 + Math.random() * 520;
+        }
+        if (name === "wave") {
+          particles.push({ type: "emoji", x: 44, y: 30, vx: 0.25, vy: -0.3, size: 10, life: 0, max: 1000, glyph: "👋" });
+        } else if (name === "stretch") {
+          particles.push({ type: "emoji", x: 44, y: 12, vx: 0.1, vy: -0.2, size: 9, life: 0, max: 900, glyph: "💫" });
+        } else if (name === "sneeze") {
+          // the "achoo" lands ~60% through the gesture
+          setTimeout(() => {
+            particles.push({ type: "emoji", x: 44, y: 20, vx: 0.32, vy: -0.18, size: 11, life: 0, max: 800, glyph: "🤧" });
+            dust(44);
+          }, 420);
+        } else if (name === "curious") {
+          particles.push({ type: "emoji", x: 44, y: 14, vx: 0.1, vy: -0.2, size: 9, life: 0, max: 900, glyph: "?" });
+          dartX = 0; dartY = -1.4; dartUntil = now + 1100; dartNext = now + 1100;
+        } else if (name === "wiggle") {
+          particles.push({ type: "emoji", x: 44, y: 30, vx: 0.2, vy: -0.25, size: 9, life: 0, max: 900, glyph: "✨" });
+        } else if (name === "heart") {
+          // a heart floats up off his head on the slow rise
+          particles.push({ type: "emoji", x: 44, y: 16, vx: 0.16, vy: -0.42, size: 11, life: 0, max: 1400, glyph: "💚" });
+        } else if (name === "giggle") {
+          setTimeout(() => {
+            particles.push({ type: "emoji", x: 42, y: 16, vx: 0.3, vy: -0.3, size: 9, life: 0, max: 850, glyph: "😄" });
+          }, 260);
+        } else if (name === "spin") {
+          particles.push({ type: "emoji", x: 30, y: 34, vx: 0, vy: -0.12, size: 10, life: 0, max: 900, glyph: "✨" });
+        } else if (name === "coin") {
+          particles.push({ type: "emoji", x: 44, y: 24, vx: 0.18, vy: -0.24, size: 9, life: 0, max: 700, glyph: "✨" });
+        }
+      }
       let thoughtNext = performance.now() + 40000 + Math.random() * 40000;
       let sweatNext = performance.now() + 500;
       let hover = false, clickUntil = 0;
+      // v1.1.2 touch: being petted, being carried, being tapped.
+      // petCharge   - how much stroking he has taken lately; it decays on its own,
+      //               so a cursor crossing him never builds any
+      // petStroke*  - the raw pointer history used to recognise a stroke
+      // petLevel    - 0 = not petted, 1 = blissful, 2 = melted
+      // carry*      - the smoothed drag velocity, which drives the swing
+      // dizzyUntil  - spiral eyes after a rough ride
+      // tickleUntil - the squirm of being tapped one time too many
+      // perkUntil   - the short "i noticed you" beat
+      let petCharge = 0, petChargeAt = performance.now();
+      let petLevel = 0, petStart = 0, petUntil = 0, petHeartNext = 0, petCoolUntil = 0;
+      let petStrokeX = null, petStrokeY = null, petStrokeTurns = 0, petStrokeLastSign = 0;
+      let petLean = 0, petLeanX = 0;
+      // How fast the charge fades (ms), and what it takes to start petting and to
+      // melt him. A slow, gentle rub settles below the melt threshold; a brisk one
+      // goes straight through it - which is exactly the difference a hand feels.
+      const PET_CHARGE_DECAY = 900, PET_TRIGGER = 46, PET_MELT_TRIGGER = 150;
+      const PET_MS = 1800, PET_MELT_MS = 2800, PET_COOLDOWN_MS = 4000;
+      const TICKLE_MS = 1100, PERK_MS = 1400;
+      let boopCount = 0, boopLast = 0, loveFromTapUntil = 0;
+      let carryVX = 0, carryVY = 0, carryDist = 0, carryRough = 0;
+      let shakeStart = 0, shakeUntil = 0, dizzyUntil = 0, tickleUntil = 0;
+      let perkUntil = 0, perkNext = performance.now() + 30000 + Math.random() * 40000;
+      // v1.1.2 secondary motion (the difference between a sprite and a body):
+      // breathY  - the always-on breathing lift, in px
+      // wobble*  - the damped jiggle a landing releases into
+      // gazeAhead- 0..1 blend toward "looking where I am walking"
+      // lastLid  - what the eyelids were last drawn with (harness reads it)
+      let breathY = 0;
+      // how long a landing keeps settling, in ms
+      const WOBBLE_MS = 480;
+      let wobbleStart = 0, wobbleUntil = 0;
+      let gazeAhead = 0;
+      let lastLid = 0;
       let spookStart = 0, spookUntil = 0, streakNext = performance.now() + 200;
       // v1.1.1: battery-low reaction (Chromium Battery API; graceful no-op elsewhere).
       let batteryLow = false;
+      // v1.1.2: a running pomodoro is the one piece of app state that rides on
+      // top of him. The ring above his head says how much of the block is left -
+      // it is information, not decoration. The main process pushes pet:focus on
+      // every phase change, once a minute while a phase runs, and once on load
+      // so a pet window created mid-session is not blank.
+      let focusState = null;
+      let focusLastPhase = "idle";
+      let focusNodUntil = 0;
 
       if (window.pilly && window.pilly.onPetDir) {
         window.pilly.onPetDir((d) => { petDirNow = d === -1 ? -1 : 1; });
@@ -126,6 +375,59 @@
       }
       if (window.pilly && window.pilly.onPetTalking) {
         window.pilly.onPetTalking((on) => { talking = !!on; });
+      }
+      // v1.1.2: he notices when you come back to the app. The main process
+      // rate-limits the greeting, and this side stays quiet while he is asleep,
+      // busy or already mid-gesture - a pet that waves at every alt-tab stops
+      // being charming.
+      let greetHoldUntil = 0;
+      if (window.pilly && window.pilly.onPetGreet) {
+        window.pilly.onPetGreet(() => {
+          const now = performance.now();
+          if (now < greetHoldUntil || gesture) return;
+          if (state === "sleep" || state === "eat" || state === "dance" || state === "hop") return;
+          greetHoldUntil = now + 6000;
+          startGesture(Math.random() < 0.65 ? "wave" : "peek", now);
+          // Don't let an idle gesture land straight on top of the greeting.
+          gestureNext = Math.max(gestureNext, gestureUntil + 6000);
+        });
+      }
+      // v1.1.2: focus sessions (see focusState above). He does not celebrate at
+      // the start of a block - he gets on with it. He reacts when a block turns
+      // into a break (a puff of confetti) and when a break ends (a small nod),
+      // which is exactly the rhythm the tray tooltip and the chat already show.
+      function applyFocus(p) {
+        if (!p || typeof p.phase !== "string") return;
+        const phase = p.phase;
+        const prev = focusLastPhase;
+        focusLastPhase = phase;
+        focusState = phase === "idle" ? null : {
+          phase,
+          remainingMs: Math.max(0, Number(p.remainingMs) || 0),
+          totalMs: Math.max(0, Number(p.totalMs) || 0),
+          paused: !!p.paused,
+        };
+        if (phase === prev) return; // same phase - the ring just ticks down
+        const now = performance.now();
+        if (prev === "focus" && (phase === "break" || phase === "long_break")) {
+          bounceStart = now;
+          bounceUntil = now + 720;
+          confetti(reduceMotion ? 8 : 18);
+        } else if (phase === "focus" && prev !== "idle") {
+          focusNodUntil = now + 520;
+        }
+      }
+      if (window.pilly && window.pilly.onPetFocus) window.pilly.onPetFocus(applyFocus);
+      // v1.1.2: a due reminder is about *you*, so he hops (the state machine
+      // forwards "hop") and pops the same glyph the bubble shows.
+      if (window.pilly && window.pilly.onPetNudge) {
+        window.pilly.onPetNudge((n) => {
+          particles.push({
+            type: "emoji", x: 30 + (Math.random() - 0.5) * 16, y: 18,
+            vx: (Math.random() - 0.5) * 0.2, vy: -0.45,
+            size: 12, life: 0, max: 1100, glyph: (n && n.glyph) || "🔔",
+          });
+        });
       }
       // v1.1.1: watch the battery and droop + warn once per discharge cycle.
       async function batteryPoll() {
@@ -204,20 +506,106 @@
         window.pilly.onPetPlay((type) => sfx(type || "coin"));
       }
 
-      // ---- drag (whole-monitor mode only) ----
-      let canDrag = false, dragging = false, dragReacted = false, moved = 0, lastX = 0, lastY = 0;
+      // ---- drag (works in both walk modes: Pilly can always be picked up) ----
+      let canDrag = false, dragging = false, dragReacted = false, dragAnnoyed = false, moved = 0, lastX = 0, lastY = 0;
+      // Pick-up is not a setting, so it is never left waiting for one. While the
+      // only caller was applyPetSettings(), a slow reply to its settings call - or
+      // a failed one - left the cursor on the default arrow and dragging him dead
+      // for the whole session: the shape of the report "clicking Pilly sometimes
+      // does nothing". He is always pickable, so this is the one place that says so.
+      enableDrag(true);
+      // A carry lives only as long as the pointer keeps saying it is carrying him.
+      // A pointerup that never arrives - the button released outside this 60x64
+      // window, a system dialog stealing focus, the cursor leaving him - used to
+      // leave `dragging` stuck true for the rest of the session: he stopped being
+      // strokeable and the tap that opens the chat stopped registering, until he
+      // was switched off and on again. main.js keeps the same stamp for the same
+      // reason (the petDrag watchdog in the pet tick).
+      let dragSeenAt = 0;
+      let dragIdleMs = 4000;
+      let dragWatch = 0;
+      let tapHandledAt = 0; // a tap already opened the chat at the release
+      // How far the pointer may travel and still count as a click. 6 px was too
+      // tight for a trackpad or a hand that is not perfectly still: the gesture
+      // landed in a dead zone where nothing happened at all - not carried (he
+      // barely moved) and not a tap (over the limit) - so the chat silently
+      // stayed shut. 10 px is still far below picking him up.
+      const TAP_SLOP_PX = 10;
+      // Where a carry becomes a real drag and he starts complaining about it.
+      const DRAG_ANNOY_PX = 24;
       const dragOverride = { active: false };
       function enableDrag(on) {
         canDrag = !!on;
         document.body.className = canDrag ? "can-drag" : "default";
+      }
+      function stopDragWatch() {
+        if (dragWatch) { clearTimeout(dragWatch); dragWatch = 0; }
+      }
+      // He cannot still be in the air if the pointer is nowhere near him: the
+      // release went to whatever was under the cursor instead. Only the release
+      // path is shared with a real pointerup, so a rescued carry and a released
+      // one can never leave different state behind.
+      function watchDrag() {
+        dragWatch = 0;
+        if (!dragging) return;
+        if (!hover && performance.now() - dragSeenAt > dragIdleMs) { endDrag(); return; }
+        // Still hovering means the hand is still there: keep main's own carry
+        // watchdog fed, or a long still hold reads as a lost release and he walks
+        // out of the hand that is still holding him. Moving him would also drag
+        // him away from the cursor - the next real "move" reports the delta,
+        // so ignoring a still hand costs nothing.
+        if (hover && window.pilly) window.pilly.petDrag({ mode: "hold" });
+        dragWatch = setTimeout(watchDrag, 500);
+      }
+      function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        dragAnnoyed = false;
+        dragOverride.active = false;
+        stopDragWatch();
+        document.body.className = canDrag ? "can-drag" : "default";
+        if (window.pilly) window.pilly.petDrag({ mode: "end" });
+        if (dragReacted) {
+          if (window.pilly) window.pilly.petReact("dragend");
+          dropReaction(performance.now());
+        } else {
+          carryVX = 0; carryVY = 0; carryDist = 0; carryRough = 0;
+        }
+      }
+      // Opening the chat is the one thing a tap must always do: the boop only
+      // decorates the moment, so it can never be what comes between the click and
+      // the window.
+      function openChatFromTap() {
+        try {
+          ensureAudio();
+          boop(performance.now());
+        } catch (err) { /* cosmetic only */ }
+        // Main answers { ok:false } rather than throwing, but a channel that fails
+        // outright would hand back a rejected promise nobody reads, and a click
+        // that leaves no trace anywhere is the one outcome worth a log line.
+        if (!window.pilly) return;
+        try {
+          const opening = window.pilly.openChat();
+          if (opening && typeof opening.catch === "function") {
+            opening.catch((err) => console.warn("Pilly could not open the chat:", (err && err.message) || err));
+          }
+        } catch (err) {
+          console.warn("Pilly could not open the chat:", (err && err.message) || err);
+        }
       }
       document.addEventListener("mousedown", (e) => {
         if (!canDrag) return;
         dragging = true;
         moved = 0;
         dragReacted = false;
+        dragAnnoyed = false;
         lastX = e.screenX;
         lastY = e.screenY;
+        dragSeenAt = performance.now();
+        if (!dragWatch) dragWatch = setTimeout(watchDrag, 500);
+        // A fresh carry: the swing and the "was that ride rough?" verdict are per
+        // pick-up, not lifetime totals.
+        carryVX = 0; carryVY = 0; carryDist = 0; carryRough = 0;
         dragOverride.active = true;
         document.body.className = "dragging";
         if (window.pilly) window.pilly.petDrag({ mode: "start" });
@@ -225,44 +613,211 @@
       });
       document.addEventListener("mousemove", (e) => {
         if (!dragging || !canDrag) return;
+        // An empty hand is not carrying anybody: the pointerup went to another
+        // window and never came back, and believing it did is how he used to end
+        // up stuck in mid-air for the rest of the session. Real carries always
+        // report the held button here.
+        if (typeof e.buttons === "number" && (e.buttons & 1) === 0) { endDrag(); return; }
         const dx = e.screenX - lastX;
         const dy = e.screenY - lastY;
         lastX = e.screenX;
         lastY = e.screenY;
+        dragSeenAt = performance.now();
         moved += Math.abs(dx) + Math.abs(dy);
+        // v1.1.2: remember how he is travelling, so the draw loop can swing him
+        // from your hand and tell whether the ride was rough (dropReaction).
+        carryVX = carryVX * 0.55 + dx * 0.45;
+        carryVY = carryVY * 0.55 + dy * 0.45;
+        carryDist += Math.abs(dx) + Math.abs(dy);
+        carryRough = Math.max(carryRough, Math.abs(dx) + Math.abs(dy));
         if (window.pilly) window.pilly.petDrag({ mode: "move", dx, dy });
         // Only act annoyed after a REAL drag - a plain click must not trigger
         // the "put me down!" reaction.
-        if (!dragReacted && moved > 12) {
+        if (!dragReacted && moved > DRAG_ANNOY_PX) {
           dragReacted = true;
+          dragAnnoyed = true; // only look annoyed after a REAL drag (v1.1.2)
           if (window.pilly) window.pilly.petReact("dragstart");
         }
       });
       document.addEventListener("mouseup", () => {
-        if (!dragging) return;
-        dragging = false;
-        dragOverride.active = false;
-        document.body.className = canDrag ? "can-drag" : "default";
-        if (window.pilly) window.pilly.petDrag({ mode: "end" });
-        if (dragReacted && window.pilly) window.pilly.petReact("dragend");
+        if (!dragging) { moved = 0; return; } // a release that never had our mousedown
+        // The verdict is taken here, where the movement is still known: a tap that
+        // ends just outside him is still a tap, but it produces no click event, so
+        // the chat used to stay shut for no visible reason.
+        const tapped = moved <= TAP_SLOP_PX;
+        endDrag();
+        if (tapped) {
+          tapHandledAt = performance.now();
+          openChatFromTap();
+        }
+        // A real drag keeps `moved` where it is: the click Chromium fires right
+        // after this release belongs to the drag, and the gate below must still
+        // be able to see that. A fresh gesture starts with `moved = 0` anyway.
       });
-      document.addEventListener("click", (e) => {
-        if (moved > 6) return; // it was a drag, not a click
+      document.addEventListener("click", () => {
+        // The release already dealt with this gesture (see the mouseup handler).
+        if (tapHandledAt && performance.now() - tapHandledAt < 500) return;
+        if (moved > TAP_SLOP_PX) { moved = 0; return; } // it was a drag, not a click
+        openChatFromTap();
+      });
+      document.addEventListener("mouseover", () => {
+        hover = true;
         ensureAudio();
-        sfx("boop");
-        clickUntil = performance.now() + 180; // quick tap squish
-        // a little "love" pop makes him feel alive
-        particles.push({
-          type: "emoji", x: 30 + (Math.random() - 0.5) * 14, y: 34,
-          vx: (Math.random() - 0.5) * 0.25, vy: -0.5 - Math.random() * 0.2,
-          size: 9 + Math.random() * 3, life: 0, max: 900,
-          glyph: Math.random() < 0.6 ? "💗" : "✨",
-        });
-        triggerMood({ kind: "love" });
-        if (window.pilly) window.pilly.openChat();
+        // Re-entering is a fresh stroke: without this the first sample would be
+        // measured across the whole screen and count as one enormous stroke.
+        resetStroke();
       });
-      document.addEventListener("mouseover", () => { hover = true; ensureAudio(); });
-      document.addEventListener("mouseout", () => { hover = false; });
+      document.addEventListener("mouseout", () => { hover = false; resetStroke(); });
+      // A carry must never outlive the hand that started it: if the window loses
+      // focus mid-drag (a system dialog, another app) the release may never reach
+      // us, and a `dragging` that stays true measures every later tap against a
+      // stale `moved` - which is one way the click on Pilly did nothing at all.
+      window.addEventListener("blur", () => { if (dragging) endDrag(); });
+      // v1.1.2: being stroked. While he is carried the pointer has a button down
+      // and main owns the movement, so pointer movement with nothing pressed is the
+      // only gesture left that can mean "petting" - which is what makes it
+      // something you discover rather than something you are told about.
+      document.addEventListener("mousemove", (e) => {
+        if (dragging || !hover) return;
+        stroke(e.clientX, e.clientY, performance.now());
+      });
+
+      // ---- v1.1.2: petting him ----
+      // A stroke is recognised the way a hand is: it has to change direction at
+      // least twice (a cursor crossing him never does) and it has to keep coming,
+      // because the charge fades with time. Keep rubbing and he melts.
+      function resetStroke() {
+        petStrokeX = null;
+        petStrokeY = null;
+        petStrokeTurns = 0;
+        petStrokeLastSign = 0;
+      }
+      // How pleased he currently is: 0 = not being petted, 1 = blissful, 2 =
+      // melted. The two states that cancel petting are folded in here - asleep (a
+      // stroke wakes him instead, see wakeUp) and carried (you cannot rub a pet
+      // that is already in the air) - so everything that reacts to petting asks
+      // this one question and the face and the body can never disagree about it.
+      function blissLevel(at) {
+        if (state === "sleep" || dragOverride.active) return 0;
+        return at < petUntil ? petLevel : 0;
+      }
+      function heartPuff(delay, size) {
+        const puff = () => particles.push({
+          type: "emoji", x: 30 + (Math.random() - 0.5) * 16, y: 34,
+          vx: (Math.random() - 0.5) * 0.28, vy: -0.5 - Math.random() * 0.22,
+          size: size + Math.random() * 2, life: 0, max: 950,
+          glyph: Math.random() < 0.62 ? "💗" : "✨",
+        });
+        if (delay) setTimeout(puff, delay);
+        else puff();
+      }
+      function startPetting(at) {
+        const first = !petLevel;
+        if (first) {
+          petLevel = 1;
+          petStart = at;
+          // The charge resets here on purpose: reaching him is one thing, melting
+          // him is a second, longer rub - not the same stroke still going.
+          petCharge = 0;
+          petHeartNext = at;
+          sfx("purr");
+          if (window.pilly) window.pilly.petReact("pet");
+        } else if (petLevel < 2 && petCharge >= PET_MELT_TRIGGER) {
+          petLevel = 2;
+          petCharge = 0;
+          sfx("purr2");
+          heartPuff(0, 10);
+          heartPuff(170, 8);
+        }
+        // He leans into the hand that is stroking him.
+        if (petStrokeLastSign) petLeanX = petStrokeLastSign * (petLevel === 2 ? 1 : 0.7);
+        petUntil = at + (petLevel === 2 ? PET_MELT_MS : PET_MS);
+      }
+      function wakeUp(at) {
+        // He was asleep. Main owns the sleep state - it is the one that sends
+        // pet:state - so the renderer asks for the change and plays the stir
+        // immediately either way. Waiting for the reply would read as a delay, and
+        // going back to sleep on the next tick would be worse than one late frame.
+        petLevel = 0; petUntil = 0; petCharge = 0;
+        resetStroke();
+        petCoolUntil = at + 2500;
+        startGesture("stretch", at);
+        sfx("purr");
+        heartPuff(0, 7);
+        if (window.pilly) window.pilly.petReact("wake");
+      }
+      function stroke(cx, cy, at) {
+        if (petStrokeX === null) { petStrokeX = cx; petStrokeY = cy; return; }
+        const dx = cx - petStrokeX, dy = cy - petStrokeY;
+        petStrokeX = cx; petStrokeY = cy;
+        const moved = Math.abs(dx) + Math.abs(dy);
+        if (moved < 0.6) return; // pointer jitter, not a stroke
+        const gap = Math.max(0, Math.min(600, at - petChargeAt));
+        petChargeAt = at;
+        petCharge *= Math.exp(-gap / PET_CHARGE_DECAY);
+        const sign = Math.abs(dx) > Math.abs(dy) ? Math.sign(dx) : Math.sign(dy);
+        if (sign && sign !== petStrokeLastSign) {
+          petStrokeLastSign = sign;
+          petStrokeTurns++;
+        }
+        petCharge = Math.min(400, petCharge + Math.min(7, moved));
+        if (state === "sleep") {
+          // Touching a sleeping pet is a wake-up, not a demand for an encore, so
+          // it needs a fraction of the full stroke - and it is rate limited,
+          // because otherwise every pointer sample would send another wake request
+          // until main answers.
+          if (petCharge > 12 && at >= petCoolUntil) wakeUp(at);
+          return;
+        }
+        if (dragOverride.active || state === "flee") return;
+        if (petLevel) startPetting(at);
+        else if (at >= petCoolUntil && petCharge >= PET_TRIGGER && petStrokeTurns >= 2) startPetting(at);
+      }
+      // v1.1.2: tapping him. One tap is affection, tapping again is a game - the
+      // escalation is what makes the third tap different from the first, and it
+      // resets by itself so he is never stuck in the silly mode.
+      function boop(at) {
+        boopCount = at - boopLast < 900 ? Math.min(6, boopCount + 1) : 1;
+        boopLast = at;
+        clickUntil = at + 180; // the tap squish is shared by every tap
+        if (boopCount === 1) {
+          sfx("boop");
+          loveFromTapUntil = at + 2900;
+          heartPuff(0, 9);
+          triggerMood({ kind: "love" });
+          return;
+        }
+        // The giggle and the tickle have to be able to take the face over from the
+        // heart eyes the first tap started, or tap two just looks like tap one with
+        // a hop added. Only the love THIS tap started is cleared - a real market
+        // move (or a chat sentiment) is never touched.
+        if (market === "love" && at < loveFromTapUntil) { market = ""; marketUntil = 0; }
+        if (boopCount === 2) {
+          sfx("boop2");
+          startGesture("giggle", at);
+          particles.push({ type: "emoji", x: 42, y: 16, vx: 0.3, vy: -0.3, size: 9, life: 0, max: 850, glyph: "😄" });
+        } else {
+          sfx("tickle");
+          tickleUntil = at + TICKLE_MS;
+          particles.push({ type: "emoji", x: 44, y: 18, vx: 0.32, vy: -0.34, size: 10, life: 0, max: 900, glyph: Math.random() < 0.5 ? "😂" : "🤣" });
+        }
+      }
+      // v1.1.2: putting him down. A short ride is a landing; a long or fast one is
+      // a ride he survives with his eyes spinning, and the difference is what makes
+      // dragging him feel like it happened to somebody.
+      function dropReaction(at) {
+        const rough = carryDist > 240 || carryRough > 34;
+        landingUntil = at + 170;
+        dust(30);
+        sfx(rough ? "dizzy" : "thud");
+        shakeStart = at;
+        shakeUntil = at + (rough ? 900 : 420);
+        if (rough) {
+          dizzyUntil = at + 1500;
+          particles.push({ type: "emoji", x: 44, y: 14, vx: 0.16, vy: -0.3, size: 11, life: 0, max: 1000, glyph: "😵‍💫" });
+        }
+        carryVX = 0; carryVY = 0; carryDist = 0; carryRough = 0;
+      }
 
       // ---- particles ----
       function confetti(n) {
@@ -382,6 +937,34 @@
           tone({ f0: 740, f1: 740, dur: 0.1, wave: "square", gain: 0.045 });
           tone({ f0: 740, f1: 740, dur: 0.1, wave: "square", gain: 0.045, delay: 0.16 });
           tone({ f0: 988, f1: 988, dur: 0.2, wave: "square", gain: 0.04, delay: 0.32 });
+        } else if (type === "purr") {
+          // A purr is a low rumble, not a fanfare: two detuned low tones sliding
+          // a little upward into each other.
+          tone({ f0: 110, f1: 142, dur: 0.42, wave: "sine", gain: 0.06 });
+          tone({ f0: 165, f1: 190, dur: 0.38, wave: "triangle", gain: 0.025, delay: 0.06 });
+        } else if (type === "purr2") {
+          // Deeper into it: the same rumble with a third voice on top.
+          tone({ f0: 130, f1: 176, dur: 0.5, wave: "sine", gain: 0.07 });
+          tone({ f0: 196, f1: 240, dur: 0.46, wave: "sine", gain: 0.03, delay: 0.08 });
+          tone({ f0: 262, f1: 300, dur: 0.4, wave: "sine", gain: 0.02, delay: 0.16 });
+        } else if (type === "boop2") {
+          tone({ f0: 880, f1: 1240, dur: 0.09, wave: "sine", gain: 0.05 });
+        } else if (type === "tickle") {
+          // three quick rising blips - a giggle, not a melody
+          tone({ f0: 780, f1: 1040, dur: 0.09, wave: "triangle", gain: 0.05 });
+          tone({ f0: 880, f1: 1180, dur: 0.09, wave: "triangle", gain: 0.05, delay: 0.1 });
+          tone({ f0: 1040, f1: 1400, dur: 0.12, wave: "triangle", gain: 0.045, delay: 0.2 });
+        } else if (type === "sigh") {
+          tone({ f0: 420, f1: 300, dur: 0.32, wave: "sine", gain: 0.045 });
+          noise(0.14, 0.02, 0.1);
+        } else if (type === "thud") {
+          tone({ f0: 150, f1: 70, dur: 0.18, wave: "sine", gain: 0.06 });
+          noise(0.1, 0.03);
+        } else if (type === "dizzy") {
+          // a wobbling "whoa": two glides pulling in opposite directions
+          tone({ f0: 660, f1: 300, dur: 0.28, wave: "triangle", gain: 0.05 });
+          tone({ f0: 300, f1: 620, dur: 0.28, wave: "triangle", gain: 0.04, delay: 0.16 });
+          tone({ f0: 620, f1: 260, dur: 0.26, wave: "triangle", gain: 0.035, delay: 0.32 });
         }
       }
 
@@ -404,6 +987,16 @@
         ctx.bezierCurveTo(x + s * 0.35, y - s * 1.7, x + s * 0.9, y - s * 1.5, x + s * 0.9, y - s * 0.9);
         ctx.bezierCurveTo(x + s * 0.9, y - s * 0.4, x, y, x, y + s * 0.35);
         ctx.closePath();
+      }
+
+      // 0 = wide open, 1 = fully shut. Uses a sine so the lid eases in and out
+      // instead of popping; the blink cycle is split evenly between the close
+      // and the open.
+      function blinkAmount(now) {
+        if (!blinkStart || now >= blinkUntil) return 0;
+        const p = (now - blinkStart) / Math.max(1, blinkUntil - blinkStart);
+        if (p <= 0 || p >= 1) return 0;
+        return Math.sin(p * Math.PI);
       }
 
       function drawEye(ex, ey, open, excited, squint, pupilX, pupilY, lid, heart) {
@@ -433,7 +1026,7 @@
           ctx.beginPath();
           ctx.arc(ex - 1.7, ey - 2, 0.8, 0, Math.PI * 2);
           ctx.fill();
-          // eyelid: squint when annoyed, droopy when sad
+          // eyelid: smooth blink/squeeze, or a droopy lid when sad
           const lidH = lid ? lid * 7 : squint ? 2.8 : 0;
           if (lidH > 0) {
             ctx.fillStyle = "#0b0f0d";
@@ -450,6 +1043,37 @@
         }
       }
 
+      // v1.1.2: a happy squint - the "^" eye of a pet that is enjoying itself.
+      // Drawing the whole expression is what makes being petted read as bliss
+      // instead of as a half-finished blink.
+      function drawHappyEye(ex, ey) {
+        ctx.strokeStyle = "#0b0f0d";
+        ctx.lineWidth = 1.6;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(ex - 2.9, ey + 1.3);
+        ctx.quadraticCurveTo(ex, ey - 2.7, ex + 2.9, ey + 1.3);
+        ctx.stroke();
+      }
+
+      // v1.1.2: dizzy eyes after a rough ride - a white spiral instead of a
+      // pupil. Cheap to draw and unmistakable even at 30px.
+      function drawDizzyEye(ex, ey) {
+        ctx.fillStyle = "#0b0f0d";
+        roundRect(ex - 3, ey - 3.5, 6, 7, 3);
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        for (let i = 0; i <= 44; i++) {
+          const a = (i / 44) * Math.PI * 4.4;
+          const r = 0.16 + (i / 44) * 1.9;
+          if (i === 0) ctx.moveTo(ex + Math.cos(a) * r, ey + Math.sin(a) * r);
+          else ctx.lineTo(ex + Math.cos(a) * r, ey + Math.sin(a) * r);
+        }
+        ctx.stroke();
+      }
+
       function drawMouth(v, now, mood) {
         // open/close mouth while talking (bubble visible)
         if (talking) {
@@ -460,23 +1084,46 @@
           ctx.fill();
           return;
         }
-        if (mood === "yawn") {
-          // big sleepy yawn
+        if (now < dizzyUntil) {
+          // a wobbly "uuurgh" after a rough landing
+          ctx.strokeStyle = "#0b0f0d";
+          ctx.lineWidth = 1.4;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(-3.4, -5);
+          ctx.quadraticCurveTo(-1.7, -3.8, 0, -5);
+          ctx.quadraticCurveTo(1.7, -6.2, 3.4, -5);
+          ctx.stroke();
+          return;
+        }
+        if (mood === "bliss") {
+          // not the full grin - a slack, contented little smile
+          ctx.strokeStyle = "#0b0f0d";
+          ctx.lineWidth = 1.5;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(-3.2, -5.2);
+          ctx.quadraticCurveTo(0, -3.4, 3.2, -5.2);
+          ctx.stroke();
+          return;
+        }
+        if (mood === "yawn" || mood === "stretch") {
+          // big sleepy yawn / stretchy "aaah"
           ctx.fillStyle = "#0b0f0d";
           ctx.beginPath();
           ctx.ellipse(0, -4.8, 3.2, 3.4, 0, 0, Math.PI * 2);
           ctx.fill();
           return;
         }
-        if (mood === "scared") {
-          // startled little "o"
+        if (mood === "scared" || mood === "sneeze") {
+          // startled / pre-sneeze little "o"
           ctx.fillStyle = "#0b0f0d";
           ctx.beginPath();
           ctx.ellipse(0, -5, 1.6, 2.2, 0, 0, Math.PI * 2);
           ctx.fill();
           return;
         }
-        if (mood === "curious") {
+        if (mood === "curious" || mood === "peek") {
           // curious little "o"
           ctx.fillStyle = "#0b0f0d";
           ctx.beginPath();
@@ -512,6 +1159,55 @@
         ctx.stroke();
       }
 
+      // v1.1.2: the coin flip - his own gesture rather than a generic pet trick.
+      // He tosses a gold coin, it spins edge over edge, and he catches it with a
+      // puff. Geometry only (a disc, a rim, three slanted bars), so it stays
+      // crisp at every pet size and costs nothing to draw.
+      const COIN_MS = 1250;
+      function coinState(now) {
+        if (gesture !== "coin" || now >= gestureUntil) return null;
+        const p = Math.max(0, Math.min(1, (now - gestureStart) / COIN_MS));
+        return {
+          p,
+          h: Math.sin(p * Math.PI),                                // toss arc: up, then back down
+          sx: Math.max(0.12, Math.abs(Math.cos(p * Math.PI * 3))), // three half turns
+        };
+      }
+      function drawCoin(cx, cy, r, sx) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(sx, 1);
+        const g = ctx.createLinearGradient(0, -r, 0, r);
+        g.addColorStop(0, "#fde68a");
+        g.addColorStop(0.5, "#fbbf24");
+        g.addColorStop(1, "#b45309");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(120,53,15,0.5)";
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+        // the mark on the coin: three slanted bars, drawn as geometry
+        ctx.fillStyle = "rgba(9,24,18,0.85)";
+        for (let i = 0; i < 3; i++) {
+          const ry = -1.9 + i * 1.9;
+          const sk = i === 1 ? -r * 0.17 : r * 0.17;
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.46 + sk, ry - r * 0.14);
+          ctx.lineTo(r * 0.46 + sk, ry - r * 0.14);
+          ctx.lineTo(r * 0.46 - sk, ry + r * 0.14);
+          ctx.lineTo(-r * 0.46 - sk, ry + r * 0.14);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.fillStyle = "rgba(255,255,255,0.55)";
+        ctx.beginPath();
+        ctx.arc(-r * 0.35, -r * 0.45, r * 0.17, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
       function drawBody(now) {
         // capsule body
         const grd = ctx.createLinearGradient(0, -23, 0, 0);
@@ -542,20 +1238,62 @@
         // face
         let mood = defaultMood;
         if (now < marketUntil) mood = market;
+        // v1.1.2: being petted outranks everything except a live market move, and
+        // it is said with the face - squinting eyes, blush, a small slack smile -
+        // not only with the sway of the body.
+        else if (blissLevel(now)) mood = "bliss";
         else if (gesture === "yawn" && now < gestureUntil) mood = "yawn";
+        else if (gesture === "stretch" && now < gestureUntil) mood = "stretch";
+        else if (gesture === "sneeze" && now < gestureUntil) mood = "sneeze";
+        else if (gesture === "peek" && now < gestureUntil) mood = "peek";
         else if (gesture === "wave" && now < gestureUntil) mood = "happy";
         else if (gesture === "wiggle" && now < gestureUntil) mood = "happy";
+        else if (gesture === "giggle" && now < gestureUntil) mood = "happy";
+        else if (gesture === "spin" && now < gestureUntil) mood = "happy";
+        else if (gesture === "heart" && now < gestureUntil) mood = "love";
         else if (gesture === "curious" && now < gestureUntil) mood = "curious";
         else if (state === "flee") mood = "scared";
         else if (state === "eat" && now < eatUntil) mood = "eat";
         else if (batteryLow) mood = "sad"; // v1.1.1: droopy when the battery is low
         const heartEyes = mood === "love";
-        const eyesOpen = cur.eyes === 1 && !(now < blinkUntil) && !(gesture === "yawn" && now < gestureUntil);
+        // v1.1.2: eyelids move smoothly instead of snapping open/shut - a hard
+        // cut reads as a glitch at 60fps, an eased lid reads as a real blink.
+        let squeeze = 0;
+        if (gesture && now < gestureUntil && (gesture === "yawn" || gesture === "stretch" || gesture === "sneeze")) {
+          const gp = (now - gestureStart) / Math.max(1, gestureUntil - gestureStart);
+          squeeze = Math.sin(gp * Math.PI); // squeezed shut mid-gesture
+        }
+        const eyesOpen = cur.eyes === 1;
+        const lidAmt = Math.max(blinkAmount(now), squeeze);
         const eyeY = -14.5;
-        const lid = (now < marketUntil && market === "down") || batteryLow ? 0.6 : 0;
-        drawEye(-11, eyeY, eyesOpen, face.excited, face.squint, face.px, face.py, lid, heartEyes);
-        drawEye(9, eyeY, eyesOpen, face.excited, face.squint, face.px, face.py, lid, heartEyes);
-        if (heartEyes) {
+        // v1.1.2: a droopy lid when the market is red or the battery is low, plus
+        // the night droop - but never while he is excited or talking, because a
+        // pet that looks half asleep while answering you is just broken.
+        const droop = (((now < marketUntil && market === "down") || batteryLow) ? 0.6 : 0)
+          + (face.excited || talking ? 0 : nightDroop());
+        const lid = Math.min(1, Math.max(droop, lidAmt));
+        lastLid = lid;
+        // v1.1.2: three more faces live here. Being petted, being tickled and
+        // being dropped all change the eyes, and they outrank the normal pupil
+        // drawing: tracking the cursor through a giggle looks like nothing
+        // happened at all.
+        const dizzyNow = now < dizzyUntil;
+        const blissNow = blissLevel(now) > 0;
+        const pleasedEyes = blissNow || now < tickleUntil || (gesture === "giggle" && now < gestureUntil);
+        if (!eyesOpen) {
+          drawEye(-11, eyeY, false, false, false, 0, 0, 0, false);
+          drawEye(9, eyeY, false, false, false, 0, 0, 0, false);
+        } else if (dizzyNow) {
+          drawDizzyEye(-11, eyeY);
+          drawDizzyEye(9, eyeY);
+        } else if (pleasedEyes) {
+          drawHappyEye(-11, eyeY);
+          drawHappyEye(9, eyeY);
+        } else {
+          drawEye(-11, eyeY, true, face.excited, face.squint, face.px, face.py, lid, heartEyes);
+          drawEye(9, eyeY, true, face.excited, face.squint, face.px, face.py, lid, heartEyes);
+        }
+        if (heartEyes || blissNow) {
           // blush
           ctx.fillStyle = "rgba(244, 63, 94, 0.30)";
           ctx.beginPath();
@@ -574,22 +1312,83 @@
         drawMouth(cur.mouth, now, mood);
       }
 
+      // v1.1.2: the focus ring. A thin ring above his head drains as the current
+      // phase runs out, with the minutes left in the middle; amber and slowly
+      // pulsing in the final minute (a cue you can ignore, not a popup), blue on
+      // a break, and "paused" while the block is held. It floats with him
+      // (bodyY * 0.3) so a hop does not leave it behind, and it is scaled to stay
+      // inside the window at every pet size. Returns what it drew - the animation
+      // harness checks the maths instead of sampling pixels.
+      function drawFocusRing(now, bodyY) {
+        const f = focusState;
+        if (!f) return null;
+        const pct = f.totalMs > 0 ? Math.max(0, Math.min(1, 1 - f.remainingMs / f.totalMs)) : 1;
+        const onBreak = f.phase !== "focus";
+        const lastMin = !onBreak && !f.paused && f.remainingMs <= 60000;
+        const color = onBreak ? "#38bdf8" : lastMin ? "#fbbf24" : theme.c1;
+        const cx = 30;
+        const cy = 13 + bodyY * 0.3;
+        const r = 7;
+        ctx.save();
+        ctx.lineWidth = 2.2;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "rgba(255,255,255,0.18)";
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = color;
+        if (lastMin && !reduceMotion) ctx.globalAlpha = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(now / 220));
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + pct * Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = color;
+        ctx.font = "bold 8px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const label = f.paused ? "❚❚" : String(Math.max(1, Math.ceil(f.remainingMs / 60000)));
+        ctx.fillText(label, cx, cy + 0.5);
+        ctx.restore();
+        return { phase: f.phase, pct, label, color, paused: f.paused, cy };
+      }
+
       function draw(now, dt) {
         ctx.clearRect(0, 0, W, H);
         const t = now / 1000;
         // Blink: a living pet blinks. Occasional slow blink for a natural beat.
         if (cur.eyes === 1 && now > blinkNext) {
           const slow = Math.random() < 0.2;
-          blinkUntil = now + (slow ? 300 : 120);
+          blinkStart = now;
+          blinkUntil = now + (slow ? 300 : 140);
           blinkNext = now + (slow ? 1500 : 2200) + Math.random() * (slow ? 2400 : 3400);
+          // v1.1.2: sometimes follow with a quick second blink - extra life.
+          blinkAgainAt = Math.random() < 0.22 ? blinkUntil + 170 : 0;
+        } else if (blinkAgainAt && now > blinkAgainAt) {
+          blinkAgainAt = 0;
+          blinkStart = now;
+          blinkUntil = now + 100;
         }
         const base = dragOverride.active ? PARAMS.drag : (PARAMS[state] || PARAMS.pause);
         const k = 1 - Math.exp((-dt / 1000) * 9);
-        cur.squX += (base.squX - cur.squX) * k;
-        cur.squY += (base.squY - cur.squY) * k;
-        cur.mouth += (base.mouth - cur.mouth) * k;
-        cur.tilt += (base.tilt - cur.tilt) * k;
-        cur.annoyed = base.annoyed;
+        // v1.1.2: being petted overrides the resting shape of the current state
+        // instead of pushing against it. Two ease-toward-target systems on the same
+        // value settle in the middle of both, so the melt used to reach only about
+        // a third of its squash; this way every frame eases straight to the petted
+        // shape (a second, final blend further down catches the states that assign
+        // squX/squY outright). Petting is ignored while asleep - waking up is a
+        // separate event - and while carried: you cannot rub a pet already in the
+        // air.
+        const bliss = blissLevel(now);
+        const petBase = bliss
+          ? { squX: bliss === 2 ? 1.16 : 1.08, squY: bliss === 2 ? 0.86 : 0.93, mouth: base.mouth, tilt: 0, annoyed: false, eyes: 1 }
+          : base;
+        cur.squX += (petBase.squX - cur.squX) * k;
+        cur.squY += (petBase.squY - cur.squY) * k;
+        cur.mouth += (petBase.mouth - cur.mouth) * k;
+        cur.tilt += (petBase.tilt - cur.tilt) * k;
+        // v1.1.2: only look annoyed mid-drag after a real drag (a quick click
+        // must stay a friendly boop, not a scowl flash).
+        cur.annoyed = dragOverride.active ? dragAnnoyed : base.annoyed;
         cur.eyes = base.eyes;
 
         // vertical bob / rotation per state
@@ -620,13 +1419,34 @@
           cur.squX = 1 + 0.05 * ph;
           cur.squY = 1 - 0.06 * ph;
         } else if (state === "hop" && now - hopStart < HOP_MS) {
+          // v1.1.2: anticipation crouch, an uncoil into a stretch off the
+          // ground, neutral at the apex, then a squash on the way down. The
+          // squash is anchored at the feet, so he coils instead of floating.
           const p = (now - hopStart) / HOP_MS;
-          const h = Math.sin(p * Math.PI);
-          bodyY = -h * 16;
-          cur.squX = 1 + 0.22 * (1 - h);
-          cur.squY = 1 - 0.22 * (1 - h);
-          if (p > 0.85) dust(30);
-          if (p >= 0.97) landingUntil = now + 170;
+          const kf = hopShapeAt(p, hopKf);
+          cur.squX = kf.x;
+          cur.squY = kf.y;
+          const q = Math.max(0, (p - HOP_ANTIC) / (1 - HOP_ANTIC));
+          bodyY = -Math.sin(q * Math.PI) * 18;
+          if (q > 0.85) dust(30);
+          if (q >= 0.97) landingUntil = now + 170;
+        }
+        // v1.1.2: he breathes in every state, not only while parked. A sprite
+        // that only moves when something happens reads as a slideshow; a slow
+        // chest rise in the background is what makes him look alive while you
+        // work. It is faster when he is busy, and it is off while you are
+        // holding him or when the OS asked for less motion.
+        if (state !== "pause" && state !== "sleep" && !dragOverride.active && !reduceMotion) {
+          const busy = state === "walk" || state === "eat" || state === "dance" || state === "flee";
+          breathY = Math.sin(t * (busy ? 3.6 : 2.2)) * (busy ? 0.5 : 0.65);
+          bodyY -= Math.abs(breathY);
+          // The chest rise must never fight a body that something else is already
+          // shaping: the hop keyframes and the gesture branches assign the squash
+          // directly, and easing over them would flatten them (the hop's airborne
+          // stretch) or fight them frame by frame.
+          if (!busy && state !== "hop" && !gesture) cur.squY += ((1 + breathY * 0.02) - cur.squY) * k;
+        } else {
+          breathY = 0;
         }
         // happy bounce when the market goes green
         if (now < bounceUntil) {
@@ -638,21 +1458,192 @@
           const p = (now - spookStart) / 420;
           bodyY -= Math.sin(p * Math.PI) * 10;
         }
+        // v1.1.2: back to work - a small, deliberate nod when a break ends.
+        if (now < focusNodUntil) {
+          const w = Math.sin(((focusNodUntil - now) / 520) * Math.PI);
+          bodyY += w * 1.6;
+          rot += w * 0.05;
+        }
+        // v1.1.2: carried. He lags behind your hand and swings from it - a held
+        // body reads as heavy because of the pendulum, not because of the offset.
+        // carryVX/VY are your real mouse deltas, smoothed; they decay here so a
+        // stopped hand stops the swing instead of leaving him leaning forever.
+        carryVX *= Math.exp(-dt / 90);
+        carryVY *= Math.exp(-dt / 90);
+        if (dragOverride.active) {
+          const lean = Math.max(-1, Math.min(1, carryVX / 12));
+          bodyY += 0.8 + Math.min(2.2, Math.abs(carryVY) * 0.03); // he hangs a little lower
+          rot += lean * 0.18 * petDirNow;                          // and trails the hand
+          rot += Math.sin(t * 6.5) * 0.03 * Math.abs(lean);
+        } else if (shakeStart && now < shakeUntil) {
+          // shaking off a rough landing: a fast, damped side-to-side. The decay is
+          // what makes it read as "put me down properly" rather than as a wobble.
+          const age = (now - shakeStart) / Math.max(1, shakeUntil - shakeStart);
+          const w = Math.sin(age * Math.PI * 9) * (1 - age);
+          rot += w * 0.13;
+          cur.squX *= 1 + 0.04 * w;
+        } else if (shakeStart) {
+          shakeStart = 0;
+        }
+        // v1.1.2: being petted. He leans into the hand while it moves, and purrs -
+        // a vibration you can see: a tiny high-frequency rock, deliberately under
+        // one degree, so it reads as contentment and not as a tremble.
+        if (bliss) {
+          const w = Math.min(1, (now - petStart) / 260); // eased in, then held
+          petLean += (petLeanX - petLean) * Math.min(1, (dt / 1000) * 6);
+          rot += petLean * (bliss === 2 ? 0.1 : 0.07) * w * petDirNow;
+          rot += Math.sin(t * (bliss === 2 ? 26 : 18)) * (bliss === 2 ? 0.018 : 0.01) * w;
+          bodyY -= (bliss === 2 ? 1.6 : 0.9) * w;
+          if (now > petHeartNext) {
+            petHeartNext = now + (bliss === 2 ? 300 : 520);
+            heartPuff(0, bliss === 2 ? 9 : 7);
+          }
+        } else if (petUntil) {
+          // A petted pet settles, he does not simply stop: one last heart floats
+          // off and the shared landing squash takes over. Then he is left alone for
+          // a while, so affection cannot be farmed by wiggling the mouse - an
+          // instant response to every twitch would read as a lever, not as a pet.
+          petUntil = 0;
+          petLevel = 0;
+          petCharge = 0;
+          resetStroke();
+          petCoolUntil = now + PET_COOLDOWN_MS;
+          landingUntil = now + 170;
+          heartPuff(0, 8);
+          sfx("sigh");
+        }
+        // v1.1.2 fix: retire a finished gesture. Without this the picker's
+        // "nothing else playing" guard latched on the first idle gesture and
+        // he would only ever perform one gesture per session.
+        if (gesture && now >= gestureUntil) gesture = "";
+        // v1.1.2: wind-up. A gesture that starts at full amplitude on its first
+        // frame looks like the clip was cut in half, so the first 18% of every idle
+        // clip is spent coiling back before the move. The hop has had its own
+        // anticipation for a while - this is the same idea for the rest.
+        if (gesture && now < gestureUntil && !dragOverride.active && !bliss) {
+          const wp = (now - gestureStart) / Math.max(1, gestureUntil - gestureStart);
+          if (wp < 0.18) {
+            const a = Math.sin((wp / 0.18) * Math.PI * 0.5);
+            bodyY += a * 1.5;
+            rot -= a * 0.07 * petDirNow;
+          }
+        }
         // waving: gentle rock side to side
         if (gesture === "wave" && now < gestureUntil) rot += Math.sin(t * 6) * 0.08;
         // wiggle: quick excited shimmy
         if (gesture === "wiggle" && now < gestureUntil) rot += Math.sin(t * 20) * 0.12;
         // curious: slow, thoughtful sway
         if (gesture === "curious" && now < gestureUntil) rot += Math.sin(t * 1.6) * 0.04;
+        // v1.1.2: talking - a gentle, attentive bob while the bubble is up.
+        if (talking && state !== "walk" && state !== "dance") {
+          rot += Math.sin(t * 5) * 0.025;
+          bodyY -= Math.abs(Math.sin(t * 5)) * 0.7;
+        }
+        // v1.1.2: stretch - full-body rise and reach, then relax.
+        if (gesture === "stretch" && now < gestureUntil) {
+          const gp = (now - gestureStart) / Math.max(1, gestureUntil - gestureStart);
+          const w = Math.sin(gp * Math.PI);
+          bodyY -= w * 2.4;
+          cur.squY += ((1 + 0.11 * w) - cur.squY) * k;
+          cur.squX += ((1 - 0.07 * w) - cur.squX) * k;
+        }
+        // v1.1.2: sneeze - a quick little "achoo" head-shake.
+        if (gesture === "sneeze" && now < gestureUntil) {
+          const gp = (now - gestureStart) / Math.max(1, gestureUntil - gestureStart);
+          const w = Math.sin(gp * Math.PI);
+          rot += Math.sin(gp * Math.PI * 2) * 0.06;
+          bodyY -= w * 2.0;
+        }
+        // v1.1.2: peek - glance left, then right, with a slight lean.
+        if (gesture === "peek" && now < gestureUntil) {
+          const gp = (now - gestureStart) / Math.max(1, gestureUntil - gestureStart);
+          rot += Math.sin(gp * Math.PI * 2) * 0.07;
+        }
+        // v1.1.2: heart - a proud little rise with a heartbeat pulse.
+        if (gesture === "heart" && now < gestureUntil) {
+          const gp = (now - gestureStart) / Math.max(1, gestureUntil - gestureStart);
+          const w = Math.sin(gp * Math.PI);
+          bodyY -= w * 1.8;
+          const beat = Math.sin(gp * Math.PI * 6);
+          cur.squX += ((1 + 0.05 * beat * w) - cur.squX) * k;
+          cur.squY += ((1 + 0.035 * beat * w) - cur.squY) * k;
+        }
+        // v1.1.2: giggle - a bouncy little laugh.
+        if (gesture === "giggle" && now < gestureUntil) {
+          const gp = (now - gestureStart) / Math.max(1, gestureUntil - gestureStart);
+          const w = Math.sin(gp * Math.PI);
+          bodyY -= Math.abs(Math.sin(gp * Math.PI * 5)) * 2.6 * w;
+          rot += Math.sin(gp * Math.PI * 5) * 0.05 * w;
+        }
+        // v1.1.2: spin - a quick pirouette. Squashing X through zero fakes the
+        // turn on a sprite that has no depth.
+        if (gesture === "spin" && now < gestureUntil) {
+          const gp = (now - gestureStart) / Math.max(1, gestureUntil - gestureStart);
+          cur.squX = Math.max(0.14, Math.abs(Math.cos(gp * Math.PI * 2)));
+          rot += Math.sin(gp * Math.PI * 2) * 0.06;
+        }
+        // v1.1.2: the coin flip - he rises a little with the toss, follows the
+        // coin up with his eyes, and the catch squashes him (via the landing
+        // squash below) with a puff of gold.
+        const coin = coinState(now);
+        if (coin) {
+          bodyY -= coin.h * 1.8;
+          if (coin.p > 0.9 && !coinCaught) {
+            coinCaught = true;
+            landingUntil = now + 170;
+            sfx("coin");
+            for (let i = 0; i < 5; i++) {
+              particles.push({
+                type: "confetti",
+                x: 30 + (Math.random() - 0.5) * 26,
+                y: 34,
+                vx: (Math.random() - 0.5) * 1.1,
+                vy: -0.2 - Math.random() * 0.5,
+                rot: Math.random() * Math.PI,
+                vr: (Math.random() - 0.5) * 0.5,
+                size: 1.5 + Math.random() * 1.3,
+                color: "#fbbf24",
+                life: 0,
+                max: 480 + Math.random() * 220,
+              });
+            }
+          }
+        }
+        // v1.1.2: when the cursor comes really close, he leans away a hair -
+        // the difference between "a sprite" and "something that noticed you".
+        // 0.11 rad is ~2.5px of head travel at the default size: readable, still
+        // shy rather than theatrical.
+        if (!dragOverride.active && state !== "flee" && state !== "sleep" && !bliss && !(now < tickleUntil)) {
+          const near = Math.hypot(cursor.x, cursor.y);
+          if (near < 36) rot -= (1 - near / 36) * 0.11 * (cursor.x < 0 ? -1 : 1) * petDirNow;
+        }
         // soft landing squash after the hop
         if (now < landingUntil) {
           const landK = (landingUntil - now) / 170;
           const k2 = 1 - Math.exp((-dt / 1000) * 16);
           cur.squX += (1 + 0.16 * landK - cur.squX) * k2;
           cur.squY += (1 - 0.15 * landK - cur.squY) * k2;
+          // v1.1.2: the squash releases into a short damped wobble instead of
+          // just stopping. Weight, not decoration: the follow-through is what
+          // separates an animation from a sprite swap.
+          wobbleStart = landingUntil;
+          wobbleUntil = landingUntil + WOBBLE_MS;
+        } else if (wobbleStart && now < wobbleUntil) {
+          // Assigned, not eased: the envelope is a function of the absolute age,
+          // so the settle is identical at 30 and at 144 fps. Easing it instead
+          // filters the oscillation down to a fraction of a pixel (invisible).
+          // The age is clamped so a non-monotonic clock can never turn the
+          // settle into a huge body distortion.
+          const age = Math.min(1, Math.max(0, (now - wobbleStart) / WOBBLE_MS));
+          const w = Math.sin(age * Math.PI * 3) * Math.exp(-age * 3.4) * 0.055;
+          cur.squX = 1 + w;
+          cur.squY = 1 - w;
+        } else if (wobbleStart) {
+          wobbleStart = 0;
+          wobbleUntil = 0;
         }
         // gentle squash while the cursor hovers over Pilly
-        if (hover && state !== "drag" && !(now < marketUntil) && !(gesture === "wave" && now < gestureUntil)) {
+        if (hover && state !== "drag" && !bliss && !(now < marketUntil) && !(gesture === "wave" && now < gestureUntil) && !(now < tickleUntil)) {
           cur.squX += (1.07 - cur.squX) * k;
           cur.squY += (0.95 - cur.squY) * k;
         }
@@ -662,27 +1653,67 @@
           cur.squX += (1 + 0.18 * p - cur.squX) * k;
           cur.squY += (1 - 0.16 * p - cur.squY) * k;
         }
+        // v1.1.2: tickled - a squirm, not a giggle. He twists side to side and
+        // shivers, because being tickled is funny *and* annoying rather than purely
+        // happy, and the two reactions must not look like the same animation. This
+        // sits after the tap squish on purpose: the wobble has to survive it.
+        if (now < tickleUntil) {
+          const tw = Math.min(1, (tickleUntil - now) / 500);
+          rot += Math.sin(t * 24) * 0.1 * tw;
+          bodyY -= Math.abs(Math.sin(t * 12)) * 0.8 * tw;
+          cur.squX *= 1 + Math.sin(t * 24 + 1.2) * 0.03 * tw;
+          cur.squY *= 1 - Math.abs(Math.sin(t * 12)) * 0.02 * tw;
+        }
+        // v1.1.2: a perk. Every 30-70s he pulls himself up straight for a moment,
+        // as if something just caught his eye, and settles back. Short, rare and
+        // free - the cheapest way to keep a long idle window from looking asleep.
+        // Deferred while asleep, carried, talking or mid-gesture, and skipped for a
+        // few seconds instead of being skipped for another 30.
+        const perkPw = now < perkUntil
+          ? Math.sin(Math.min(1, Math.max(0, 1 - (perkUntil - now) / PERK_MS)) * Math.PI)
+          : 0;
+        if (now < perkUntil) {
+          bodyY -= perkPw * 2.1;
+          rot += perkPw * 0.05 * petDirNow;
+        } else if (perkUntil) {
+          perkUntil = 0;
+        } else if (now > perkNext) {
+          const free = state !== "sleep" && !dragOverride.active && !talking && !gesture && now >= marketUntil && !bliss;
+          if (free) perkUntil = now + PERK_MS;
+          else perkNext = now + 5000;
+        }
+        // v1.1.2: the petted shape gets the last word. The walk cycle, the spin and
+        // the landing all assign squX/squY outright, so a pet that is mid-stroll
+        // would otherwise lose the melt for as long as he keeps walking. Blending
+        // again here keeps the melt at very nearly full depth and still leaves a
+        // trace of the shimmy underneath it - which is what a hand on a waddling
+        // pet actually feels like.
+        if (bliss) {
+          const kb = 1 - Math.exp((-dt / 1000) * 22);
+          cur.squX += (petBase.squX - cur.squX) * kb;
+          cur.squY += (petBase.squY - cur.squY) * kb;
+        }
+        // The perk's stretch is applied to the drawing scale and not to cur.squY:
+        // a multiply on the eased value re-feeds the ease every frame and compounds
+        // into a half-again-taller pet, which reads as a rendering glitch rather
+        // than as a pet noticing you. Applied once, at draw time, it stays a hair.
+        const perkStretch = 1 + perkPw * 0.05;
 
-        // occasional idle gestures while hanging out (wave / yawn / curious / wiggle)
-        if ((state === "pause" || state === "walk") && now > gestureNext && !talking && now >= marketUntil && !gesture) {
-          gestureNext = now + 15000 + Math.random() * 15000;
-          const gr = Math.random();
-          if (gr < 0.32) gesture = "wave";
-          else if (gr < 0.58) gesture = "yawn";
-          else if (gr < 0.8) gesture = "curious";
-          else gesture = "wiggle";
-          gestureUntil = now + 1100;
-          if (gesture === "wave") {
-            particles.push({ type: "emoji", x: 44, y: 30, vx: 0.25, vy: -0.3, size: 10, life: 0, max: 1000, glyph: "👋" });
-          } else if (gesture === "curious") {
-            particles.push({ type: "emoji", x: 44, y: 14, vx: 0.1, vy: -0.2, size: 9, life: 0, max: 900, glyph: "?" });
-            dartX = 0; dartY = -1.4; dartUntil = now + 1100; dartNext = now + 1100;
-          } else if (gesture === "wiggle") {
-            particles.push({ type: "emoji", x: 44, y: 30, vx: 0.2, vy: -0.25, size: 9, life: 0, max: 900, glyph: "✨" });
-          }
+        // occasional idle gestures while hanging out (v1.1.2: wave / yawn /
+        // stretch / peek / curious / sneeze / wiggle / heart / giggle / spin /
+        // coin - see GESTURE_MS and DAY_PART_GESTURES for the live set)
+        if ((state === "pause" || state === "walk") && now > gestureNext && !talking && now >= marketUntil && !gesture && !bliss && !dragOverride.active && !(now < tickleUntil) && !(now < perkUntil)) {
+          // v1.1.2: how long until the next idle moment depends on the hour -
+          // he is quickest in the morning and lazy late at night - and a running
+          // focus block stretches it further. The point of a pomodoro is that he
+          // leaves you alone while it runs.
+          const part = dayPart();
+          const focusQuiet = focusState && focusState.phase === "focus" && !focusState.paused ? 1.5 : 1;
+          gestureNext = now + (14000 + Math.random() * 14000) * (DAY_PART_PACE[part] || 1) * focusQuiet;
+          startGesture(pickIdleGesture(part), now);
         }
         // Stage 6: occasional random moods / thought bubbles while hanging out
-        if ((state === "pause" || state === "walk") && now > thoughtNext && !talking && now >= marketUntil && !gesture) {
+        if ((state === "pause" || state === "walk") && now > thoughtNext && !talking && now >= marketUntil && !gesture && !bliss && !dragOverride.active && !(now < tickleUntil)) {
           thoughtNext = now + 40000 + Math.random() * 45000;
           if (Math.random() < 0.6) {
             market = Math.random() < 0.5 ? "up" : "down";
@@ -708,17 +1739,35 @@
         const useDart = now < dartUntil;
         const cursorDist = Math.hypot(cursor.x, cursor.y);
         const alert = state !== "flee" && state !== "sleep" && cursorDist < 95;
-        const excited = state === "dance" || state === "flee" || alert || talking || (now < marketUntil && market === "up");
+        const peeking = gesture === "peek" && now < gestureUntil;
+        const excited = state === "dance" || state === "flee" || alert || talking || peeking || (now < marketUntil && market === "up") || now < perkUntil || !!bliss;
         const squint = cur.annoyed;
-        const cx = useDart ? dartX : Math.max(-1.2, Math.min(1.2, (cursor.x / 120) * 1.2)) * petDirNow;
+        // v1.1.2: while peeking, pupils sweep side to side instead of tracking.
+        const peekShift = peeking ? Math.sin(((now - gestureStart) / Math.max(1, gestureUntil - gestureStart)) * Math.PI * 2) * 1.5 : 0;
+        // v1.1.2: while he is walking and you are nowhere near him, his pupils
+        // look where he is going instead of tracking a cursor he cannot see.
+        // The blend eases in over ~0.3s, so crossing the threshold never reads
+        // as a twitch.
+        const wantsAhead = state === "walk" && cursorDist > 220 && !useDart && !peeking && !talking;
+        gazeAhead += ((wantsAhead ? 1 : 0) - gazeAhead) * Math.min(1, (dt / 1000) * 6);
+        let cx = useDart ? dartX : (peekShift ? peekShift : Math.max(-1.2, Math.min(1.2, (cursor.x / 120) * 1.2))) * petDirNow;
+        cx = cx * (1 - gazeAhead) + 0.85 * petDirNow * gazeAhead;
         const cy = useDart ? dartY : Math.max(-1.2, Math.min(1.2, (cursor.y / 120) * 1.2));
         face.px = cx; face.py = cy; face.excited = excited; face.squint = squint;
+        // The two values the verification harness reads to prove that the touch
+        // animations really moved him: rotation and vertical offset are locals of
+        // draw(), and a pixel count cannot tell a lean from a breath.
+        face.rot = rot; face.bodyY = bodyY; face.squY = cur.squY * perkStretch;
 
         // soft radial shadow (pro, scales with jump height)
         const shScale = Math.max(0.4, 1 - (bodyY / 40) * 0.65);
+        // v1.1.2: the shadow follows the silhouette instead of floating at a fixed
+        // width. A pet that melts into a pancake while his shadow stays the same
+        // size looks pasted onto the desktop, and so does a pirouette.
+        const shW = shScale * Math.max(0.78, Math.min(1.28, 0.55 + cur.squX * 0.45));
         ctx.save();
         ctx.translate(30, 62);
-        ctx.scale(shScale, 0.25 * shScale);
+        ctx.scale(shW, 0.25 * shScale);
         const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 16);
         g.addColorStop(0, "rgba(0,0,0,0.5)");
         g.addColorStop(1, "rgba(0,0,0,0)");
@@ -728,14 +1777,31 @@
         ctx.fill();
         ctx.restore();
 
+        // v1.1.2: birth pop-in - Pilly springs onto the taskbar with a little
+        // overshoot and a puff of dust.
+        let pop = 1;
+        if (now - bornAt < 640) {
+          const p = (now - bornAt) / 640;
+          const ease = 1 - Math.pow(1 - p, 3);
+          pop = 0.72 + 0.28 * ease + 0.1 * Math.sin(p * Math.PI) * (1 - p);
+          if (!birthDustDone && p > 0.4) { birthDustDone = true; dust(30); }
+        }
+
         // pill (mirrored by direction)
         ctx.save();
         ctx.translate(30, 53 + bodyY);
         ctx.scale(petDirNow, 1);
         ctx.rotate(rot);
-        ctx.scale(cur.squX * ps, cur.squY * ps);
+        ctx.scale(cur.squX * ps * pop, cur.squY * perkStretch * ps * pop);
         drawBody(now);
         ctx.restore();
+
+        // v1.1.2: the coin flip rides in front of him, anchored to the top of his
+        // head so it tracks his size, his hops and the breathing.
+        if (coin) {
+          const bodyTop = 53 + bodyY - 23 * ps;
+          drawCoin(30 + petDirNow * 2 * ps, bodyTop - 7 - coin.h * 20 * ps, 5 * ps, coin.sx);
+        }
 
         // v1.1.1: a little battery badge while the laptop is running low.
         if (batteryLow) {
@@ -744,6 +1810,10 @@
           ctx.textBaseline = "alphabetic";
           ctx.fillText("🔋", 30, 22 + bodyY);
         }
+
+        // v1.1.2: the focus ring, drawn last so nothing he does can hide the one
+        // piece of real app state he carries.
+        drawFocusRing(now, bodyY);
       }
 
       function updateParticles(now, dt) {

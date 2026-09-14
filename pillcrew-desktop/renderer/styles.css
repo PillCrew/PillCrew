@@ -51,28 +51,6 @@ body {
 }
 .pill-avatar canvas { display: block; width: 100%; height: 100%; }
 .pill-avatar.thinking { animation: pillThink 1.2s ease-in-out infinite; }
-.pill-avatar .eye {
-  position: absolute;
-  top: 5px;
-  width: 4px;
-  height: 5px;
-  border-radius: 50%;
-  background: #fff;
-  animation: pillBlink 3.2s ease-in-out infinite;
-}
-.pill-avatar .eye.l { left: 11px; }
-.pill-avatar .eye.r { right: 11px; }
-.pill-avatar .mouth {
-  position: absolute;
-  bottom: 3px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 9px;
-  height: 3px;
-  border-radius: 0 0 8px 8px;
-  background: #fff;
-  animation: pillSmile 3.2s ease-in-out infinite;
-}
 .bar-id { display: flex; flex-direction: column; line-height: 1.15; }
 .bar-id strong { font-size: 13px; letter-spacing: 0.01em; }
 .bar-id small { color: var(--dim); font-size: 10px; display: flex; align-items: center; gap: 4px; }
@@ -236,18 +214,6 @@ body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
 .chips.collapsed { gap: 0; }
 
 /* ---- Animations ---- */
-@keyframes pillBob {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-3px) scale(1.05); }
-}
-@keyframes pillBlink {
-  0%, 90%, 100% { transform: scaleY(1); }
-  94% { transform: scaleY(0.1); }
-}
-@keyframes pillSmile {
-  0%, 70%, 100% { transform: translateX(-50%) scaleY(1); }
-  82% { transform: translateX(-50%) scaleY(0.5) translateY(1px); }
-}
 @keyframes pillThink {
   0%, 100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.18), 0 2px 14px rgba(34,197,94,0.65); }
   50% { box-shadow: 0 0 0 6px rgba(34,197,94,0.3), 0 2px 22px rgba(34,197,94,0.95); }
@@ -723,12 +689,6 @@ body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
 .wl-stat b.down { color: var(--red); }
 
 /* ---- Pilly's scorecard (track record) ---- */
-.sc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
-.sc-cell { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 6px; text-align: center; }
-.sc-cell b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
-.sc-cell span { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
-.sc-cell.up b { color: var(--green); }
-.sc-cell.down b { color: var(--red); }
 .sc-row { grid-template-columns: minmax(0, 1fr) auto; }
 .sc-res { font-variant-numeric: tabular-nums; font-size: 12px; }
 .sc-open { color: var(--dim); font-size: 11px; }
@@ -913,3 +873,17 @@ body.app-open { animation: appIn 0.18s ease-out; }
 /* Coin cards: subtle lift on hover */
 .coin-card, .trend-card { transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s; }
 .coin-card:hover, .trend-card:hover { border-color: rgba(34,197,94,0.4); transform: translateY(-1px); }
+
+/* v1.1.2: honour the OS "reduce motion" setting. The UI stays fully usable -
+   panels still appear and rows still land - but nothing loops forever and
+   nothing slides across the screen. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .pill-avatar.thinking, .bar-id .dot, .radar-row .rad-go,
+  .sc-winbar i, .typing i { animation: none !important; }
+}

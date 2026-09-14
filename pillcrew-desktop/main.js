@@ -6,6 +6,9 @@ const {
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const { macAppMenuTemplate, menuAppName } = require("./src/macmenu");
+const { chatIsOpen, chatToggle } = require("./src/windowstate");
+const { SPOOK_COOLDOWN_MS, CURSOR_HOLD_RESUME_MS, shouldSpook, shouldStandStill } = require("./src/petmotion");
 
 // Tiny .env loader (keeps keys out of the code).
 function loadEnv() {
@@ -24,6 +27,7 @@ const AI = require("./src/ai");
 const PILLY = require("./src/pilly");
 const SETTINGS = require("./src/settings");
 const COINS = require("./src/coins");
+const TREND = require("./src/trendcache");
 const WATCH = require("./src/watchlist");
 const PNL = require("./src/pnl");
 const PICKS = require("./src/picks");
@@ -31,6 +35,7 @@ const WHALES = require("./src/whales");
 const REMINDERS = require("./src/reminders");
 const FOCUS = require("./src/focus");
 const ACTIVITY = require("./src/activity");
+const RPC = require("./src/rpc");
 const { autoUpdater } = require("electron-updater");
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -54,16 +59,102 @@ function petOpts() {
   return (s && s.pet) || { theme: "green", size: "md", bubbles: true, bubbleSize: "md", walkMode: "taskbar", stopFreq: "normal", questions: true };
 }
 
+// Every background tick is launched from a timer, so there is nothing left to
+// catch a rejected promise - and Electron's Node only *prints* a warning for an
+// unhandled rejection, which is exactly how a broken tick stays invisible for
+// weeks. A few of these ticks had no guard at all, so a single network hiccup or
+// a missing settings file failed silently. They all go through here now: the
+// failure is named in the log and the pet carries on.
+function bgTick(name, p) {
+  if (!p || typeof p.catch !== "function") return;
+  p.catch((e) => console.warn(`[pilly] the ${name} tick failed:`, (e && e.stack) || e));
+}
+
+// A bare timer callback runs outside any surrounding try/catch, so one throw
+// inside would be an uncaught exception. Anything scheduled by hand uses this.
+function safely(what, fn) {
+  try { fn(); } catch (e) { console.warn(`[pilly] ${what} failed:`, (e && e.stack) || e); }
+}
+
+// shell.openExternal() hands back a promise that rejects wherever the platform has
+// no registered handler for the URL (a Linux session without xdg-open, say). Called
+// bare, a failed click looked like success and left an unhandled rejection in the
+// log; every caller gets a plain yes/no now and can say so in the UI.
+async function openExternal(url) {
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch (e) {
+    console.warn("[pilly] could not open", url, "-", (e && e.message) || e);
+    return false;
+  }
+}
+
+// v1.1.2: Pilly is a pet, not a widget - he should still be on the taskbar after
+// a restart instead of needing the pet button every single launch.
+function rememberPetOn(on) {
+  try {
+    SETTINGS.savePet(userDataDir(), { on: !!on });
+  } catch (e) { /* ignore */ }
+}
+
+// Where Pilly is standing, once the user has parked him somewhere. Debounced
+// because a drag fires a move event per mouse sample.
+let petPosTimer = null;
+function rememberPetPos(flush) {
+  if (petPosTimer) { clearTimeout(petPosTimer); petPosTimer = null; }
+  const write = () => {
+    try {
+      SETTINGS.savePet(userDataDir(), { pos: { x: Math.round(petX), y: Math.round(petY) } });
+    } catch (e) { /* ignore */ }
+  };
+  if (flush) write();
+  else petPosTimer = setTimeout(write, 900);
+}
+
+// Which monitor is that point actually on? Multi-monitor is the norm for
+// traders, and Pilly used to be hard-wired to the primary display: he could
+// not be dragged onto a second screen (the clamp snapped him back) and his
+// walking area was the primary workArea even when he stood elsewhere.
+function workAreaFor(x, y) {
+  try {
+    return screen.getDisplayNearestPoint({ x: Math.round(x), y: Math.round(y) }).workArea;
+  } catch (e) {
+    return screen.getPrimaryDisplay().workArea;
+  }
+}
+
 // ---- Stage 5: Pilly's memory & stats (persisted in userData) ----
 let STATS = null;
 function statsPath() { return path.join(userDataDir(), "pilly-stats.json"); }
+// Every key lives here and the file on disk is merged over these defaults. The
+// loaded file used to be taken as-is, so any key added in a later build came back
+// undefined for an existing user - and the little stat chatter printed it out
+// ("undefined sad ones"). Adding a key is now safe on an old file, and a
+// hand-edited or half-written counter is coerced back to a number.
+function statsDefaults() {
+  return {
+    firstSeen: Date.now(), lastSeen: Date.now(), days: 1,
+    jokes: 0, questions: 0, spooks: 0, drags: 0, pets: 0, poops: 0, alerts: 0,
+    chats: 0, coins: 0, wallets: 0, trends: 0, happy: 0, sad: 0,
+    // These six are written by later features (reminders, hot radar, Pilly's pick,
+    // the focus timer, the radar). They have to be listed here or the coercion pass
+    // below never sees them - and a hand-edited counter would then reach bumpStat as
+    // a string, where "5" + 1 is "51" instead of 6.
+    reminders: 0, hotpicks: 0, pillypick: 0, focusStarted: 0, focusDone: 0, radar: 0,
+  };
+}
 function loadStats() {
   if (STATS) return STATS;
+  let loaded = null;
   try {
-    if (fs.existsSync(statsPath())) STATS = JSON.parse(fs.readFileSync(statsPath(), "utf8"));
-  } catch (e) { /* ignore */ }
-  if (!STATS || typeof STATS !== "object") {
-    STATS = { firstSeen: Date.now(), lastSeen: Date.now(), jokes: 0, questions: 0, spooks: 0, drags: 0, poops: 0, alerts: 0, chats: 0, coins: 0, wallets: 0, trends: 0, happy: 0, sad: 0 };
+    if (fs.existsSync(statsPath())) loaded = JSON.parse(fs.readFileSync(statsPath(), "utf8"));
+  } catch (e) { /* a corrupt file is not worth a dialog - start over */ }
+  const defaults = statsDefaults();
+  STATS = Object.assign(defaults, loaded && typeof loaded === "object" ? loaded : {});
+  for (const key of Object.keys(defaults)) {
+    const n = Number(STATS[key]);
+    STATS[key] = Number.isFinite(n) && n >= 0 ? n : defaults[key];
   }
   STATS.lastSeen = Date.now();
   STATS.days = Math.max(1, Math.ceil((Date.now() - STATS.firstSeen) / 86400000));
@@ -83,11 +174,22 @@ function applyPetSettings() {
 }
 
 let tray = null;
+// Whether the summon shortcut could actually be claimed. Another app owning
+// Ctrl/Cmd+Alt+P used to be completely invisible to the user (v1.1.2 fix).
+let summonHotkeyOk = null;
 let win = null;
+// v1.1.2: whether the user has the chat window open, tracked so the window can be
+// rebuilt in the state they left it in (see watchWindowSurvival / createWindow).
+let chatWanted = false;
 let petWin = null;
 let petTimer = null;
 let petActive = false;
+// Whether pet.html has finished loading, so the renderer is listening. A greet
+// sent before that is dropped on the floor by Chromium, and arming the cooldown
+// for it would silence the first real greeting for a minute.
+let petLoaded = false;
 let petDir = 1;
+let petDirSent = null; // last direction pushed to the renderer (IPC de-dup)
 let petX = 0;
 let petState = "walk";
 let petStateEnd = 0;
@@ -96,13 +198,29 @@ let petLastState = "";
 let petY = 0;
 let petTarget = null;
 let petDragging = false;
+// When the renderer last told us it was still dragging. A drag lives only as long
+// as those reports keep coming (see the watchdog in the pet tick).
+let petDragSeenAt = 0;
+// Last cursor offset pushed to the renderer, so a still mouse next to a still Pilly
+// stops costing an IPC message every 24 ms (pet:dir is de-duped the same way).
+let petCursorSentX = null;
+let petCursorSentY = null;
 let petCursorPrev = { x: 0, y: 0, t: 0 };
 let petSpookCooldownUntil = 0;
+// Live poop overlays. They fade out on their own after ~5 s, but switching Pilly
+// off in the meantime used to leave one stranded on the screen.
+const poopWins = new Set();
 let marketAlertTimer = null;
 let pillyPickTimer = null;
 let sniperTimer = null;
 let whaleTimer = null;
 let portfolioMoodTimer = null;
+// v1.1.2: the one-shot "warm-up" timers startPet() arms (first joke, first
+// question, the morning greeting...). They used to be fire-and-forget, so a quick
+// off→on toggle left the old ones armed; each then fired into the *new* session and
+// started a second copy of its self-rearming chain, doubling Pilly's chatter for
+// the rest of the run. They are tracked here so stopPet() can cancel them.
+let petWarmTimers = [];
 let reminderTimer = null;
 let dailyBriefDone = false; // once per session
 // ---- v1.1.1: focus sessions + activity diary ----
@@ -122,6 +240,13 @@ let lastPetQuestion = "";
 let iconFrames = [];
 let trayTimer = null;
 let trayFrame = 0;
+// The live menu object, kept so the macOS right-click handler and a menu rebuild
+// always agree on what to show (v1.1.2).
+let trayMenuRef = null;
+// v1.1.2: whether the OS asks for reduced motion. Reported by the renderers
+// (there is no cross-platform main-process API for it) and used to keep the
+// tray icon still instead of bobbing forever.
+let reduceMotionPref = false;
 let isQuitting = false;
 
 // ---- Pill icon frames (bobbing animation) ----
@@ -135,9 +260,31 @@ function loadFrames() {
   return frames;
 }
 
+// v1.1.2: macOS draws a tray image at its own point size, so a raw 32x32 frame
+// filled the whole menu bar and looked soft on a Retina display. Give the menu
+// bar a 16pt image with a real 2x representation (the same pixels, described
+// honestly) - and leave Windows/Linux, which already got it right, untouched.
+const trayIcons = [];
+const trayIconSrc = [];
+function trayIconFor(i) {
+  const img = iconFrames[i];
+  if (process.platform !== "darwin" || !img || img.isEmpty()) return img;
+  if (trayIcons[i] && trayIconSrc[i] === img) return trayIcons[i];
+  try {
+    const icon = nativeImage.createEmpty();
+    icon.addRepresentation({ scaleFactor: 1, buffer: img.resize({ width: 16, height: 16, quality: "best" }).toPNG() });
+    icon.addRepresentation({ scaleFactor: 2, buffer: img.resize({ width: 32, height: 32, quality: "best" }).toPNG() });
+    trayIcons[i] = icon;
+  } catch (e) {
+    trayIcons[i] = img; // never trade a cosmetic win for a working tray
+  }
+  trayIconSrc[i] = img;
+  return trayIcons[i];
+}
+
 function createWindow() {
   const chatSettings = SETTINGS.effective(userDataDir()).chat || {};
-  win = new BrowserWindow({
+  const created = new BrowserWindow({
     width: 380,
     height: 580,
     minWidth: 380,
@@ -151,6 +298,10 @@ function createWindow() {
     skipTaskbar: true,
     icon: iconFrames[0],
     backgroundColor: "#0b0f0d",
+    // macOS: a background window eats the click that activates it, so the first
+    // click on Pilly after using another app would only bring the app forward
+    // and the user had to click again. The pet and the bubble already carry this.
+    acceptFirstMouse: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -158,24 +309,48 @@ function createWindow() {
       sandbox: true,
     },
   });
-  win.setMenuBarVisibility(false);
-  win.loadFile(path.join(__dirname, "renderer", "index.html"));
-  win.on("close", (e) => {
+  win = created;
+  created.setMenuBarVisibility(false);
+  created.loadFile(path.join(__dirname, "renderer", "index.html"));
+  created.on("close", (e) => {
     if (!isQuitting) {
       e.preventDefault();
       saveWinBounds();
-      win.hide();
+      created.hide();
     }
   });
   // Remember where the user left the window (position + height).
-  win.on("resize", scheduleWinSave);
-  win.on("move", scheduleWinSave);
+  created.on("resize", scheduleWinSave);
+  created.on("move", scheduleWinSave);
+  // v1.1.2: greet the user when the app window takes focus.
+  wireGreetOnFocus(created);
   // If the window is ever fully destroyed (e.g. during quit races), drop the
   // stale reference so the next tray click can rebuild it instead of crashing
-  // with "Object has been destroyed".
-  win.on("closed", () => {
-    win = null;
+  // with "Object has been destroyed". Only clear it while it still *is* this
+  // window: a window rebuilt after a teardown must not be forgotten by the
+  // dead window's own handler.
+  created.on("closed", () => {
+    if (win === created) win = null;
   });
+  // v1.1.2: whether the user has this window open has to be known *before* it is
+  // torn down - by the time a window dies it can no longer say, and a window the
+  // user had closed must not pop back up (see watchWindowSurvival).
+  created.on("show", () => { chatWanted = true; });
+  created.on("hide", () => { chatWanted = false; });
+  // v1.1.2: a window that loses its renderer surface (see watchWindowSurvival)
+  // is rebuilt, otherwise a native teardown leaves the user with nothing to open
+  // from the tray until they restart the app. Only while the user actually has it
+  // open, though: a teardown behind a hidden window costs nothing (the next tray
+  // click rebuilds it and positions it), and announcing a "repair" that the user
+  // cannot see - at every quit, say - is how a log stops being trusted.
+  watchWindowSurvival(created, "the chat window", () => {
+    ensureWindow();
+    if (!win || win.isDestroyed()) return;
+    // Restore where the user had it whether or not it was open, so the next tray
+    // click does not open a rebuilt window at some default spot.
+    positionWindow();
+    if (chatWanted) win.show();
+  }, () => chatWanted);
 }
 
 // ---- Window bounds memory (open where you left it, keep the height you set) ----
@@ -212,6 +387,55 @@ function ensureWindow() {
   if (win && !win.isDestroyed()) return win;
   createWindow();
   return win;
+}
+
+// ---- Survival net ---------------------------------------------------------
+// A window can lose its renderer surface to something that is not a close: a
+// renderer process that dies, a compositor that tears a view down, or the OS
+// pulling a window out from under a long-running process (observed on Windows as
+// a WM_DESTROY with no WM_CLOSE, which no Electron event reports). Pilly is a
+// companion and an always-on-top overlay, so "the window silently vanished" is
+// the worst possible outcome - it is repaired instead of logged and forgotten.
+const repairStamps = [];
+// A window that keeps dying must not spin the app into a rebuild loop; four
+// repairs a minute is already pathological, past that we stop and stay loud.
+function repairAllowed() {
+  const now = Date.now();
+  while (repairStamps.length && now - repairStamps[0] > 60000) repairStamps.shift();
+  if (repairStamps.length >= 4) return false;
+  repairStamps.push(now);
+  return true;
+}
+
+function watchWindowSurvival(w, what, rebuild, wanted) {
+  let wc;
+  try { wc = w.webContents; } catch (e) { return; }
+  wc.on("render-process-gone", (e, details) => {
+    if (isQuitting) return;
+    const reason = (details && details.reason) || "unknown";
+    console.warn(`[pilly] the renderer of ${what} is gone (${reason}) - reloading it`);
+    if (!repairAllowed()) return;
+    // A reload is enough: the window, its position and its bounds all survive.
+    setTimeout(() => { try { if (!wc.isDestroyed()) wc.reload(); } catch (err) { /* ignore */ } }, 400);
+  });
+  wc.on("destroyed", () => {
+    if (isQuitting) return;
+    // Tearing a window down on purpose (switching the pet off, quitting) is not a
+    // crash worth announcing - and it must not spend the repair budget either.
+    if (wanted && !wanted()) return;
+    if (!repairAllowed()) {
+      console.warn(`[pilly] ${what} keeps losing its window - not rebuilding in a loop`);
+      return;
+    }
+    // Read the intent now: once the window is gone it can no longer say whether
+    // the user had it open, and a window they had closed must stay closed.
+    let wasVisible = false;
+    try { wasVisible = !w.isDestroyed() && w.isVisible(); } catch (e) { /* ignore */ }
+    console.warn(`[pilly] ${what} lost its window${wasVisible ? " while open" : ""} - rebuilding it`);
+    // Let the dead window's own handlers run first (its "closed" handler clears
+    // the reference the rebuild then needs to be clear).
+    setTimeout(() => { try { rebuild(wasVisible); } catch (e) { console.error("[pilly] rebuild failed:", (e && e.message) || e); } }, 300);
+  });
 }
 
 // Position the chat window: restore where the user last left it (clamped to
@@ -261,24 +485,118 @@ function resetWindowPosition() {
   try { fs.rmSync(path.join(userDataDir(), "pilly-window.json"), { force: true }); } catch (e) { /* ignore */ }
 }
 
+// Is the chat in front of the user right now? The platform answers the two halves
+// of that question differently, so the decision lives in src/windowstate.js where
+// `npm test` can cover the macOS answer as well.
+function chatState(w) {
+  if (!w || w.isDestroyed()) return null;
+  return { visible: w.isVisible(), minimized: w.isMinimized() };
+}
+
+// The one way back to the chat window: the pet, the bubble, the tray, the
+// hotkey, a second launch and the Dock icon all end up here, so "the chat did not
+// open" can never be one reveal path's opinion against another's. A minimised
+// window used to be the trap - on macOS it still reports itself visible, so every
+// caller decided "already open, leave it alone" and the user had a window they
+// could not reach without switching the pet off and on again.
+function revealWindow(force) {
+  const w = ensureWindow();
+  if (!w || w.isDestroyed()) return null;
+  if (w.isMinimized()) w.restore();
+  positionWindow();
+  if (force || !w.isVisible()) w.show();
+  raiseWindow(w);
+  return w;
+}
+
+// Putting the chat back in front of whatever is covering it. `focus()` on its own
+// is not enough: another always-on-top overlay (Pilly himself, a chat from another
+// app) keeps sitting in front, and a click that leaves the chat exactly where it
+// was reads as "nothing happened". Both calls are best effort - the window can be
+// on its way down while this runs, and the click still did what it could.
+function raiseWindow(w) {
+  if (!w || w.isDestroyed()) return;
+  try { w.moveTop(); } catch (e) { /* raising is best effort */ }
+  try { w.focus(); } catch (e) { /* focus is best effort */ }
+}
+
+// "Open chat" everywhere means OPEN, never hide. The tray item and the macOS menu
+// item both carry that label, and both used to toggle: a menu entry that promises
+// to open a window that is already up put the window *away* instead, which is the
+// opposite of what it says. A minimised window counts as closed here, because on
+// macOS it still reports itself visible and showing it does not bring it back.
+// The tray icon click and the summon hotkey are still toggles - a summon that
+// answers a second press by hiding is what a summon reflex expects.
+function openChatWindow() {
+  const w = ensureWindow();
+  if (w && chatIsOpen(chatState(w))) raiseWindow(w);
+  else revealWindow(true);
+  // Hot-coin / pick bubbles open the chat PRE-LOADED with that coin.
+  const pending = pendingHotCoin;
+  if (pending && pending.mint) {
+    pendingHotCoin = null;
+    setTimeout(() => sendToChat("pilly:load-coin", pending), 500);
+  }
+  return w;
+}
+
 function toggleWindow() {
   const w = ensureWindow();
   if (!w) return;
-  if (w.isVisible()) {
+  if (chatToggle(chatState(w)) === "hide") {
     w.hide();
     return;
   }
-  positionWindow();
-  w.show();
-  w.focus();
+  revealWindow(true);
 }
 
 // ---- Taskbar pet: a tiny pill that walks along the taskbar ----
 const PET_W = 60;
 const PET_H = 64; // tall enough that a hop (up to ~21px above the pill top at lg scale) never clips
 
+// A floating pet has to follow the user. On macOS he is otherwise stranded on
+// the Space he was spawned on (switching desktops just leaves him behind), and
+// he stays under a full-screen app. Linux (X11) has the same "sticky window"
+// concept; on Windows this is a no-op because the pet is already global.
+function pinToAllWorkspaces(w) {
+  if (!w || w.isDestroyed()) return;
+  if (process.platform !== "darwin" && process.platform !== "linux") return;
+  const apply = () => {
+    try { w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch (e) { /* ignore */ }
+  };
+  apply();
+  // macOS silently drops the flag when a window is hidden and shown again,
+  // so re-assert it every time the window comes back.
+  w.on("show", apply);
+}
+
+// Unplugging a monitor (or changing its resolution) used to strand Pilly on a
+// display that no longer exists - an invisible pet whose only fix was to switch
+// him off and on again. The chat window had the same problem.
+function clampPetToDisplays() {
+  if (!petWin || petWin.isDestroyed()) return;
+  const area = screen.getDisplayMatching(petWin.getBounds()).workArea;
+  const x = Math.max(area.x - PET_W + 24, Math.min(petX, area.x + area.width - 24));
+  const y = Math.max(area.y - 24, Math.min(petY, area.y + area.height - 24));
+  if (x === petX && y === petY) return;
+  petX = x;
+  petY = y;
+  petTarget = null; // whatever he was walking to is gone with the monitor
+  petWin.setPosition(Math.round(petX), Math.round(petY));
+}
+
+function clampChatToDisplays() {
+  if (!win || win.isDestroyed() || !win.isVisible()) return;
+  const b = win.getBounds();
+  const area = screen.getDisplayMatching(b).workArea;
+  const x = Math.max(area.x + 4, Math.min(b.x, area.x + area.width - b.width - 4));
+  const y = Math.max(area.y + 4, Math.min(b.y, area.y + area.height - b.height - 4));
+  if (x === b.x && y === b.y) return;
+  win.setBounds({ x: Math.round(x), y: Math.round(y), width: b.width, height: b.height });
+}
+
 function createPetWindow() {
-  petWin = new BrowserWindow({
+  const created = new BrowserWindow({
     width: PET_W,
     height: PET_H,
     frame: false,
@@ -288,45 +606,166 @@ function createPetWindow() {
     resizable: false,
     movable: false,
     focusable: false,
+    // macOS: a non-focusable window cannot become key, and by default the first
+    // click on such a window is spent trying to activate it - i.e. swallowed.
+    // Pilly must react to the first tap. Ignored on Windows/Linux.
+    acceptFirstMouse: true,
     hasShadow: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Pilly is an always-on-top overlay that must keep animating even when the
+      // OS considers him occluded - on macOS that happens as soon as the user
+      // switches Space or opens a full-screen app, and Chromium would otherwise
+      // throttle requestAnimationFrame down to ~1fps and freeze him mid-motion.
+      backgroundThrottling: false,
     },
   });
-  petWin.setAlwaysOnTop(true, "screen-saver");
-  petWin.loadFile(path.join(__dirname, "renderer", "pet.html"));
-  petWin.on("closed", () => { petWin = null; });
+  petWin = created;
+  petLoaded = false;
+  created.setAlwaysOnTop(true, "screen-saver");
+  pinToAllWorkspaces(created);
+  created.loadFile(path.join(__dirname, "renderer", "pet.html"));
+  // A pet window created *after* a focus session started - he was switched on
+  // mid-pomodoro, or he was restarted while one was running - still has to show
+  // the session. pet:focus carries it, and this is the one push the state
+  // machine does not cover on its own.
+  created.webContents.on("did-finish-load", () => {
+    try {
+      petLoaded = true;
+      if (!petWin || petWin.isDestroyed()) return;
+      if (focusDoc) petWin.webContents.send("pet:focus", focusStatusPayload());
+    } catch (e) { /* ignore */ }
+  });
+  // Same rule as the chat window: only clear the reference while it still is this
+  // window, so a rebuilt pet is not nulled out by the window that died.
+  created.on("closed", () => { if (petWin === created) petWin = null; });
+  watchWindowSurvival(created, "Pilly's window", () => rebuildPetWindow(), () => petActive);
+}
+
+// Pilly's window lost its renderer surface. He is not switched off - that is a
+// user decision (the tray toggle calls stopPet(), which clears petActive first) -
+// so the window is replaced in place and he keeps walking from where he was.
+function rebuildPetWindow() {
+  if (!petActive || isQuitting) return;
+  // The 24 ms walk tick notices a dead window too, and whichever of the two gets
+  // here second must not rebuild him a second time.
+  try {
+    if (petWin && !petWin.isDestroyed() && !petWin.webContents.isDestroyed()) return;
+  } catch (e) { /* fall through and rebuild */ }
+  const keep = { x: petX, y: petY, state: petState, dir: petDir };
+  if (petWin && !petWin.isDestroyed()) {
+    try { petWin.destroy(); } catch (e) { /* already gone */ }
+  }
+  petWin = null;
+  createPetWindow();
+  if (!petWin || petWin.isDestroyed()) return;
+  petX = keep.x;
+  petY = keep.y;
+  petState = keep.state;
+  petDir = keep.dir;
+  petDirSent = null; // the fresh renderer has no facing yet
+  petWin.setPosition(Math.round(petX), Math.round(petY));
+  try {
+    petWin.webContents.once("did-finish-load", () => {
+      try {
+        if (petWin && !petWin.isDestroyed()) petWin.webContents.send("pet:state", petState);
+      } catch (e) { /* ignore */ }
+    });
+  } catch (e) { /* ignore */ }
+  // He is still wearing the same speech bubble, so it has to follow him.
+  if (bubbleWin && !bubbleWin.isDestroyed() && bubbleWin.isVisible()) positionBubble();
+}
+
+// A one-shot timer that stopPet() knows about (see petWarmTimers).
+function petWarm(fn, delay) {
+  const t = setTimeout(() => {
+    petWarmTimers = petWarmTimers.filter((x) => x !== t);
+    fn();
+  }, delay);
+  petWarmTimers.push(t);
+}
+
+// A self-rearming scheduler has to cancel its own previous handle: overwriting it
+// would leave two chains running and each keeps re-arming itself for good.
+function rearm(handle, fn, delay) {
+  if (handle) clearTimeout(handle);
+  return setTimeout(fn, delay);
 }
 
 function startPet() {
   if (petActive) return;
   petActive = true;
   createPetWindow();
-  const area = screen.getPrimaryDisplay().workArea;
   const pet = petOpts();
-  petX = Math.floor(area.x + area.width * 0.4);
+  // Spawn on the monitor the user is actually working on (not always the
+  // primary one), then let a remembered position win - clamped into whatever
+  // display exists now, so a monitor that has since been unplugged can't put
+  // him off-screen.
+  const spawn = workAreaFor(screen.getCursorScreenPoint().x, screen.getCursorScreenPoint().y);
+  petX = Math.floor(spawn.x + spawn.width * 0.4);
   petY = pet.walkMode === "screen"
-    ? Math.floor(area.y + area.height * 0.35)
-    : area.y + area.height - PET_H - 2;
+    ? Math.floor(spawn.y + spawn.height * 0.35)
+    : spawn.y + spawn.height - PET_H - 2;
+  const savedPos = pet.pos && Number.isFinite(pet.pos.x) && Number.isFinite(pet.pos.y) ? pet.pos : null;
+  if (savedPos) {
+    const area = workAreaFor(savedPos.x + PET_W / 2, savedPos.y + PET_H / 2);
+    petX = Math.max(area.x - PET_W + 24, Math.min(savedPos.x, area.x + area.width - 24));
+    petY = pet.walkMode === "screen"
+      ? Math.max(area.y - 24, Math.min(savedPos.y, area.y + area.height - 24))
+      : area.y + area.height - PET_H - 2; // taskbar mode always lands back on the bar
+  }
   petDir = 1;
+  petDirSent = null;
+  petCursorSentX = null;
+  petCursorSentY = null;
   petState = "walk";
   petStateEnd = Date.now() + 2000 + Math.random() * 2000;
   petStateStart = Date.now();
   petTarget = null;
   petDragging = false;
+  petDragSeenAt = 0;
+  // petLastState has to be cleared too, or an off→on toggle where the last state
+  // was "walk" makes the tick's de-dup skip the very first pet:state - and the
+  // freshly created renderer never hears which state to draw.
+  petLastState = "";
   petWin.setPosition(petX, petY);
-  petTimer = setInterval(() => {
-    if (!petWin || petWin.isDestroyed()) { stopPet(); return; }
+  petTimer = setInterval(() => safely("the pet tick", () => {
+    if (!petWin || petWin.isDestroyed()) {
+      // A window can be torn down by something outside the app. That used to read
+      // as "the pet is gone" and switch him off for good; it now rebuilds him.
+      // stopPet() is the only other way petWin disappears - and it is always
+      // preceded by petActive = false - so a dead window while he is on is never
+      // a user decision.
+      if (petActive && !isQuitting) rebuildPetWindow();
+      else stopPet();
+      return;
+    }
     const now = Date.now();
+    // A drag lives only as long as the renderer keeps reporting it. A pointerup
+    // that never arrives - the button released outside the 60x64 pet window, a
+    // system dialog stealing focus, a renderer that reloads - used to leave
+    // petDragging stuck true for the rest of the session: Pilly stopped walking,
+    // stopped reacting and ignored every state change until he was switched off
+    // and on again. Every "move" refreshes the stamp, so a real drag never trips
+    // this.
+    if (petDragging && now - petDragSeenAt > 4000) {
+      petDragging = false;
+      petDragSeenAt = 0;
+      petTarget = null;
+      console.warn("[pilly] the drag stopped reporting - Pilly released");
+    }
     // While the user is dragging Pilly, don't fight him - but keep the
     // speech bubble glued to him as he moves.
     if (petDragging) {
       if (bubbleWin && !bubbleWin.isDestroyed() && bubbleWin.isVisible()) positionBubble();
       return;
     }
+    // Pilly's walking area follows the monitor he is actually standing on, so
+    // he can live on any screen instead of the primary one only.
+    const area = workAreaFor(petX + PET_W / 2, petY + PET_H / 2);
     if (now >= petStateEnd) {
       const plan = randomPetState();
       petState = plan.mode;
@@ -342,27 +781,40 @@ function startPet() {
       petStateEnd = now + (nightNow ? 13000 : 9000) + Math.random() * 9000;
       petStateStart = now;
     }
-    // Screen mode: Pilly plays cat-and-mouse with the cursor. A FAST poke
-    // spooks him (jump + "!" + a short scared dash), then he stops and lets
-    // you click him. A cooldown + speed check means slowly hovering over him
-    // to open the chat never triggers it.
+    // Screen mode: Pilly plays cat-and-mouse with the cursor. A FLICK spooks him
+    // (jump + "!" + a short scared dash), then he stops and lets you click him.
+    // Both thresholds are in src/petmotion.js: the old "any cursor faster than a
+    // crawl, any time" rule meant a normal approach scared him off mid-click, so
+    // the click landed on the desktop and the chat never opened.
+    let cursorOnHim = false;
     if (!petDragging && petOpts().walkMode === "screen" && petState !== "sleep") {
       const c = screen.getCursorScreenPoint();
       const dtC = now - petCursorPrev.t;
       let cSpeed = 0;
       if (petCursorPrev.t && dtC > 0) cSpeed = Math.hypot(c.x - petCursorPrev.x, c.y - petCursorPrev.y) / dtC;
       const d = Math.hypot(c.x - (petX + PET_W / 2), c.y - (petY + PET_H - 20));
-      if (d < 46 && cSpeed > 0.5 && now > petSpookCooldownUntil) {
+      cursorOnHim = shouldStandStill({ dist: d, dragging: petDragging, walkMode: petOpts().walkMode, state: petState });
+      if (shouldSpook({ dist: d, speed: cSpeed, now, cooldownUntil: petSpookCooldownUntil })) {
         petState = "flee";
         petStateStart = now;
         petStateEnd = now + 800;
-        petSpookCooldownUntil = now + 4000;
+        petSpookCooldownUntil = now + SPOOK_COOLDOWN_MS;
         bumpStat("spooks");
         petWin.webContents.send("pet:spook", now);
         pickFleeTarget(c, 90);
       }
     }
-    if (petState === "walk" || petState === "flee") {
+    // A cursor parked on him is "about to click": he stops walking instead of
+    // sliding out from under the pointer, and carries on shortly after it leaves.
+    // Standing still is also the honest animation for it - walking on the spot
+    // looked like a bug. An in-progress flee is left alone so the scared dash
+    // still plays out; the movement block below parks him once it is over.
+    if (cursorOnHim && petState === "walk") {
+      petState = "pause";
+      petStateStart = now;
+      petStateEnd = now + CURSOR_HOLD_RESUME_MS;
+    }
+    if ((petState === "walk" || petState === "flee") && !cursorOnHim) {
       // Pick a new target when there isn't one (taskbar mode = along the
       // taskbar line, screen mode = anywhere on the monitor).
       if (!petTarget) petTarget = petState === "flee" ? { x: petX, y: petY - 20 } : pickPetTarget(area);
@@ -381,7 +833,7 @@ function startPet() {
         petX += (dx / dist) * sp;
         petY += (dy / dist) * sp;
         const nd = dx >= 0 ? 1 : -1;
-        if (nd !== petDir) { petDir = nd; petWin.webContents.send("pet:dir", petDir); }
+        if (nd !== petDir) petDir = nd;
         petX = Math.max(area.x, Math.min(petX, area.x + area.width - PET_W));
         petY = Math.max(area.y - 8, Math.min(petY, area.y + area.height - PET_H));
       }
@@ -391,55 +843,74 @@ function startPet() {
       petWin.webContents.send("pet:state", petState);
     }
     petWin.setPosition(Math.round(petX), Math.round(petY));
-    petWin.webContents.send("pet:dir", petDir);
+    // Only push the direction when it actually changes (or on the first tick,
+    // so a freshly-created window syncs up). This used to fire on every tick -
+    // ~40 IPC messages a second carrying one unchanged number.
+    if (petDir !== petDirSent) {
+      petDirSent = petDir;
+      petWin.webContents.send("pet:dir", petDir);
+    }
     const cur = screen.getCursorScreenPoint();
     // Track how long the mouse has been still (ambient sleep logic).
     if (Math.abs(cur.x - petCursorPrev.x) + Math.abs(cur.y - petCursorPrev.y) > 3) cursorIdleAt = now;
     petCursorPrev = { x: cur.x, y: cur.y, t: now };
-    // Aim the pupils at the pill's center, not the window's center.
-    petWin.webContents.send("pet:cursor", { x: cur.x - (petX + PET_W / 2), y: cur.y - (petY + PET_H - 22.5) });
+    // Aim the pupils at the pill's center, not the window's center. The offset can
+    // only change when the cursor or Pilly himself moves, so a still mouse next to
+    // a standing Pilly costs nothing - this used to be one of the ~40 IPC messages
+    // a second the pet:dir de-dup was added to avoid.
+    const cx = cur.x - (petX + PET_W / 2);
+    const cy = cur.y - (petY + PET_H - 22.5);
+    if (cx !== petCursorSentX || cy !== petCursorSentY) {
+      petCursorSentX = cx;
+      petCursorSentY = cy;
+      petWin.webContents.send("pet:cursor", { x: cx, y: cy });
+    }
     if (bubbleWin && !bubbleWin.isDestroyed() && bubbleWin.isVisible()) positionBubble();
-  }, 24);
+  }), 24);
   // First joke after a few seconds, then every 2-3 minutes.
   if (petOpts().bubbles) {
-    setTimeout(() => { if (petActive) { petJokeTick(); scheduleNextJoke(); } }, 8000);
+    petWarm(() => { if (petActive) { bgTick("joke", petJokeTick()); scheduleNextJoke(); } }, 8000);
   }
   // Pilly occasionally asks you something (first after ~2.5-3.5 min, then 3-5 min).
   if (petOpts().questions !== false) {
-    setTimeout(() => { if (petActive) { petQuestionTick(); scheduleNextQuestion(); } }, 150000 + Math.random() * 60000);
+    petWarm(() => { if (petActive) { bgTick("question", petQuestionTick()); scheduleNextQuestion(); } }, 150000 + Math.random() * 60000);
   }
   // Tiny poops on the screen every 4-5 min (they vanish on their own).
-  setTimeout(() => { if (petActive) { spawnPoop(); scheduleNextPoop(); } }, 150000 + Math.random() * 60000);
+  petWarm(() => { if (petActive) { spawnPoop(); scheduleNextPoop(); } }, 150000 + Math.random() * 60000);
   // Stage 4: proactive market alerts + ambient (morning greeting, weather).
   scheduleMarketAlert();
-  // v1.1.0: daily brief (SOL + your PnL) once per session.
+  // v1.0.5: daily brief (SOL + your PnL) once per session.
   if (petOpts().dailyBrief !== false && !dailyBriefDone) {
-    setTimeout(() => { if (petActive) dailyBrief(); }, 25000);
+    petWarm(() => { if (petActive) bgTick("daily brief", dailyBrief()); }, 25000);
   }
-  // v1.1.0: Pilly's AI pick of the day (first after ~2 min, then every 6h).
+  // v1.0.5: Pilly's AI pick of the day (first after ~2 min, then every 6h).
   schedulePillyPick();
-  // v1.2.0: Sniper mode - watches for coins that JUST launched.
+  // v1.0.5: Sniper mode - watches for coins that JUST launched.
   scheduleSniper();
-  // v1.2.0: Whale follow - alerts when a followed whale opens a new position.
+  // v1.0.5: Whale follow - alerts when a followed whale opens a new position.
   scheduleWhalePoll();
-  // v1.2.0: Portfolio mood - Pilly reacts to YOUR bags.
+  // v1.0.5: Portfolio mood - Pilly reacts to YOUR bags.
   schedulePortfolioMood();
   const h = new Date().getHours();
   if (h >= 5 && h < 11) {
-    setTimeout(() => {
-      if (!petActive || !petOpts().bubbles) return;
-      showPetJoke(`☕ gm anon. ${(petOpts().name || "Pilly")} ready for some pumps?`);
-      sendPetMarket({ kind: "up", name: "morning" });
+    petWarm(() => {
+      safely("the morning greeting", () => {
+        if (!petActive || !petOpts().bubbles) return;
+        showPetJoke(`☕ gm anon. ${(petOpts().name || "Pilly")} ready for some pumps?`);
+        sendPetMarket({ kind: "up", name: "morning" });
+      });
     }, 12000);
   }
   weatherNext = Date.now() + 90000;
-  setTimeout(() => { if (petActive) weatherTick(); }, 90000);
+  petWarm(() => { if (petActive) bgTick("weather", weatherTick()); }, 90000);
 }
 
 function stopPet() {
   petActive = false;
   if (petTimer) { clearInterval(petTimer); petTimer = null; }
-  if (petJokeTimer) { clearInterval(petJokeTimer); petJokeTimer = null; }
+  if (petJokeTimer) { clearTimeout(petJokeTimer); petJokeTimer = null; }
+  for (const t of petWarmTimers) clearTimeout(t);
+  petWarmTimers = [];
   if (petQuestionTimer) { clearTimeout(petQuestionTimer); petQuestionTimer = null; }
   if (poopTimer) { clearTimeout(poopTimer); poopTimer = null; }
   if (marketAlertTimer) { clearTimeout(marketAlertTimer); marketAlertTimer = null; }
@@ -448,8 +919,14 @@ function stopPet() {
   if (whaleTimer) { clearTimeout(whaleTimer); whaleTimer = null; }
   if (portfolioMoodTimer) { clearTimeout(portfolioMoodTimer); portfolioMoodTimer = null; }
   if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null; }
+  // A poop overlay fades and destroys itself after ~5 s, but turning Pilly off in
+  // the meantime left it stranded on the screen with nothing to remove it.
+  for (const w of poopWins) { if (!w.isDestroyed()) w.destroy(); }
+  poopWins.clear();
   petDragging = false;
+  petDragSeenAt = 0;
   petTarget = null;
+  petLoaded = false;
   if (petWin && !petWin.isDestroyed()) petWin.destroy();
   petWin = null;
   if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.destroy();
@@ -506,15 +983,23 @@ function ensureBubbleWin() {
     // resize it anyway.
     resizable: true,
     focusable: false,
+    // Same first-click reason as the pet window: the bubble becomes clickable
+    // when it carries a question, and that one tap has to register.
+    acceptFirstMouse: true,
     hasShadow: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Same reason as the pet window: a bubble stranded on another Space has to
+      // finish its fade instead of stuttering at 1fps.
+      backgroundThrottling: false,
     },
   });
   bubbleWin.setAlwaysOnTop(true, "screen-saver");
+  // The bubble is glued to the pet, so it has to cross Spaces with him.
+  pinToAllWorkspaces(bubbleWin);
   bubbleWin.setIgnoreMouseEvents(true, { forward: true });
   bubbleReady = false;
   bubbleOrient = "above";
@@ -679,7 +1164,7 @@ function pickPetTarget(area) {
 // Where Pilly dashes when the cursor pokes him - a short hop always away
 // from the cursor, so he stays clickable afterwards.
 function pickFleeTarget(c, dist) {
-  const area = screen.getPrimaryDisplay().workArea;
+  const area = workAreaFor(petX + PET_W / 2, petY + PET_H / 2);
   const ang = Math.atan2((petY + PET_H - 20) - c.y, (petX + PET_W / 2) - c.x);
   petTarget = {
     x: Math.max(area.x, Math.min(petX + Math.cos(ang) * dist, area.x + area.width - PET_W)),
@@ -697,6 +1182,7 @@ async function petJokeTick() {
       `day ${s.days} together. i've told ${s.jokes} jokes and survived ${s.spooks} cursor scares.`,
       `little stat: ${s.coins} coins checked, ${s.happy} good moods, ${s.sad} sad ones.`,
       `we've been at this for ${s.days} day${s.days === 1 ? "" : "s"}. my jokes are still free.`,
+      `you've petted me ${s.pets} time${s.pets === 1 ? "" : "s"} and dragged me ${s.drags}. i remember both.`,
     ];
     joke = facts[(Math.random() * facts.length) | 0];
   } else {
@@ -723,9 +1209,9 @@ async function petJokeTick() {
 function scheduleNextJoke() {
   if (!petActive || !petOpts().bubbles) return;
   const delay = 120000 + Math.floor(Math.random() * 60000);
-  petJokeTimer = setTimeout(() => {
+  petJokeTimer = rearm(petJokeTimer, () => {
     if (!petActive || !petOpts().bubbles) return;
-    petJokeTick();
+    bgTick("joke", petJokeTick());
     scheduleNextJoke();
   }, delay);
 }
@@ -776,6 +1262,48 @@ function playPetSound(type) {
   } catch (e) { /* ignore */ }
 }
 
+// v1.1.2: he notices when you come back to the app. Called when the chat window
+// regains focus, rate-limited to one greeting a minute so it reads as affection
+// and not as a twitch. The renderer decides whether he is in the mood for it.
+let petGreetAt = 0;
+// Did the window lose focus since the last greeting? A focus that was never
+// preceded by a blur is the launch itself, and "welcome back" one second after
+// the app starts is noise - it also spent the one-a-minute cooldown on a greeting
+// the user never came back for.
+let chatLostFocus = false;
+function greetPet() {
+  try {
+    if (!petActive || !petWin || petWin.isDestroyed()) return;
+    // Nobody is listening yet while pet.html loads, and a greet that was never
+    // heard must not start the cooldown - that is how "he greets you when you come
+    // back" stayed silent for the first minute after a launch that focused the
+    // chat window before the pet had painted.
+    if (!petLoaded || petWin.webContents.isLoading()) return;
+    const now = Date.now();
+    if (now - petGreetAt < 60000) return;
+    petGreetAt = now;
+    petWin.webContents.send("pet:greet");
+  } catch (e) { /* ignore */ }
+}
+
+// v1.1.2: he reacts the moment the app window comes back - from another app,
+// from the tray, from being minimised - which is the most common way people
+// return to Pilly. Wired from createWindow(); blur/focus/minimize/restore are
+// cheap and idempotent.
+function wireGreetOnFocus(win) {
+  if (!win || win.isDestroyed() || win.__greetWired) return;
+  win.__greetWired = true;
+  win.on("blur", () => { chatLostFocus = true; });
+  win.on("minimize", () => { chatLostFocus = true; });
+  const cameBack = () => {
+    if (!chatLostFocus) return;
+    chatLostFocus = false;
+    greetPet();
+  };
+  win.on("focus", cameBack);
+  win.on("restore", cameBack);
+}
+
 // v1.1.1: Pilly munches a coin he just found (Pilly Pick / Sniper). The pet
 // state machine picks this up on the next tick and the renderer plays a short
 // "eat" animation before drifting back to its normal walk/pause cycle.
@@ -786,6 +1314,21 @@ function petEat() {
   petStateStart = now;
   petStateEnd = now + 1600;
   petTarget = null;
+}
+
+// v1.1.2: a due reminder is an event about *you*, so he hops and rings instead
+// of leaving it to a system toast on the other side of the screen. Same shape as
+// petEat(): the state machine forwards "hop" on its next tick and the renderer
+// plays the jump; the glyph rides along on its own channel because the state
+// machine only carries a state name.
+function petNudge(glyph) {
+  if (!petActive || !petWin || petWin.isDestroyed()) return;
+  const now = Date.now();
+  petState = "hop";
+  petStateStart = now;
+  petStateEnd = now + 900;
+  petTarget = null;
+  petWin.webContents.send("pet:nudge", { glyph: glyph || "🔔" });
 }
 
 // v1.1.1: reminders - fire once, then vanish. Native notification + a Pilly
@@ -810,6 +1353,7 @@ function checkReminders() {
       sendToChat("pilly:reminder-fired", r);
     }
     playPetSound("alert");
+    petNudge("⏰");
   }
 }
 
@@ -861,10 +1405,10 @@ function showPetQuestion(text) {
 function scheduleNextQuestion() {
   if (!petActive || petOpts().questions === false) return;
   const delay = 180000 + Math.floor(Math.random() * 120000);
-  petQuestionTimer = setTimeout(() => {
+  petQuestionTimer = rearm(petQuestionTimer, () => {
     if (!petActive || petOpts().questions === false) return;
     if (focusBusy()) { scheduleNextQuestion(); return; } // v1.1.1: skip chatter during focus
-    petQuestionTick();
+    bgTick("question", petQuestionTick());
     scheduleNextQuestion();
   }, delay);
 }
@@ -892,15 +1436,21 @@ function spawnPoop() {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        // Consistent with the other overlays: finish the fade on any Space.
+        backgroundThrottling: false,
       },
     });
     poop.setAlwaysOnTop(true, "screen-saver");
+    pinToAllWorkspaces(poop);
     poop.setIgnoreMouseEvents(true, { forward: true });
     poop.loadFile(path.join(__dirname, "renderer", "poop.html"));
     // Drop it right under Pilly's feet; it stays put and fades on its own.
     poop.setPosition(Math.round(petX + PET_W / 2 - POOP_W / 2), Math.round(petY + PET_H - POOP_H - 3));
     poop.showInactive();
     bumpStat("poops");
+    // Tracked so stopPet() can take it down with the rest of the pet (see poopWins).
+    poopWins.add(poop);
+    poop.once("closed", () => poopWins.delete(poop));
     setTimeout(() => { if (!poop.isDestroyed()) poop.destroy(); }, 5200);
   } catch (e) { /* ignore */ }
 }
@@ -908,7 +1458,7 @@ function spawnPoop() {
 function scheduleNextPoop() {
   if (!petActive) return;
   const delay = 240000 + Math.floor(Math.random() * 60000); // 4-5 min
-  poopTimer = setTimeout(() => {
+  poopTimer = rearm(poopTimer, () => {
     if (!petActive) return;
     spawnPoop();
     scheduleNextPoop();
@@ -920,9 +1470,9 @@ function scheduleNextPoop() {
 function scheduleMarketAlert() {
   if (!petActive || !petOpts().bubbles) return;
   const delay = 300000 + Math.floor(Math.random() * 240000); // 5-9 min
-  marketAlertTimer = setTimeout(() => {
+  marketAlertTimer = rearm(marketAlertTimer, () => {
     if (!petActive || !petOpts().bubbles) return;
-    marketAlertTick();
+    bgTick("market alert", marketAlertTick());
     scheduleMarketAlert();
   }, delay);
 }
@@ -936,13 +1486,15 @@ async function marketAlertTick() {
     if (hotCooldown.size > 200) {
       for (const [m, t] of hotCooldown) if (now - t > 30 * 60000) hotCooldown.delete(m);
     }
-    // HOT RADAR (v1.1.0): fresh 5m movers are the freshest signal - flag the
+    // HOT RADAR (v1.0.5): fresh 5m movers are the freshest signal - flag the
     // hottest coin with a CLICKABLE bubble that opens the chat pre-loaded.
     // Gated by the "Hot coin radar" setting (pet.hotAlerts).
     if (pet.hotAlerts !== false) {
       const hotPct = Number(pet.hotPct) || 10;
       const withM5 = data.list.filter(
-        (c) => c.change5m != null && isFinite(c.change5m) && c.mcap != null && c.mcap > 3000
+        // Same dust floor as the launch radar: a sub-$7K coin "moving" 10% is a
+        // bot or a rug, not a signal worth pinging a trader about.
+        (c) => c.change5m != null && isFinite(c.change5m) && COINS.aboveFreshFloor(c)
       );
       let hot = null;
       for (const c of withM5) {
@@ -955,13 +1507,14 @@ async function marketAlertTick() {
         pendingHotCoin = { mint: hot.mint, symbol: hot.symbol, name: hot.name };
         bumpStat("hotpicks");
         PICKS.record(userDataDir(), { mint: hot.mint, symbol: hot.symbol, name: hot.name, price: hot.price, source: "hot" });
-        showHotCoin(`🚀 ${hot.symbol || hot.name} +${hot.change5m.toFixed(0)}% in 5m. tap me for the details.`, hot);
+        showHotCoin(`🚀 ${hot.symbol || hot.name} +${hot.change5m.toFixed(0)}% in 5m. tap me for the details.`);
         sendPetMarket({ kind: "up", name: hot.symbol || hot.name });
         return;
       }
     }
-    // Fallback: 24h extremes (existing behavior).
-    const withChg = data.list.filter((c) => c.change24h != null && isFinite(c.change24h));
+    // Fallback: 24h extremes (existing behavior) - same floor, because naming a
+    // $3K coin as the day's mover is the same embarrassment in a different bubble.
+    const withChg = data.list.filter((c) => c.change24h != null && isFinite(c.change24h) && COINS.aboveFreshFloor(c));
     if (!withChg.length) return;
     const gainer = withChg.reduce((a, b) => (b.change24h > a.change24h ? b : a));
     const loser = withChg.reduce((a, b) => (b.change24h < a.change24h ? b : a));
@@ -999,7 +1552,7 @@ function showHotCoin(text) {
   }, 12000);
 }
 
-// v1.1.0: morning brief - SOL price + average PnL across your tracked positions.
+// v1.0.5: morning brief - SOL price + average PnL across your tracked positions.
 async function dailyBrief() {
   if (!petActive || petOpts().dailyBrief === false) return;
   dailyBriefDone = true;
@@ -1029,16 +1582,16 @@ async function dailyBrief() {
   } catch (e) { /* ignore */ }
 }
 
-// v1.1.0: Pilly's AI pick of the day - asks the model for the best setup from
+// v1.0.5: Pilly's AI pick of the day - asks the model for the best setup from
 // the trending list, then shows a clickable bubble with that coin loaded.
 const PILLY_PICK_INTERVAL = 6 * 3600 * 1000;
 function schedulePillyPick() {
   if (!petActive || petOpts().pillyPick === false) return;
   const now = Date.now();
   const delay = pillyPickNext > now ? pillyPickNext - now : 120000 + Math.random() * 60000;
-  pillyPickTimer = setTimeout(() => {
+  pillyPickTimer = rearm(pillyPickTimer, () => {
     if (!petActive || petOpts().pillyPick === false) return;
-    pillyPickTick();
+    bgTick("pick of the day", pillyPickTick());
     pillyPickNext = Date.now() + PILLY_PICK_INTERVAL;
     schedulePillyPick();
   }, delay);
@@ -1046,16 +1599,24 @@ function schedulePillyPick() {
 async function pillyPickTick() {
   try {
     const data = await COINS.fetchTrendingTop(10);
-    if (!data || !data.context) return;
+    if (!data || !Array.isArray(data.list)) return;
+    // The model can only pick from what it is shown, so the floor is applied
+    // before the prompt: Pilly does not recommend coins nobody has bought yet.
+    const clean = data.list.filter((c) => COINS.aboveFreshFloor(c));
+    if (!clean.length) return;
+    const lines = clean.map(
+      (c, i) =>
+        `${i + 1}. ${c.name}${c.symbol ? ` (${c.symbol})` : ""} ${COINS.fmtUsd(c.price)}${c.change24h != null ? ` ${COINS.fmtPct(c.change24h)}` : ""}${c.mcap != null ? ` mcap ${COINS.fmtUsd(c.mcap)}` : ""}${c.volume24h != null ? ` vol ${COINS.fmtUsd(c.volume24h)}` : ""}`
+    );
     const r = await AI.respond(
-      `You're Pilly. From this trending list, pick ONE coin with the best setup right now. Reply with ONLY: SYMBOL - one-line why (under 12 words).\n${data.context}`,
+      `You're Pilly. From this trending list, pick ONE coin with the best setup right now. Reply with ONLY: SYMBOL - one-line why (under 12 words).\n${lines.join("\n")}`,
       { task: "", ai: aiOpts() }
     );
     if (!r || !r.reply) return;
     const m = String(r.reply).match(/\b([A-Za-z0-9$._-]{1,12})\b/);
     if (!m) return;
     const sym = m[1].replace(/[^A-Za-z0-9$._-]/g, "").toUpperCase();
-    const coin = data.list.find((c) => (c.symbol || "").toUpperCase() === sym);
+    const coin = clean.find((c) => (c.symbol || "").toUpperCase() === sym);
     if (!coin || !coin.mint) return;
     pendingHotCoin = { mint: coin.mint, symbol: coin.symbol, name: coin.name };
     bumpStat("pillypick");
@@ -1065,16 +1626,19 @@ async function pillyPickTick() {
   } catch (e) { /* ignore */ }
 }
 
-// v1.2.0: Sniper mode - pump.fun coins that JUST launched (younger than a few
+// v1.0.5: Sniper mode - pump.fun coins that JUST launched (younger than a few
 // minutes) get a clickable "JUST LAUNCHED" bubble so the user can snipe the
 // entry before the pack. Gated by the pet.sniper setting.
 const SNIPER_MAX_AGE = 3 * 60000; // launch window: younger than 3 min
-const SNIPER_MIN_MCAP = 5000; // ignore dust launches
+// The shared launch floor (src/coins.js): dust launches are not signals. Kept as a
+// second gate here even though fetchNewCoins already filtered, so the bubble can
+// never point at something below it.
+const SNIPER_MIN_MCAP = COINS.MIN_FRESH_MCAP;
 function scheduleSniper() {
   if (!petActive || petOpts().sniper === false) return;
-  sniperTimer = setTimeout(() => {
+  sniperTimer = rearm(sniperTimer, () => {
     if (!petActive || petOpts().sniper === false) return;
-    sniperTick();
+    bgTick("sniper", sniperTick());
     scheduleSniper();
   }, 60000 + Math.random() * 60000); // first scan after 60-120s, then every 2 min
 }
@@ -1093,7 +1657,7 @@ async function sniperTick() {
           c.createdAt != null &&
           now - c.createdAt <= SNIPER_MAX_AGE &&
           c.mcap != null &&
-          c.mcap > SNIPER_MIN_MCAP
+          c.mcap >= SNIPER_MIN_MCAP
       )
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     const target = fresh.find((c) => !sniperCooldown.has(c.mint));
@@ -1115,13 +1679,13 @@ async function sniperTick() {
   } catch (e) { /* ignore */ }
 }
 
-// v1.2.0: Whale follow - diff each followed wallet's holdings and pop a
+// v1.0.5: Whale follow - diff each followed wallet's holdings and pop a
 // clickable bubble when a whale opens a brand-new position.
 function scheduleWhalePoll() {
   if (!petActive || petOpts().whaleAlerts === false) return;
-  whaleTimer = setTimeout(() => {
+  whaleTimer = rearm(whaleTimer, () => {
     if (!petActive || petOpts().whaleAlerts === false) return;
-    whalePoll();
+    bgTick("whale poll", whalePoll());
     scheduleWhalePoll();
   }, 150000 + Math.random() * 90000); // first after 2.5-4 min, then every 4 min
 }
@@ -1134,7 +1698,13 @@ async function whalePoll() {
       if (!data || !data.ok) continue;
       const mints = (data.tokens || []).map((t) => t.mint).filter(Boolean);
       const res = WHALES.snapshot(userDataDir(), w.address, mints);
-      if (!res || !res.ok || !res.fresh.length) continue;
+      if (!res || !res.ok) continue;
+      if (res.seeded) {
+        // Say it out loud: the first poll after following records the baseline,
+        // so a silent panel here is expected and not a broken alert.
+        console.log(`[pilly] whale baseline recorded for ${w.label || w.address} (${mints.length} tokens)`);
+      }
+      if (!res.fresh.length) continue;
       for (const mint of res.fresh.slice(0, 2)) {
         const t = (data.tokens || []).find((x) => x.mint === mint);
         if (!t || !t.name) continue;
@@ -1153,13 +1723,13 @@ async function whalePoll() {
   }
 }
 
-// v1.2.0: Portfolio mood - aggregate PnL% across your tracked positions and
+// v1.0.5: Portfolio mood - aggregate PnL% across your tracked positions and
 // make the pet genuinely react to YOUR bags (green = confetti, red = tears).
 function schedulePortfolioMood() {
   if (!petActive || petOpts().portfolioMood === false) return;
-  portfolioMoodTimer = setTimeout(() => {
+  portfolioMoodTimer = rearm(portfolioMoodTimer, () => {
     if (!petActive || petOpts().portfolioMood === false) return;
-    portfolioMoodTick();
+    bgTick("portfolio mood", portfolioMoodTick());
     schedulePortfolioMood();
   }, 240000 + Math.random() * 120000); // first after 4-6 min, then every ~8 min
 }
@@ -1218,14 +1788,16 @@ async function weatherTick() {
   await refreshWeather();
   if (weatherMood && Math.random() < 0.35) {
     setTimeout(() => {
-      if (!petActive || !petOpts().bubbles) return;
-      if (weatherMood === "wet") {
-        showPetJoke("☔ it's raining out there... my mood matches.");
-        sendPetMarket({ kind: "down", name: "weather" });
-      } else if (weatherMood === "sunny") {
-        showPetJoke("☀️ sunny vibes today. green candles incoming.");
-        sendPetMarket({ kind: "up", name: "weather" });
-      }
+      safely("the weather bubble", () => {
+        if (!petActive || !petOpts().bubbles) return;
+        if (weatherMood === "wet") {
+          showPetJoke("☔ it's raining out there... my mood matches.");
+          sendPetMarket({ kind: "down", name: "weather" });
+        } else if (weatherMood === "sunny") {
+          showPetJoke("☀️ sunny vibes today. green candles incoming.");
+          sendPetMarket({ kind: "up", name: "weather" });
+        }
+      });
     }, 1500);
   }
 }
@@ -1234,7 +1806,10 @@ function startTrayAnim() {
   if (trayTimer || iconFrames.length < 2) return;
   trayTimer = setInterval(() => {
     trayFrame = (trayFrame + 1) % iconFrames.length;
-    if (tray && !isQuitting) tray.setImage(iconFrames[trayFrame]);
+    // Reduce motion: keep counting frames so he carries on from the right place
+    // if the user turns the setting back off, but leave the icon alone.
+    if (reduceMotionPref) return;
+    if (tray && !isQuitting) tray.setImage(trayIconFor(trayFrame));
   }, 450);
 }
 
@@ -1277,23 +1852,98 @@ function setAutoLaunch(enabled) {
       return false;
     }
   }
-  app.setLoginItemSettings({ openAtLogin: enabled });
-  return true;
+  try {
+    // macOS refuses to register a login item for a bundle it cannot verify
+    // (an unsigned build, most of the time) and says so by throwing inside a
+    // menu click - which used to surface as the main-process crash dialog.
+    app.setLoginItemSettings({ openAtLogin: enabled });
+    return true;
+  } catch (e) {
+    console.warn("[pilly] could not change the login item:", (e && e.message) || e);
+    return false;
+  }
 }
 
 function createTray() {
   if (!iconFrames.length) iconFrames = loadFrames();
-  tray = new Tray(iconFrames[0] || nativeImage.createEmpty());
+  tray = new Tray(trayIconFor(0) || nativeImage.createEmpty());
   tray.setToolTip("Pilly - tap to chat");
+  applyTrayMenu();
+  if (process.platform === "darwin") {
+    // macOS: a set context menu swallows left-clicks, so the chat window would
+    // never open. Left-click toggles the window; right-click shows the menu.
+    tray.on("click", () => toggleWindow());
+    tray.on("right-click", () => tray.popUpContextMenu(trayMenuRef));
+    // macOS fires two clicks for a double click, so an impatient double tap
+    // opened the chat and immediately closed it again.
+    tray.setIgnoreDoubleClickEvents(true);
+  } else {
+    tray.on("click", () => toggleWindow());
+  }
+  startTrayAnim();
+}
 
-  const menu = Menu.buildFromTemplate([
-    { label: "Open chat", click: () => toggleWindow() },
+// The menu is built in one place so it can be rebuilt without replacing the tray
+// icon itself - building a second Tray would leave a second icon behind.
+function applyTrayMenu() {
+  if (!tray || tray.isDestroyed()) return;
+  trayMenuRef = Menu.buildFromTemplate(trayMenuTemplate());
+  if (process.platform !== "darwin") tray.setContextMenu(trayMenuRef);
+}
+
+// macOS always shows an application menu in the bar, and Electron's default one
+// carries Reload and Toggle DevTools - acceptable in a dev build, sloppy in a
+// menu bar app that a Solana dev keeps open all day. This is the curated one:
+// nothing in it can drop the user into a half-loaded renderer, the standard
+// editing keys still work while typing in the chat, and Cmd+W hides the chat
+// (the close handler hides it instead of destroying the window).
+function applyMacAppMenu() {
+  if (process.platform !== "darwin") return; // Windows/Linux keep their frameless look
+  try {
+    // Not app.name: Electron answers "Electron" whenever it cannot see the app's
+    // package.json, and that name is what macOS prints in the menu bar.
+    let pkg = null;
+    try { pkg = require("./package.json"); } catch (e) { /* menuAppName falls back */ }
+    Menu.setApplicationMenu(Menu.buildFromTemplate(
+      macAppMenuTemplate({
+        appName: menuAppName(pkg),
+        openChat: () => openChatWindow(),
+        resetWindowPosition: () => resetWindowPosition(),
+      })
+    ));
+  } catch (e) {
+    // A menu is a convenience; Pilly must start even if the platform rejects it.
+    console.warn("[pilly] could not install the macOS app menu:", e && e.message ? e.message : e);
+  }
+}
+
+function trayMenuTemplate() {
+  return [
+    { label: "Open chat", click: () => openChatWindow() },
+    // Only shown when the shortcut could not be claimed, so nobody keeps pressing
+    // a key that a different app silently owns.
+    ...(summonHotkeyOk === false
+      ? [{ label: "Summon hotkey taken by another app", enabled: false }]
+      : []),
+    // Information, not an action - and always present, so "checking…" is a
+    // visible state rather than a line that appears out of nowhere.
+    { label: rpcHealthLine(), enabled: false },
     { type: "separator" },
+    // v1.1.2: the pet button lives inside the chat window, and Windows/macOS start
+    // tray-first with that window hidden - so on a fresh launch there was no way to
+    // call Pilly back without opening the chat first. This writes the same saved
+    // state the pet button does, so the two cannot disagree across a restart.
+    {
+      label: "Pilly on the taskbar",
+      type: "checkbox",
+      checked: petActive,
+      click: (item) => setPetOn(!!item.checked),
+    },
     { label: "Focus", submenu: [
-      { label: "Start focus", click: () => focusStart() },
-      { label: "Pause focus", click: () => focusPause() },
-      { label: "Resume focus", click: () => focusResume() },
-      { label: "Stop focus", click: () => focusStop() },
+      { label: "Start focus", click: () => trayFocus("start") },
+      { label: "Pause focus", click: () => trayFocus("pause") },
+      { label: "Resume focus", click: () => trayFocus("resume") },
+      { label: "Stop focus", click: () => trayFocus("stop") },
     ] },
     { label: "Reset window position", click: () => resetWindowPosition() },
     { type: "separator" },
@@ -1305,17 +1955,7 @@ function createTray() {
     },
     { type: "separator" },
     { label: "Quit Pilly", click: () => { isQuitting = true; app.quit(); } },
-  ]);
-  if (process.platform === "darwin") {
-    // macOS: a set context menu swallows left-clicks, so the chat window would
-    // never open. Left-click toggles the window; right-click shows the menu.
-    tray.on("click", () => toggleWindow());
-    tray.on("right-click", () => tray.popUpContextMenu(menu));
-  } else {
-    tray.setContextMenu(menu);
-    tray.on("click", () => toggleWindow());
-  }
-  startTrayAnim();
+  ];
 }
 
 // ---- Watchlist + price alerts + live tray tooltip (v1.0.5) ----
@@ -1381,33 +2021,105 @@ async function watchPoll() {
   await updateTrayInfo(prices);
 }
 
+// v1.1.2: Solana RPC health. Every on-chain screen (balance, whale diff, rug
+// check) uses the same public endpoint, and when it is rate-limited those
+// screens just come back empty - indistinguishable from a dead mint. One cheap
+// getSlot per minute answers "is it me or is it the endpoint?".
+//
+// The probe is cached because the menu is rebuilt on every focus tick: probing
+// once per rebuild would hammer the very endpoint we are measuring. Only a
+// change in the label touches the tray, so a healthy endpoint is silent.
+const RPC_TTL_MS = 60000;
+let rpcHealth = { state: "unknown" };
+let rpcHealthAt = 0;
+let rpcHealthBusy = null;
+
+function rpcHealthLine() {
+  return `Solana RPC: ${RPC.label(rpcHealth)}`;
+}
+
+function refreshRpcHealth(force) {
+  if (rpcHealthBusy) return rpcHealthBusy; // de-dupe: boot probe + first tick can overlap
+  if (!force && Date.now() - rpcHealthAt < RPC_TTL_MS) return Promise.resolve(rpcHealth);
+  const before = rpcHealthLine();
+  rpcHealthBusy = RPC.probe()
+    .then((h) => {
+      rpcHealth = h;
+      rpcHealthAt = Date.now();
+      if (h.state === "down" || h.state === "slow") {
+        console.warn(`[pilly] Solana RPC ${RPC.label(h)}${h.error ? ` (${h.error})` : ""}`);
+      }
+      if (!isQuitting && rpcHealthLine() !== before) {
+        applyTrayMenu();
+        // Rebuilt from the values already on screen. Going through
+        // updateTrayInfo() would re-fetch the SOL price first, and on the very
+        // endpoint being measured that fetch can hang for 30 s - the note that
+        // explains a broken endpoint must not wait for the endpoint.
+        applyTooltip();
+      }
+      return h;
+    })
+    .catch((e) => {
+      // A probe never rejects, so this is a bug in the tray rebuild - name it
+      // instead of leaving a warning nothing can be traced back to.
+      console.warn("[pilly] the RPC health refresh failed:", (e && e.stack) || e);
+      return rpcHealth;
+    })
+    .finally(() => { rpcHealthBusy = null; });
+  return rpcHealthBusy;
+}
+
+// Everything the tooltip can say without a network round trip: the SOL price if
+// we already have one, the first watched coin, and the RPC note (only while the
+// endpoint is slow or dead - see refreshRpcHealth).
+let lastPrices = null;
+
+function tooltipParts(sol) {
+  const parts = [];
+  const s = sol || (lastPrices && lastPrices[SOL_MINT]);
+  if (s && s.price) {
+    parts.push(`SOL ${fmtCompact(s.price)}${s.change24h != null ? ` (${s.change24h >= 0 ? "+" : ""}${s.change24h.toFixed(1)}%)` : ""}`);
+  }
+  const items = WATCH.list(userDataDir());
+  const w0 = items[0];
+  if (w0 && lastPrices && lastPrices[w0.mint]) {
+    const p = lastPrices[w0.mint];
+    parts.push(`${w0.symbol || w0.name || "coin"} ${fmtCompact(p.price)}${p.change24h != null ? ` (${p.change24h >= 0 ? "+" : ""}${p.change24h.toFixed(1)}%)` : ""}`);
+  }
+  if (items.length > 1) parts.push(`+${items.length - 1} watched`);
+  // v1.1.1: surface a running focus countdown in the tooltip.
+  const focus = focusDoc.state.phase !== "idle" ? FOCUS.remaining(focusDoc.state, Date.now()) : null;
+  if (focus && focus.remainingMs > 0) {
+    const mm = Math.ceil(focus.remainingMs / 60000);
+    parts.push(`🍅 ${focus.phase === "focus" ? "focus" : "break"} ${mm}m`);
+  }
+  // v1.1.2: only mention the endpoint when it is actually a problem. A tooltip
+  // permanently reading "RPC ok" is noise; one that reads "RPC slow" is a
+  // diagnosis, and it explains an otherwise empty balance at a glance.
+  if (RPC.unhealthy(rpcHealth)) parts.push(`RPC ${RPC.label(rpcHealth)}`);
+  return parts;
+}
+
+function applyTooltip(sol) {
+  if (!tray || tray.isDestroyed() || isQuitting) return;
+  try {
+    const parts = tooltipParts(sol);
+    tray.setToolTip(parts.length ? `Pilly · ${parts.join(" · ")}` : "Pilly - tap to chat");
+  } catch (e) { /* a tooltip is never worth an error */ }
+}
+
 // Tray tooltip: SOL price + first watched coin (glanceable without opening chat).
 async function updateTrayInfo(prices) {
   if (!tray || isQuitting) return;
   try {
+    if (prices) lastPrices = prices;
     let sol = prices && prices[SOL_MINT];
     if (!sol) {
       const r = await COINS.fetchSolPrice();
       sol = r;
+      if (r) lastPrices = { ...(lastPrices || {}), [SOL_MINT]: r };
     }
-    const items = WATCH.list(userDataDir());
-    const parts = [];
-    if (sol && sol.price) {
-      parts.push(`SOL ${fmtCompact(sol.price)}${sol.change24h != null ? ` (${sol.change24h >= 0 ? "+" : ""}${sol.change24h.toFixed(1)}%)` : ""}`);
-    }
-    const w0 = items[0];
-    if (w0 && prices && prices[w0.mint]) {
-      const p = prices[w0.mint];
-      parts.push(`${w0.symbol || w0.name || "coin"} ${fmtCompact(p.price)}${p.change24h != null ? ` (${p.change24h >= 0 ? "+" : ""}${p.change24h.toFixed(1)}%)` : ""}`);
-    }
-    if (items.length > 1) parts.push(`+${items.length - 1} watched`);
-    // v1.1.1: surface a running focus countdown in the tooltip.
-    const focus = focusDoc.state.phase !== "idle" ? FOCUS.remaining(focusDoc.state, Date.now()) : null;
-    if (focus && focus.remainingMs > 0) {
-      const mm = Math.ceil(focus.remainingMs / 60000);
-      parts.push(`🍅 ${focus.phase === "focus" ? "focus" : "break"} ${mm}m`);
-    }
-    tray.setToolTip(parts.length ? `Pilly · ${parts.join(" · ")}` : "Pilly - tap to chat");
+    applyTooltip(sol);
   } catch (e) { /* ignore */ }
 }
 
@@ -1466,6 +2178,47 @@ function focusResume() {
   focusDoc.state = FOCUS.resumeState(focusDoc.state, Date.now());
   if (focusDoc.state !== before) FOCUS.saveDoc(userDataDir(), focusDoc);
   return broadcastFocusStatus();
+}
+
+// The tray's Focus submenu drives the same sessions the chat does, and a tray
+// click is the one focus change the chat window cannot see for itself (anything
+// typed there prints its own line). So a tray click narrates itself into the
+// transcript through the status channel, with an `announce` field on top of the
+// payload. The 60s status tick never sets that field, so the tick stays quiet
+// instead of writing a line into the chat every minute.
+function trayFocus(kind) {
+  const before = focusDoc.state.phase;
+  const run = {
+    start: () => focusStart(),
+    pause: () => focusPause(),
+    resume: () => focusResume(),
+    stop: () => focusStop(),
+  }[kind];
+  if (!run) return null;
+  let p;
+  try { p = run(); } catch (e) { return null; }
+  if (!p) return p;
+  const mm = Math.max(0, Math.ceil((Number(p.remainingMs) || 0) / 60000));
+  let line;
+  if (kind === "start") {
+    line = before === "focus"
+      ? `🍅 already focusing — about ${mm} min left.`
+      : `🍅 Focus started from the tray — ${p.plannedMin} min. I'll keep the chatter down.`;
+  } else if (kind === "stop") {
+    line = before === "idle"
+      ? "🍅 No session was running — nothing to stop."
+      : "🛑 Focus off. Go stretch, then come back when you're ready.";
+  } else if (kind === "pause") {
+    line = p.paused
+      ? `⏸️ Focus paused — ${mm} min left whenever you're ready.`
+      : "🍅 Nothing is running to pause.";
+  } else {
+    line = p.phase === "idle"
+      ? "🍅 Nothing to resume — start a session first."
+      : `▶️ Back at it — about ${mm} min left.`;
+  }
+  sendToChat("pilly:focus:status", { ...p, announce: line });
+  return p;
 }
 
 // Runs every 60s: samples system idle time to (a) record this minute in the
@@ -1551,7 +2304,14 @@ ipcMain.handle("pilly:detect-task", (event, text) => require("./src/meme").detec
 // ---- IPC: settings (own AI API) ----
 ipcMain.handle("pilly:settings:get", () => SETTINGS.effective(userDataDir()));
 ipcMain.handle("pilly:settings:save", (event, s) => {
-  const r = SETTINGS.save(userDataDir(), s);
+  // The settings form knows nothing about whether Pilly is currently running, or
+  // where he is standing, so carry both over - otherwise a plain "Save" would
+  // switch the pet off on the next launch and teleport him back to default.
+  const cur = petOpts();
+  const merged = Object.assign({}, s || {}, {
+    pet: Object.assign({}, (s && s.pet) || {}, { on: !!cur.on, pos: cur.pos || null }),
+  });
+  const r = SETTINGS.save(userDataDir(), merged);
   applyPetSettings();
   // Apply window preferences immediately.
   try {
@@ -1669,18 +2429,27 @@ ipcMain.handle("pilly:wallet", async (event, address) => {
     return null;
   }
 });
+// The last trending read that actually worked - see src/trendcache.js for why a
+// blip turns into an old-but-labelled list instead of a dead end.
+let lastTrendingGood = null;
 ipcMain.handle("pilly:trending", async () => {
   try {
     bumpStat("trends");
     const data = await COINS.fetchTrendingTop(10);
-    if (data && Array.isArray(data.list)) {
-      const chgs = data.list.map((c) => c.change24h).filter((c) => c != null && isFinite(c));
-      if (chgs.length) {
-        const avg = chgs.reduce((s, c) => s + c, 0) / chgs.length;
-        sendPetMarket({ kind: avg >= 0.5 ? "up" : avg <= -0.5 ? "down" : "flat", name: "trending" });
-      }
+    const fresh = TREND.trendingToStore(data);
+    if (!fresh) {
+      const stale = TREND.trendingFallback(lastTrendingGood, data);
+      return (
+        stale || { list: [], context: "trending unavailable", rateLimited: !!(data && data.rateLimited) }
+      );
     }
-    return data;
+    lastTrendingGood = fresh;
+    const chgs = fresh.list.map((c) => c.change24h).filter((c) => c != null && isFinite(c));
+    if (chgs.length) {
+      const avg = chgs.reduce((s, c) => s + c, 0) / chgs.length;
+      sendPetMarket({ kind: avg >= 0.5 ? "up" : avg <= -0.5 ? "down" : "flat", name: "trending" });
+    }
+    return { list: fresh.list, context: fresh.context, rateLimited: !!(data && data.rateLimited) };
   } catch (e) {
     return { list: [], context: "trending unavailable" };
   }
@@ -1695,8 +2464,16 @@ ipcMain.handle("pilly:watch:alert", (event, mint, pct) =>
 );
 ipcMain.handle("pilly:watch:prices", async () => {
   const items = WATCH.list(userDataDir());
-  const prices = await COINS.fetchPrices(items.map((i) => i.mint));
-  return { items, prices };
+  try {
+    const prices = await COINS.fetchPrices(items.map((i) => i.mint));
+    return { items, prices };
+  } catch (e) {
+    // Every other network handler answers with a shape the renderer can read.
+    // Without this, a timeout here came back as a rejected invoke and the
+    // watchlist said it could not load instead of showing the coins unpriced.
+    console.warn("[pilly] the watchlist price poll failed:", (e && e.message) || e);
+    return { items, prices: {} };
+  }
 });
 
 // ---- IPC: PnL tracking (entry prices) ----
@@ -1752,7 +2529,9 @@ ipcMain.handle("pilly:whales:list", () => WHALES.list(userDataDir()));
 ipcMain.handle("pilly:whales:add", (event, address, label) => WHALES.add(userDataDir(), address, label));
 ipcMain.handle("pilly:whales:remove", (event, address) => WHALES.remove(userDataDir(), String(address || "").trim()));
 ipcMain.handle("pilly:whales:check", async () => {
-  await whalePoll();
+  // A wallet that cannot be checked must not turn the whole list into an error
+  // for the renderer, but it should still be visible in the log.
+  await whalePoll().catch((e) => console.warn("[pilly] checking the whale list failed:", (e && e.stack) || e));
   return WHALES.list(userDataDir());
 });
 
@@ -1760,9 +2539,10 @@ ipcMain.handle("pilly:whales:check", async () => {
 ipcMain.handle("pilly:radar", async () => {
   try {
     bumpStat("radar");
-    return await COINS.fetchNewCoins(12);
+    // `floor` travels with the data so the panel can state the rule it is applying.
+    return { ...(await COINS.fetchNewCoins(12)), floor: COINS.MIN_FRESH_MCAP };
   } catch (e) {
-    return { list: [], context: "radar unavailable right now" };
+    return { list: [], context: "radar unavailable right now", hidden: 0, floor: COINS.MIN_FRESH_MCAP };
   }
 });
 ipcMain.handle("pilly:spark", async (event, mint) => {
@@ -1772,9 +2552,10 @@ ipcMain.handle("pilly:spark", async (event, mint) => {
     return null;
   }
 });
-ipcMain.handle("pilly:openExternal", (event, url) => {
+ipcMain.handle("pilly:openExternal", async (event, url) => {
   const u = String(url || "");
-  if (/^https?:\/\//i.test(u)) shell.openExternal(u);
+  if (!/^https?:\/\//i.test(u)) return { ok: false };
+  return { ok: await openExternal(u) };
 });
 ipcMain.handle("pilly:solprice", async () => {
   try {
@@ -1794,10 +2575,19 @@ ipcMain.handle("pilly:win:ontop", (event, on) => {
 });
 
 // ---- IPC: taskbar pet ----
+// One switch, two ways in (the chat's heart button and the tray checkbox), so the
+// saved state, the tray tick and the chat button can never drift apart.
+function setPetOn(on) {
+  if (on) startPet();
+  else stopPet();
+  rememberPetOn(petActive);
+  applyTrayMenu();
+  sendToChat("pilly:pet:active", petActive);
+  return petActive;
+}
+
 ipcMain.handle("pilly:pet:toggle", () => {
-  if (petActive) stopPet();
-  else startPet();
-  return { active: petActive };
+  return { active: setPetOn(!petActive) };
 });
 ipcMain.handle("pilly:pet:settings", () => petOpts());
 ipcMain.handle("pilly:pet:apply", (event, pet) => {
@@ -1806,8 +2596,7 @@ ipcMain.handle("pilly:pet:apply", (event, pet) => {
   // restart - AND so the walking logic (which reads petOpts() live) switches
   // to whole-monitor mode / new stop frequency right away.
   try {
-    const s = SETTINGS.effective(userDataDir());
-    SETTINGS.save(userDataDir(), Object.assign({}, s, { pet: p }));
+    SETTINGS.savePet(userDataDir(), p);
   } catch (e) { /* ignore */ }
   if (petWin && !petWin.isDestroyed()) petWin.webContents.send("pet:settings", p);
   if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:settings", p);
@@ -1834,32 +2623,68 @@ ipcMain.handle("pilly:pet:battery", (event, info) => {
   }
   return { ok: true };
 });
+// v1.1.2: the renderers report the OS "reduce motion" preference, because the
+// main process cannot read it on every platform. Today it keeps the tray icon
+// still; any future main-process animation should consult it too.
+ipcMain.on("ui:prefs", (event, prefs) => {
+  if (!prefs || typeof prefs.reduceMotion !== "boolean") return;
+  if (reduceMotionPref === prefs.reduceMotion) return;
+  reduceMotionPref = prefs.reduceMotion;
+  // Park the icon on frame 0, so a user who just turned the setting on does not
+  // get stuck looking at a half-turned pill.
+  if (reduceMotionPref && tray && !isQuitting) {
+    trayFrame = 0;
+    tray.setImage(trayIconFor(0));
+  }
+});
 // While walking across the monitor, the user can grab Pilly and drag it.
 ipcMain.on("pet:drag", (event, payload) => {
   if (!petWin || petWin.isDestroyed()) return;
   const mode = payload && payload.mode;
   if (mode === "start") {
     petDragging = true;
+    petDragSeenAt = Date.now();
     petTarget = null;
     petState = "pause";
     petStateStart = Date.now();
     petLastState = "pause";
   } else if (mode === "end") {
     petDragging = false;
+    petDragSeenAt = 0;
     petState = "pause";
     petStateStart = Date.now();
     petStateEnd = Date.now() + pauseMs();
-  } else if (mode === "move" && petDragging) {
-    const dx = Number(payload.dx) || 0;
-    const dy = Number(payload.dy) || 0;
-    if (!dx && !dy) return;
-    petX += dx;
-    petY += dy;
-    // Keep Pilly reachable even if dragged to the edge.
-    const area = screen.getPrimaryDisplay().workArea;
-    petX = Math.max(area.x - PET_W + 24, Math.min(petX, area.x + area.width - 24));
-    petY = Math.max(area.y - 24, Math.min(petY, area.y + area.height - 24));
-    petWin.setPosition(Math.round(petX), Math.round(petY));
+    rememberPetPos(true); // the user just decided where Pilly lives
+  } else if (mode === "move" || mode === "hold") {
+    if (mode === "move") {
+      const dx = Number(payload.dx) || 0;
+      const dy = Number(payload.dy) || 0;
+      if (!dx && !dy) return;
+      petX += dx;
+      petY += dy;
+      // Keep Pilly reachable - and let him be parked on ANY monitor: the old
+      // clamp used the primary workArea, so dragging him to a second screen
+      // snapped him back to the first one.
+      const area = workAreaFor(petX + PET_W / 2, petY + PET_H / 2);
+      petX = Math.max(area.x - PET_W + 24, Math.min(petX, area.x + area.width - 24));
+      petY = Math.max(area.y - 24, Math.min(petY, area.y + area.height - 24));
+      petWin.setPosition(Math.round(petX), Math.round(petY));
+      rememberPetPos();
+    }
+    // Any report is a hand on him, so the 4 s watchdog above can never drop a
+    // carry the renderer is still reporting. "hold" is the renderer saying "still
+    // holding, not moving": without it, holding him perfectly still for four
+    // seconds read as a lost release and he walked out of the hand carrying him.
+    if (!petDragging) {
+      petDragging = true;
+      petState = "pause";
+      petStateStart = Date.now();
+      petLastState = "pause";
+    }
+    // The walk target is meaningless after being carried: without this he set off
+    // again towards wherever he was heading before you grabbed him.
+    petTarget = null;
+    petDragSeenAt = Date.now();
   }
 });
 // Pilly complains when the user grabs and drags him around.
@@ -1880,11 +2705,63 @@ const DRAG_LINES = {
     "don't do that again.",
   ],
 };
+// Being petted has no downside, so these are short - and he only says one now
+// and then (see petReactQuietUntil). A pet that narrates every stroke is noise:
+// the point of the animation is that it does not need words.
+const PET_LINES = [
+  "ok. five more minutes.",
+  "not a word about this.",
+  "that's... acceptable.",
+  "who's a good trader? me.",
+  "purrr. i mean - noted.",
+  "keep going, i'm not counting.",
+  "fine. you've earned a point.",
+];
+// One spoken reaction per cuddle. Without it every stroke sample that starts a
+// new cuddle would queue another line and the bubble would flicker.
+let petReactQuietUntil = 0;
 ipcMain.on("pet:react", (event, kind) => {
   if (!petActive) return;
   // pet.html sends "dragstart"/"dragend" - normalize so the stat and the
   // correct line set fire (drag stat stayed 0 and end-lines never showed).
   const k = kind === "dragstart" ? "start" : kind === "dragend" ? "end" : kind;
+  // v1.1.2 touch reactions. This used to be "end" versus *everything else*, so a
+  // new kind came out as the drag complaint ("hey! put me down!") - which is
+  // exactly what petting him would have said. An explicit switch is the only way
+  // that stays honest as more reactions get added.
+  if (k === "pet") {
+    bumpStat("pets");
+    if (Date.now() < petReactQuietUntil) return;
+    petReactQuietUntil = Date.now() + 20000;
+    const line = PET_LINES[Math.floor(Math.random() * PET_LINES.length)];
+    setBubbleClickable(false);
+    const b = ensureBubbleWin();
+    sendBubbleJoke("💗 " + line);
+    positionBubble();
+    b.showInactive();
+    sendPetTalking(true);
+    if (bubbleTimer) clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => {
+      if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.hide();
+      sendPetTalking(false);
+    }, 3000);
+    return;
+  }
+  if (k === "wake") {
+    // He was asleep. The renderer owns the stroke, main owns the state, so the
+    // renderer asks and main answers - and the answer has to be a real pet:state
+    // push: the renderer's own copy is still "sleep" and it gates the whole
+    // petting animation on it. Silent by design, being woken up is a state change
+    // and not a remark. petLastState is set too, so the tick loop does not send
+    // the same value a second time.
+    petState = "pause";
+    petStateStart = Date.now();
+    petStateEnd = Date.now() + pauseMs();
+    petLastState = "pause";
+    if (petWin && !petWin.isDestroyed()) petWin.webContents.send("pet:state", "pause");
+    return;
+  }
+  if (k !== "start" && k !== "end") return; // unknown kind: do not guess
   if (k === "start") bumpStat("drags");
   const lines = k === "end" ? DRAG_LINES.end : DRAG_LINES.start;
   const line = lines[Math.floor(Math.random() * lines.length)];
@@ -1900,26 +2777,35 @@ ipcMain.on("pet:react", (event, kind) => {
     sendPetTalking(false);
   }, 3500);
 });
-ipcMain.handle("pilly:open-chat", () => {
-  // Bubble click must OPEN the chat - if it's already visible, leave it open
-  // (toggleWindow() would HIDE it and the coin would load into a hidden window).
-  const w = ensureWindow();
-  if (w && !w.isVisible()) {
-    positionWindow();
-    w.show();
-    w.focus();
-  }
-  // Hot-coin / pick bubbles open the chat PRE-LOADED with that coin.
-  const pending = pendingHotCoin;
-  if (pending && pending.mint) {
-    pendingHotCoin = null;
-    setTimeout(() => sendToChat("pilly:load-coin", pending), 500);
+// v1.1.2: hiding from the chat's own header has to be *intent*, not a close.
+// A renderer window.close() tears the window down on Windows (observed: the
+// window's "close" event never fires, the webContents is destroyed instead), so
+// the guard in createWindow() never got to record that the user wanted the
+// window gone - chatWanted stayed true, and the survival net rebuilt the chat
+// and re-showed it. That is the "I have to minimise him several times" bug: the
+// user hides him, he pops back up ~300 ms later. Record the intent first and
+// hide, so a teardown - native or deliberate - leaves him hidden.
+ipcMain.handle("pilly:hide-chat", () => {
+  chatWanted = false;
+  if (win && !win.isDestroyed()) {
+    saveWinBounds();
+    win.hide();
   }
   return { ok: true };
 });
-ipcMain.handle("pilly:github", () => {
-  shell.openExternal("https://github.com/PillCrew/PillCrew");
-  return { ok: true };
+ipcMain.handle("pilly:open-chat", () => {
+  try {
+    openChatWindow();
+    return { ok: true };
+  } catch (e) {
+    // Nothing on the renderer side listens to this promise, so a throw here would
+    // reject into nowhere and the click would look like it did nothing at all.
+    console.warn("[pilly] could not open the chat:", (e && e.message) || e);
+    return { ok: false };
+  }
+});
+ipcMain.handle("pilly:github", async () => {
+  return { ok: await openExternal("https://github.com/PillCrew/PillCrew") };
 });
 ipcMain.handle("pilly:version", () => app.getVersion());
 
@@ -1930,11 +2816,37 @@ ipcMain.handle("pilly:reset-window", () => {
 });
 
 // ---- Auto-updates from GitHub (v1.1.0) ----
-// electron-updater checks the PillCrew/PillCrew GitHub releases for a newer
-// version than the installed one, downloads it in the background and (after
-// the user confirms) restarts into the new build. Only the NSIS installer can
-// self-update; the portable build shows a message pointing at GitHub instead.
+// electron-updater checks the PillCrew/PillCrew releases for a newer version
+// than the installed one, downloads it in the background and (after the user
+// confirms) restarts into the new build. Windows (NSIS) and signed macOS
+// builds self-update; the portable build and unsigned macOS builds can't
+// replace themselves, so they get a friendly pointer to GitHub instead of a
+// cryptic updater error.
 let updateState = { state: "idle", version: app.getVersion(), message: "Ready." };
+
+// macOS auto-update only works on a Developer ID signed bundle - the updater
+// verifies the signature before swapping the .app out. An unsigned/ad-hoc
+// build fails deep inside the updater with an unreadable error, so we detect
+// it up front and downgrade to a "download it yourself" message. Result cached
+// because spawning codesign on every check is wasteful.
+let macSignCheck = null;
+function macCanSelfUpdate() {
+  if (process.platform !== "darwin") return true;
+  if (macSignCheck !== null) return macSignCheck;
+  try {
+    // codesign writes its details to stderr, so capture both streams.
+    const r = require("child_process").spawnSync(
+      "codesign", ["-dv", "--verbose=4", app.getPath("exe")], { encoding: "utf8" }
+    );
+    const text = `${r.stdout || ""}${r.stderr || ""}`;
+    macSignCheck = /Authority=Developer ID Application/.test(text);
+  } catch (e) {
+    macSignCheck = true; // can't tell -> don't block updates
+  }
+  return macSignCheck;
+}
+
+const MAC_MANUAL_MSG = "This Mac build isn't signed with a Developer ID, so it can't update itself. Grab the newest version from GitHub.";
 
 function sendUpdateStatus() {
   try {
@@ -1971,10 +2883,12 @@ autoUpdater.on("update-downloaded", (info) => setUpdateStatus({
   version: info && info.version,
   message: "Update downloaded. Restart to install it.",
 }));
-autoUpdater.on("error", (err) => setUpdateStatus({
-  state: "error",
-  message: err && err.message ? err.message : "Update check failed.",
-}));
+autoUpdater.on("error", (err) => {
+  const raw = err && err.message ? err.message : "Update check failed.";
+  // The updater's signature failures are unreadable; swap in plain English.
+  const sig = process.platform === "darwin" && /code ?sign|signature|codesign/i.test(raw);
+  setUpdateStatus({ state: "error", message: sig ? MAC_MANUAL_MSG : raw });
+});
 
 function checkForUpdates(manual) {
   if (!app.isPackaged) {
@@ -1988,6 +2902,11 @@ function checkForUpdates(manual) {
       state: "error",
       message: "This is the portable build — it can't update itself. Download the newest installer from GitHub.",
     });
+    return;
+  }
+  // Unsigned macOS builds: fail fast with something readable.
+  if (!macCanSelfUpdate()) {
+    if (manual) setUpdateStatus({ state: "error", message: MAC_MANUAL_MSG });
     return;
   }
   if (updaterIsBusy) return;
@@ -2010,9 +2929,8 @@ ipcMain.handle("pilly:update:install", () => {
   return { ok: false, message: "No downloaded update to install yet." };
 });
 ipcMain.handle("pilly:update:state", () => updateState);
-ipcMain.handle("pilly:update:open", () => {
-  shell.openExternal("https://github.com/PillCrew/PillCrew/releases");
-  return { ok: true };
+ipcMain.handle("pilly:update:open", async () => {
+  return { ok: await openExternal("https://github.com/PillCrew/PillCrew/releases") };
 });
 
 ipcMain.handle("pilly:quit", () => {
@@ -2022,32 +2940,71 @@ ipcMain.handle("pilly:quit", () => {
 });
 
 // Linux + Wayland (Ubuntu 22.04+/24.04 default): without this Chromium feature
-// flag, globalShortcut (CommandOrControl+Shift+P) silently fails to register
-// when Electron runs on the native Wayland backend. Harmless under X11/XWayland.
+// flag, globalShortcut silently fails to register when Electron runs on the
+// native Wayland backend. Harmless under X11/XWayland.
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
 }
 
+// A second Pilly would mean a second tray icon, a second pet walking the
+// taskbar, duplicate alerts - and two processes writing the same settings and
+// position files on top of each other. A second launch therefore hands the
+// request to the running app and exits instead of building a rival copy.
+const isPrimaryInstance = app.requestSingleInstanceLock();
+if (!isPrimaryInstance) {
+  app.exit(0);
+} else {
+  app.on("second-instance", () => {
+    // A second launch means "put him in front of me" - a window that is already
+    // open keeps its place, a minimised one comes back.
+    revealWindow(false);
+  });
+}
+
 app.whenReady().then(() => {
+  if (!isPrimaryInstance) return; // the other instance owns the tray
   if (process.platform === "win32") app.setAppUserModelId("fun.pillcrew.pilly");
+  applyMacAppMenu();
   iconFrames = loadFrames();
   createWindow();
-  createTray();
+  // The tray is a convenience, not a prerequisite: a Linux session without
+  // AppIndicator support (or a theme-less tray host) makes `new Tray()` throw,
+  // and an exception here used to take the rest of startup with it - a running
+  // process with no icon, no pet and no chat window.
+  safely("creating the tray", createTray);
+  // v1.1.2: bring Pilly back if he was on the taskbar when the app last closed.
+  if (petOpts().on) startPet();
+  // v1.1.2: a monitor going away (laptop undocked at the desk) must not take
+  // Pilly or the chat window with it.
+  const onDisplaysChanged = () => { clampPetToDisplays(); clampChatToDisplays(); };
+  screen.on("display-removed", onDisplaysChanged);
+  screen.on("display-added", onDisplaysChanged);
+  screen.on("display-metrics-changed", onDisplaysChanged);
   // Linux: GNOME hides tray icons unless the AppIndicator extension is
   // installed, so a tray-only app looks like it never started. Surface the
   // chat window once at launch on Linux.
   if (process.platform === "linux") {
-    positionWindow();
-    if (win && !win.isDestroyed()) {
-      win.show();
-      win.focus();
-    }
+    revealWindow(true);
   }
-  globalShortcut.register("CommandOrControl+Shift+P", () => toggleWindow());
-  // Watchlist alerts poll + tray live-price tooltip.
+  // v1.1.2: CommandOrControl+Alt+P - the old Ctrl/Cmd+Shift+P collided with
+  // VS Code's command palette (a dealbreaker for the Solana dev crowd).
+  // The result used to be thrown away, which made a conflict with another app
+  // completely silent: the user just pressed a dead key forever. Now the tray
+  // menu says so instead.
+  summonHotkeyOk = globalShortcut.register("CommandOrControl+Alt+P", () => toggleWindow());
+  if (!summonHotkeyOk) {
+    console.warn("[pilly] the summon hotkey (Ctrl/Cmd+Alt+P) is already owned by another app");
+    applyTrayMenu();
+  }
+  // Watchlist alerts poll + tray live-price tooltip + RPC health.
   watchTimer = setInterval(() => { watchPoll().catch(() => {}); }, 30000);
-  trayInfoTimer = setInterval(() => { updateTrayInfo(null).catch(() => {}); }, 60000);
+  trayInfoTimer = setInterval(() => {
+    updateTrayInfo(null).catch(() => {});
+    bgTick("RPC health", refreshRpcHealth());
+  }, 60000);
   watchPoll().catch(() => {});
+  // Probe straight away so the menu does not sit on "checking…" for a minute.
+  bgTick("RPC health", refreshRpcHealth());
   // Reminders poll every 10s (fire-once, then removed).
   reminderTimer = setInterval(checkReminders, 10000);
   checkReminders();
@@ -2057,7 +3014,40 @@ app.whenReady().then(() => {
   focusTick();
   // Look for a newer Pilly on GitHub (installed builds only).
   checkForUpdates(false);
+  // Windows and Linux do not emit before-quit when the machine is shut down or
+  // the user logs out (Electron documents that for Windows), so without this the
+  // window-survival watchers read the OS tearing our windows down as a crash:
+  // they log a repair, and rebuilding a window in the last second of the session
+  // is wasted work. Registered here because powerMonitor is only usable once the
+  // app is ready. macOS has no shutdown event; the listener is harmless there.
+  powerMonitor.on("shutdown", () => { isQuitting = true; });
+}).catch((e) => {
+  // Nothing above is optional enough to wrap one by one, but a throw in here
+  // must not end as a silently rejected promise: that leaves a living process
+  // with no window and no explanation.
+  console.warn("[pilly] startup failed:", (e && e.stack) || e);
 });
 
 app.on("window-all-closed", () => { /* stay alive in the tray */ });
-app.on("before-quit", () => { isQuitting = true; stopPet(); });
+// macOS: clicking the Dock icon must re-open the chat, not silently no-op.
+// (A hidden window has no Dock-visible surface otherwise.)
+app.on("activate", () => {
+  // A window the survival net had to destroy leaves win null, and the old guard
+  // then did nothing at all - a Dock icon that is simply dead. An already open
+  // window stays a no-op, so a Dock click never hides what you are looking at -
+  // but a minimised window is "open" to AppKit and not to the user, which is the
+  // macOS way to end up with a chat you cannot bring back at all.
+  if (chatIsOpen(chatState(win))) return;
+  revealWindow(true);
+});
+app.on("before-quit", () => {
+  isQuitting = true;
+  // Park him where he actually is, not only where he was last dragged to - a
+  // pet who wanders off to the right edge should come back there.
+  if (petWin && !petWin.isDestroyed()) rememberPetPos(true);
+  stopPet();
+});
+// Electron asks for this explicitly, and it matters on macOS: the OS keeps a
+// hotkey bound to a process that never released it far more stubbornly than
+// Windows does.
+app.on("will-quit", () => globalShortcut.unregisterAll());

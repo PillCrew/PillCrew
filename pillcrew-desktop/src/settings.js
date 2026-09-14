@@ -16,6 +16,8 @@ const DEFAULT_SETTINGS = {
   maxTokens: 240,
   pet: {
     name: "Pilly",
+    on: false, // v1.1.2: was Pilly running when the app last closed?
+    pos: null, // v1.1.2: where the user parked him ({x,y}) so he comes back there
     mood: "neutral",
     theme: "green",
     size: "md",
@@ -28,15 +30,15 @@ const DEFAULT_SETTINGS = {
     stopFreq: "normal",
     questions: true,
     sounds: true,
-    // Proactive features (v1.1.0)
+    // Proactive features (v1.0.5)
     hotAlerts: true, // Pilly scans trending and flags hot 5m movers
     hotPct: 10, // minimum 5m move % to flag a hot coin
     alertSound: true, // ding when a watchlist alert fires
     dailyBrief: true, // morning summary (SOL + your PnL)
     pillyPick: true, // Pilly's AI pick of the day (every ~6h)
-    sniper: true, // v1.2.0: snipe just-launched coins
-    whaleAlerts: true, // v1.2.0: alert when a followed whale opens a position
-    portfolioMood: true, // v1.2.0: Pilly reacts to your own PnL
+    sniper: true, // v1.0.5: snipe just-launched coins
+    whaleAlerts: true, // v1.0.5: alert when a followed whale opens a position
+    portfolioMood: true, // v1.0.5: Pilly reacts to your own PnL
   },
   chat: {
     bubble: "sharp", // sharp | rounded | glass | neon | minimal
@@ -46,38 +48,47 @@ const DEFAULT_SETTINGS = {
 };
 
 let cache = null;
+let cacheDir = null;
 
 function settingsPath(userDataDir) {
   return path.join(userDataDir, "pilly-settings.json");
 }
 
-// Load settings (cached). Falls back to defaults.
+// One shape for both branches of load(): a settings object that shares nothing
+// with DEFAULT_SETTINGS (the app mutates settings.pet while it runs, and those
+// writes used to land on the module-level defaults).
+function normalize(raw) {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...raw,
+    tiers: Array.isArray(raw.tiers) && raw.tiers.length
+      ? raw.tiers.slice(0, 6)
+      : DEFAULT_SETTINGS.tiers.slice(),
+    chat: {
+      ...DEFAULT_SETTINGS.chat,
+      ...(raw.chat || {}),
+    },
+    pet: {
+      ...DEFAULT_SETTINGS.pet,
+      ...(raw.pet || {}),
+    },
+  };
+}
+
+// Load settings (cached per userDataDir). Falls back to defaults.
 function load(userDataDir) {
-  if (cache) return cache;
+  if (cache && cacheDir === userDataDir) return cache;
   try {
     const p = settingsPath(userDataDir);
     if (fs.existsSync(p)) {
       const raw = JSON.parse(fs.readFileSync(p, "utf8"));
-      const merged = {
-        ...DEFAULT_SETTINGS,
-        ...raw,
-        tiers: Array.isArray(raw.tiers) && raw.tiers.length
-          ? raw.tiers.slice(0, 6)
-          : DEFAULT_SETTINGS.tiers,
-        chat: {
-          ...DEFAULT_SETTINGS.chat,
-          ...(raw.chat || {}),
-        },
-        pet: {
-          ...DEFAULT_SETTINGS.pet,
-          ...(raw.pet || {}),
-        },
-      };
-      cache = merged;
+      cache = normalize(raw);
+      cacheDir = userDataDir;
       return cache;
     }
   } catch (e) { /* ignore */ }
-  cache = DEFAULT_SETTINGS;
+  cache = normalize(DEFAULT_SETTINGS);
+  cacheDir = userDataDir;
   return cache;
 }
 
@@ -94,6 +105,13 @@ function save(userDataDir, settings) {
     maxTokens: Number.isFinite(Number(settings.maxTokens)) ? Number(settings.maxTokens) : 240,
     pet: {
       name: String((settings.pet && settings.pet.name) || "Pilly").slice(0, 14),
+      on: !!(settings.pet && settings.pet.on),
+      pos: (() => {
+        const p = settings.pet && settings.pet.pos;
+        const x = Number(p && p.x);
+        const y = Number(p && p.y);
+        return isFinite(x) && isFinite(y) ? { x: Math.round(x), y: Math.round(y) } : null;
+      })(),
       mood: String((settings.pet && settings.pet.mood) || "neutral"),
       theme: String((settings.pet && settings.pet.theme) || "green"),
       size: String((settings.pet && settings.pet.size) || "md"),
@@ -143,6 +161,7 @@ function save(userDataDir, settings) {
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(settingsPath(userDataDir), JSON.stringify(clean, null, 2), "utf8");
     cache = clean;
+    cacheDir = userDataDir;
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e) };
@@ -169,4 +188,18 @@ function effective(userDataDir) {
   return { ...s, tiers };
 }
 
-module.exports = { load, save, effective, DEFAULT_SETTINGS };
+// Persist a pet-only change: switching Pilly on or off, parking him somewhere,
+// changing one of his options. These writes happen on their own - nobody typed
+// an API key to make them happen - so the base for the merge is the *saved*
+// settings and never effective(). effective() injects the .env tiers, and
+// saving those would copy PILLY_TIER*_KEY into pilly-settings.json the first
+// time the pet is toggled or dragged, after which the saved copy wins and later
+// .env edits are silently ignored.
+function savePet(userDataDir, patch) {
+  const s = load(userDataDir);
+  return save(userDataDir, Object.assign({}, s, {
+    pet: Object.assign({}, s.pet, patch || {}),
+  }));
+}
+
+module.exports = { load, save, savePet, effective, DEFAULT_SETTINGS };

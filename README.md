@@ -19,7 +19,9 @@ I started building tools and automation for online games and game servers in my 
   <img src="assets/00-cover.png" alt="Pilly Desktop - the proactive market companion" />
 </p>
 
-**Pilly is a tiny green pill AI friend that lives in your Windows taskbar.** Click it, chat with it (free AI), paste a Solana token for an instant live read — it answers like a sharp, terminally-online friend.
+**Pilly is a tiny green pill AI friend that lives in your taskbar or menu bar.** Click it, chat with it (free AI), paste a Solana token for an instant live read — it answers like a sharp, terminally-online friend.
+
+Windows · macOS · Linux
 
 Live coin checks · Trending · Portfolio · Watchlist & PnL · Whale follow · Radar · Position sizing · Meme brain · Free AI
 

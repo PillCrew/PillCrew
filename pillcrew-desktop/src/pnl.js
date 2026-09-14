@@ -10,6 +10,12 @@ function filePath(userData) {
   return path.join(userData, "pilly-pnl.json");
 }
 
+// Every read and write goes through the same key, so a pasted address with a
+// stray space can never be stored under a key nothing looks up.
+function keyOf(mint) {
+  return String(mint || "").trim();
+}
+
 function load(userData) {
   try {
     const j = JSON.parse(fs.readFileSync(filePath(userData), "utf8"));
@@ -31,23 +37,24 @@ function save(userData, data) {
 
 // entry price for a mint, or null
 function get(userData, mint) {
-  const e = load(userData).entries[String(mint || "")];
+  const e = load(userData).entries[keyOf(mint)];
   return e && isFinite(Number(e.entry)) ? Number(e.entry) : null;
 }
 
 // set entry price for a mint. entry must be a positive number.
 function set(userData, mint, entry) {
   const n = Number(entry);
-  if (!String(mint || "").trim() || !isFinite(n) || n <= 0) return null;
+  const key = keyOf(mint);
+  if (!key || !isFinite(n) || n <= 0) return null;
   const d = load(userData);
-  d.entries[String(mint).trim()] = { entry: n, updatedAt: Date.now() };
+  d.entries[key] = { entry: n, updatedAt: Date.now() };
   save(userData, d);
   return n;
 }
 
 function remove(userData, mint) {
   const d = load(userData);
-  delete d.entries[String(mint || "")];
+  delete d.entries[keyOf(mint)];
   save(userData, d);
 }
 

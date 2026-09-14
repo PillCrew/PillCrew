@@ -1,13 +1,13 @@
-// Preload - exposes a tiny, safe API to the chat window.
+// Preload - exposes the app's API to every Pilly window. Most of the surface only
+// makes sense in the chat (chat, settings, watchlist), but the overlays share this
+// one file, so the bubble and the poop window get it too; they are internal
+// windows loaded from local files, never remote content.
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("pilly", {
   chat: (payload) => ipcRenderer.invoke("pilly:chat", payload),
   memePrompts: () => ipcRenderer.invoke("pilly:meme"),
   detectTask: (text) => ipcRenderer.invoke("pilly:detect-task", text),
-  onSuggest: (cb) => {
-    ipcRenderer.on("pilly:suggest", (e, type) => cb(type));
-  },
   // settings
   settingsGet: () => ipcRenderer.invoke("pilly:settings:get"),
   settingsSave: (s) => ipcRenderer.invoke("pilly:settings:save", s),
@@ -59,7 +59,9 @@ contextBridge.exposeInMainWorld("pilly", {
   onFocusStatus: (cb) => { ipcRenderer.on("pilly:focus:status", (e, s) => cb(s)); },
   // taskbar pet
   petToggle: () => ipcRenderer.invoke("pilly:pet:toggle"),
+  onPetActive: (cb) => { ipcRenderer.on("pilly:pet:active", (e, on) => cb(on)); }, // v1.1.2
   openChat: () => ipcRenderer.invoke("pilly:open-chat"),
+  hideChat: () => ipcRenderer.invoke("pilly:hide-chat"), // v1.1.2
   setAlwaysOnTop: (on) => ipcRenderer.invoke("pilly:win:ontop", on),
   quit: () => ipcRenderer.invoke("pilly:quit"),
   github: () => ipcRenderer.invoke("pilly:github"),
@@ -89,6 +91,10 @@ contextBridge.exposeInMainWorld("pilly", {
   onPetMood: (cb) => { ipcRenderer.on("pet:mood", (e, m) => cb(m)); },
   onPetSpook: (cb) => { ipcRenderer.on("pet:spook", (e, t) => cb(t)); },
   onPetPlay: (cb) => { ipcRenderer.on("pet:play", (e, type) => cb(type)); },
+  onPetGreet: (cb) => { ipcRenderer.on("pet:greet", () => cb()); }, // v1.1.2
+  onPetFocus: (cb) => { ipcRenderer.on("pet:focus", (e, p) => cb(p)); }, // v1.1.2
+  onPetNudge: (cb) => { ipcRenderer.on("pet:nudge", (e, n) => cb(n)); }, // v1.1.2
+  setUiPrefs: (prefs) => ipcRenderer.send("ui:prefs", prefs), // v1.1.2
   onLoadCoin: (cb) => { ipcRenderer.on("pilly:load-coin", (e, coin) => cb(coin)); },
   onQuestion: (cb) => { ipcRenderer.on("pilly:question", (e, t) => cb(t)); },
 });
