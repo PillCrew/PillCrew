@@ -734,10 +734,14 @@ the cloud has no confident verdict **and** the file carries no valid signature,
 **Smart App Control** refuses to run it - you get `Application control policy
 has blocked this file` and the app never starts. This hits *new* files hardest:
 an installer published weeks ago has usually been seen often enough to have a
-verdict, while the release you just uploaded has none. Smart App Control has no
-per-app exception, and nothing in the app itself can talk its way out - it is a
-signing problem, and [Microsoft's own answer](https://support.microsoft.com/windows/smart-app-control-frequently-asked-questions)
-is "ask the developer to sign the app".
+verdict, while the release you just uploaded has none. Per
+[Microsoft's documentation](https://learn.microsoft.com/windows/apps/develop/smart-app-control/overview),
+unknown **unsigned** code is blocked by default, and when app intelligence can't
+make a prediction the app is still allowed **if it's signed with a certificate
+from a trusted CA** - which is exactly why signing is the fix, and why nothing
+in the app (and no per-app exception, which doesn't exist) can talk its way out.
+Microsoft's own advice for the blocked-app case is the same: ask the developer
+to sign the app.
 
 Since June 2023 code-signing keys must live in FIPS 140-2 hardware, so shipping
 a `.pfx` in a CI secret is no longer practical; use a cloud signing service
@@ -851,15 +855,21 @@ Control** checks every program it doesn't know against Microsoft's cloud. It has
 no verdict for a file published an hour ago, and no per-app exception - so it
 blocks it, usually with "Inteligentna kontrola aplikacji / Smart App Control
 blocked this app". That's also why an *older* Pilly installer still starts while
-the newest one doesn't: the old file has earned a verdict by now. Your options:
+the newest one doesn't: the old file has earned a verdict by now. Microsoft
+states the rule plainly: unknown, unsigned code is blocked by default, and if
+the cloud can't make a prediction the app still runs **if it is signed with a
+certificate from a trusted CA**. Your options:
 
-- **Turn Smart App Control off** - Windows Security → **App & browser control**
-  → **Smart App Control** → **Off**. Recent Windows versions let you turn it
-  back on later without reinstalling Windows.
-- **Wait** - the block usually lifts once Microsoft's cloud has seen the new
-  file often enough (the period varies, from minutes to days).
 - **Sign the build** - the real fix, and it's on our side: see
   [Signing the Windows build](#signing-the-windows-build-smart-app-control-and-smartscreen).
+- **Retry later** - Microsoft doesn't publish a timeline, but the verdict is
+  tied to the file's hash and we've seen the same file refused and then start
+  fine minutes later as the cloud catches up.
+- **Turn Smart App Control off** - Windows Security → **App & browser control**
+  → **Smart App Control** → **Off**. Worth knowing before you do it: Microsoft
+  only enables Smart App Control on a *clean* Windows install, so switching it
+  off is one-way - turning it back on means resetting Windows, not clicking a
+  slider.
 - **Use another machine or OS** in the meantime - the macOS/Linux builds are
   unaffected by this policy.
 
