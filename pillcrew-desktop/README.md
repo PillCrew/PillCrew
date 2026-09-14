@@ -290,6 +290,14 @@ Pilly feels **more alive** and behaves more politely on macOS.
   packaged build. Every one of them now reports its own failure and keeps Pilly
   running, and the same guard covers the timer callbacks that had no `try` of
   their own.
+- **A desktop that refuses a tray can no longer take startup down** - creating the
+  tray ran bare inside startup, so on a Linux session without AppIndicator support
+  (or any environment that says no to a tray icon) `new Tray()` threw, the rest of
+  the startup chain never ran, and what was left was a process with no tray, no
+  pet and no chat. Tray creation is guarded now, "Start at login" reports a refusal
+  from the OS instead of throwing out of a tray-menu click (which macOS answers
+  with a crash dialog on an unsigned build), and a startup failure is logged
+  instead of disappearing as an unhandled rejection.
 - **Multi-monitor resilience** - undocking a laptop (or changing a resolution) no
   longer strands Pilly and the chat window on a display that no longer exists.
   `display-removed`, `display-added` and `display-metrics-changed` all pull them
