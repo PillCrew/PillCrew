@@ -312,6 +312,9 @@ let petDragging = false;
 // When the renderer last told us it was still dragging. A drag lives only as long
 // as those reports keep coming (see the watchdog in the pet tick).
 let petDragSeenAt = 0;
+// When the carry started, so the hard carry-limit watchdog (v1.1.4) can end a
+// drag that keeps reporting forever.
+let petDragStartAt = 0;
 // Last cursor offset pushed to the renderer, so a still mouse next to a still Pilly
 // stops costing an IPC message every 24 ms (pet:dir is de-duped the same way).
 let petCursorSentX = null;
@@ -340,6 +343,7 @@ let focusTickTimer = null;
 let lastIdleSec = null; // powerMonitor.getSystemIdleTime() previous sample
 let batteryWarned = false; // one low-battery bubble per discharge cycle (v1.1.1)
 let pendingHotCoin = null; // { mint, symbol, name } for the clickable hot bubble
+let hotBubbleUntil = 0; // while a hot bubble is live, jokes/questions must not stomp it
 const hotCooldown = new Map(); // mint -> last flagged time (no repeat within 30 min)
 const sniperCooldown = new Map(); // mint -> last sniper-flagged time
 let pillyPickNext = 0; // ms when the next "Pilly's pick" is allowed
@@ -861,6 +865,7 @@ function startPet() {
   petTarget = null;
   petDragging = false;
   petDragSeenAt = 0;
+  petDragStartAt = 0;
   // petLastState has to be cleared too, or an off→on toggle where the last state
   // was "walk" makes the tick's de-dup skip the very first pet:state - and the
   // freshly created renderer never hears which state to draw.
@@ -888,8 +893,26 @@ function startPet() {
     if (petDragging && now - petDragSeenAt > 4000) {
       petDragging = false;
       petDragSeenAt = 0;
+      petDragStartAt = 0;
       petTarget = null;
       console.warn("[pilly] the drag stopped reporting - Pilly released");
+    }
+    // v1.1.4 backstop: even a renderer that keeps saying "hold" forever (a
+    // hover that never got its mouseout) cannot keep him stuck - a carry has a
+    // hard maximum length. The renderer's own cursor check ends it first; this
+    // one only ever fires if that handshake is somehow broken. A cursor that is
+    // still on him is a real still hold, which must survive, so the backstop
+    // re-arms instead of dropping him.
+    if (petDragging && now - petDragStartAt > 12000) {
+      if (!cursorOverPet()) {
+        petDragging = false;
+        petDragSeenAt = 0;
+        petDragStartAt = 0;
+        petTarget = null;
+        console.warn("[pilly] the drag outlived its carry limit - Pilly released");
+      } else {
+        petDragStartAt = now;
+      }
     }
     // While the user is dragging Pilly, don't fight him - but keep the
     // speech bubble glued to him as he moves.
@@ -1059,6 +1082,7 @@ function stopPet() {
   poopWins.clear();
   petDragging = false;
   petDragSeenAt = 0;
+  petDragStartAt = 0;
   petTarget = null;
   petLoaded = false;
   if (petWin && !petWin.isDestroyed()) petWin.destroy();
@@ -1266,8 +1290,27 @@ ipcMain.on("bubble:resize", (event, h) => {
   positionBubble();
 });
 
+// v1.1.4: a tapped bubble must not linger over Pilly. The bubble window stays
+// clickable for its full 12 s otherwise, and while it sits on top of the pet
+// every click that looks like it is on Pilly lands on the invisible bubble
+// instead - the "tap to snipe, then Pilly ignores me" freeze. A tap means the
+// user acted on it, so the bubble's job is done.
+function dismissBubble() {
+  if (bubbleTimer) { clearTimeout(bubbleTimer); bubbleTimer = null; }
+  hotBubbleUntil = 0;
+  if (bubbleWin && !bubbleWin.isDestroyed()) {
+    bubbleWin.hide();
+    setBubbleClickable(false);
+  }
+  sendPetTalking(false);
+}
+ipcMain.on("bubble:close", () => dismissBubble());
+
 function showPetJoke(text) {
   if (!petActive) return;
+  // v1.1.4: a live hot/snipe bubble is time-sensitive - a joke must not walk
+  // over it, or the "tap to snipe" signal disappears and the tap does nothing.
+  if (Date.now() < hotBubbleUntil) return;
   setBubbleClickable(false);
   const b = ensureBubbleWin();
   sendBubbleJoke(text);
@@ -1584,6 +1627,9 @@ async function petQuestionTick() {
 // after a while.
 function showPetQuestion(text) {
   if (!petActive) return;
+  // v1.1.4: same as jokes - a question is never allowed to cover a live
+  // hot/snipe bubble.
+  if (Date.now() < hotBubbleUntil) return;
   const b = ensureBubbleWin();
   sendBubbleJoke("🤔 " + text);
   positionBubble();
@@ -1752,9 +1798,11 @@ function showHotCoin(text) {
   b.showInactive();
   setBubbleClickable(true);
   sendPetTalking(true);
+  hotBubbleUntil = Date.now() + 12000;
   playPetSound("coin");
   if (bubbleTimer) clearTimeout(bubbleTimer);
   bubbleTimer = setTimeout(() => {
+    hotBubbleUntil = 0;
     if (bubbleWin && !bubbleWin.isDestroyed()) {
       bubbleWin.hide();
       setBubbleClickable(false);
@@ -2875,12 +2923,30 @@ ipcMain.on("ui:prefs", (event, prefs) => {
   }
 });
 // While walking across the monitor, the user can grab Pilly and drag it.
+// The OS cursor is the one witness that cannot lie about a carry: the renderer
+// asks whether the cursor is still on the pet when a hover looks suspiciously
+// long (v1.1.4 - the window can slide out from under a captured press and the
+// mouseout is lost, which used to freeze him in mid-air until he was switched
+// off and on). A hand still on him keeps the carry alive.
+function cursorOverPet() {
+  try {
+    if (!petWin || petWin.isDestroyed()) return false;
+    const c = screen.getCursorScreenPoint();
+    const b = petWin.getBounds();
+    const m = 10; // a hand on his edge is still a hand on him
+    return c.x >= b.x - m && c.x <= b.x + b.width + m && c.y >= b.y - m && c.y <= b.y + b.height + m;
+  } catch (e) {
+    return false;
+  }
+}
+ipcMain.handle("pet:drag-cursor-over", () => cursorOverPet());
 ipcMain.on("pet:drag", (event, payload) => {
   if (!petWin || petWin.isDestroyed()) return;
   const mode = payload && payload.mode;
   if (mode === "start") {
     petDragging = true;
     petDragSeenAt = Date.now();
+    petDragStartAt = Date.now();
     petTarget = null;
     petState = "pause";
     petStateStart = Date.now();
@@ -2888,6 +2954,7 @@ ipcMain.on("pet:drag", (event, payload) => {
   } else if (mode === "end") {
     petDragging = false;
     petDragSeenAt = 0;
+    petDragStartAt = 0;
     petState = "pause";
     petStateStart = Date.now();
     petStateEnd = Date.now() + pauseMs();
@@ -2914,6 +2981,7 @@ ipcMain.on("pet:drag", (event, payload) => {
     // seconds read as a lost release and he walked out of the hand carrying him.
     if (!petDragging) {
       petDragging = true;
+      petDragStartAt = Date.now();
       petState = "pause";
       petStateStart = Date.now();
       petLastState = "pause";

@@ -47,6 +47,11 @@ const openChat = () => {
   return OPEN_FAIL ? Promise.reject(new Error("stub: open chat unavailable")) : Promise.resolve(undefined);
 };
 const petDrag = (ev) => { drags.push((ev && ev.mode) || "?"); };
+// v1.1.4: where main says the OS cursor is. The harness decides the answer, so
+// it can prove both sides of the carry cap: a lost gesture (cursor gone) ends
+// the carry, a real still hold (cursor on him) survives it.
+let cursorOver = false;
+const petDragCursorOver = () => Promise.resolve(cursorOver);
 
 contextBridge.exposeInMainWorld("pilly", {
   chat: P, memePrompts: P, detectTask: P,
@@ -67,7 +72,7 @@ contextBridge.exposeInMainWorld("pilly", {
   updateCheck: P, updateInstall: P, updateState: P, updateOpen: P, onUpdateStatus: on,
   onPetDir: on, onPetJoke: onCapture("joke"), onPetCursor: on, onPetState: on,
   petSettings: petSettings, petApply: P, onPetSettings: on, onPetOrient: onCapture("petOrient"),
-  petDrag, petReact: petReact, resizeBubble: on, petMood: P, petBattery: P,
+  petDrag, petDragCursorOver, petReact: petReact, resizeBubble: on, petMood: P, petBattery: P,
   onPetTalking: on, onPetMarket: on, onPetMood: on, onPetSpook: on, onPetPlay: on,
   onPetGreet: onCapture("greet"),
   onPetFocus: onCapture("focus"),
@@ -85,6 +90,8 @@ contextBridge.exposeInMainWorld("pilly", {
   __petSettingsMode: () => (HANG ? "hang" : FAIL ? "fail" : "ok"),
   __openChatMode: () => (OPEN_FAIL ? "fail" : "ok"),
   __clearTouch: () => { chats.length = 0; drags.length = 0; },
+  __setCursorOver: (v) => { cursorOver = v; },
+  __cursorOver: () => cursorOver,
   onPetActive: onCapture("petActive"), // v1.1.2: the tray can switch the pet too
   onLoadCoin: on, onQuestion: on,
 });

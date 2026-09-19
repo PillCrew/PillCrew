@@ -84,8 +84,10 @@ contextBridge.exposeInMainWorld("pilly", {
   onPetSettings: (cb) => { ipcRenderer.on("pet:settings", (e, s) => cb(s)); },
   onPetOrient: (cb) => { ipcRenderer.on("pet:orient", (e, o) => cb(o)); },
   petDrag: (p) => ipcRenderer.send("pet:drag", p),
+  petDragCursorOver: () => ipcRenderer.invoke("pet:drag-cursor-over"),
   petReact: (kind) => ipcRenderer.send("pet:react", kind),
   resizeBubble: (h) => ipcRenderer.send("bubble:resize", h),
+  closeBubble: () => ipcRenderer.send("bubble:close"),
   petMood: (m) => ipcRenderer.invoke("pilly:pet:mood", m),
   petBattery: (info) => ipcRenderer.invoke("pilly:pet:battery", info), // v1.1.1
   onPetTalking: (cb) => { ipcRenderer.on("pet:talking", (e, on) => cb(on)); },

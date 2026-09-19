@@ -243,9 +243,13 @@
         resizeToFit();
       });
     }
-    // Clicking a bubble (Pilly's question) opens the chat so you can answer.
+    // Clicking a bubble (Pilly's question / a hot coin to snipe) opens the chat
+    // so you can answer or check the coin - and dismisses the bubble, so it
+    // cannot keep sitting over Pilly and eating the next clicks.
     document.addEventListener("click", () => {
-      if (window.pilly) window.pilly.openChat();
+      if (!window.pilly) return;
+      if (window.pilly.closeBubble) window.pilly.closeBubble();
+      window.pilly.openChat();
     });
   </script>
 </body>

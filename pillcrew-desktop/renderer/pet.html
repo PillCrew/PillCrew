@@ -526,6 +526,13 @@
       // reason (the petDrag watchdog in the pet tick).
       let dragSeenAt = 0;
       let dragIdleMs = 4000;
+      // v1.1.4: the hard cap in watchDrag - a hover that never got its mouseout
+      // can no longer keep a carry alive for the rest of the session. When the
+      // cap is reached the renderer asks main where the OS cursor really is, so
+      // a genuinely still hand (cursor on him) survives while a lost gesture
+      // (the window slid out from under a captured press) is put down.
+      let DRAG_MAX_MS = 10000;
+      let dragCursorCheckedAt = 0;
       let dragWatch = 0;
       let tapHandledAt = 0; // a tap already opened the chat at the release
       // How far the pointer may travel and still count as a click. 6 px was too
@@ -551,7 +558,23 @@
       function watchDrag() {
         dragWatch = 0;
         if (!dragging) return;
-        if (!hover && performance.now() - dragSeenAt > dragIdleMs) { endDrag(); return; }
+        const idle = performance.now() - dragSeenAt;
+        if (!hover && idle > dragIdleMs) { endDrag(); return; }
+        if (hover && idle > DRAG_MAX_MS) {
+          // v1.1.4: the freeze was a hover that never got its mouseout (the
+          // window slid out from under a captured press), so the hand looked
+          // like it was still there forever and the hold reports kept main's
+          // carry watchdog fed forever too. The OS cursor is the one witness
+          // that cannot lie: still on him it is a real still hold, which is a
+          // real gesture and must survive the cap; elsewhere it proves the
+          // gesture is lost and he is put down. Main answers from the window
+          // bounds it owns.
+          const nowMs = performance.now();
+          if (dragCursorCheckedAt === 0 || nowMs - dragCursorCheckedAt > 800) {
+            dragCursorCheckedAt = nowMs;
+            askMainWhereTheCursorIs();
+          }
+        }
         // Still hovering means the hand is still there: keep main's own carry
         // watchdog fed, or a long still hold reads as a lost release and he walks
         // out of the hand that is still holding him. Moving him would also drag
@@ -559,6 +582,25 @@
         // so ignoring a still hand costs nothing.
         if (hover && window.pilly) window.pilly.petDrag({ mode: "hold" });
         dragWatch = setTimeout(watchDrag, 500);
+      }
+      // The cursor answer ends the carry only while he is still held and still
+      // has not moved: if the hand came back to life while the answer was
+      // travelling, it is a real drag again and it must survive. A channel that
+      // fails outright must not leave him in the air, so it puts him down too.
+      function askMainWhereTheCursorIs() {
+        try {
+          if (!window.pilly || !window.pilly.petDragCursorOver) { endDrag(); return; }
+          const answer = window.pilly.petDragCursorOver();
+          if (answer && typeof answer.then === "function") {
+            answer.then((over) => {
+              if (!over && dragging && performance.now() - dragSeenAt > DRAG_MAX_MS) endDrag();
+            }).catch(() => { if (dragging) endDrag(); });
+          } else if (!answer && dragging && performance.now() - dragSeenAt > DRAG_MAX_MS) {
+            endDrag();
+          }
+        } catch (err) {
+          if (dragging) endDrag();
+        }
       }
       function endDrag() {
         if (!dragging) return;
@@ -605,6 +647,7 @@
         lastX = e.screenX;
         lastY = e.screenY;
         dragSeenAt = performance.now();
+        dragCursorCheckedAt = 0;
         if (!dragWatch) dragWatch = setTimeout(watchDrag, 500);
         // A fresh carry: the swing and the "was that ride rough?" verdict are per
         // pick-up, not lifetime totals.
@@ -1308,6 +1351,13 @@
             }
             ctx.stroke();
           }
+          // belly patch: clipped to the body so it reads as a yarn patch and
+          // never pokes out below him - the old patch hung 4px past the rounded
+          // bottom as a semi-transparent nub.
+          ctx.fillStyle = "rgba(255,255,255,0.14)";
+          ctx.beginPath();
+          ctx.ellipse(0, -4.5, 9.5, 8.5, 0, 0, Math.PI * 2);
+          ctx.fill();
           ctx.restore();
           // center seam: one dashed stitch over the top of the head
           ctx.strokeStyle = "rgba(5, 72, 78, 0.55)";
@@ -1319,11 +1369,6 @@
           ctx.quadraticCurveTo(1.4, -17.5, 0, -14);
           ctx.stroke();
           ctx.setLineDash([]);
-          // belly patch
-          ctx.fillStyle = "rgba(255,255,255,0.14)";
-          ctx.beginPath();
-          ctx.ellipse(0, -4.5, 9.5, 8.5, 0, 0, Math.PI * 2);
-          ctx.fill();
         }
 
         // face

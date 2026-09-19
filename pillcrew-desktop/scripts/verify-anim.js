@@ -62,6 +62,7 @@ const BRIDGE = `
         get moved() { return moved; },
         get canDrag() { return canDrag; },
         get dragIdleMs() { return dragIdleMs; }, set dragIdleMs(v) { dragIdleMs = v; },
+        get dragMaxMs() { return DRAG_MAX_MS; }, set dragMaxMs(v) { DRAG_MAX_MS = v; },
         get clickUntil() { return clickUntil; }, set clickUntil(v) { clickUntil = v; },
         get talking() { return talking; }, set talking(v) { talking = v; },
         get blinkStart() { return blinkStart; }, set blinkStart(v) { blinkStart = v; },
@@ -1390,6 +1391,34 @@ app.whenReady().then(async () => {
     await idle(700);
     out.hold = { dragging: t.dragging, drags: window.pilly.__drags().join(",") };
     t.dragIdleMs = 4000;
+
+    // 11. the stuck hover that used to freeze him for good: the window slid out
+    //     from under a captured press, so mouseout never fires and the hand looks
+    //     like it is still there forever. The cursor is the one witness that
+    //     cannot lie - main says it is gone, so the carry has to end even though
+    //     hover stayed true. The old code fed "hold" forever.
+    await fresh();
+    window.pilly.__setCursorOver(false);
+    t.dragMaxMs = 120;
+    send("mouseover", 28, 30, 0);
+    send("mousedown", 28, 30, 1);
+    await idle(700);
+    out.stuckHover = { dragging: t.dragging, drags: window.pilly.__drags().join(","), hover: t.hover };
+    t.dragMaxMs = 10000;
+
+    // 12. the other side of the same boundary: a hand that holds him perfectly
+    //     still for longer than the carry cap. The cursor is still on him, so
+    //     the cap must not drop a real hold - only a cursor that is elsewhere
+    //     proves the gesture is lost.
+    await fresh();
+    window.pilly.__setCursorOver(true);
+    t.dragMaxMs = 120;
+    send("mouseover", 28, 30, 0);
+    send("mousedown", 28, 30, 1);
+    await idle(700);
+    out.stillHold = { dragging: t.dragging, drags: window.pilly.__drags().join(","), hover: t.hover };
+    window.pilly.__setCursorOver(false);
+    t.dragMaxMs = 10000;
     await fresh();
     return out;
   })()`);
@@ -1424,6 +1453,12 @@ app.whenReady().then(async () => {
   check("...without the angry 'put me down' reaction", !/dragstart/.test(tap.nudge.reactions), tap.nudge.reactions);
   check("a hand holding him perfectly still keeps telling main the carry is alive",
     tap.hold.dragging === true && countDrag(tap.hold.drags, "hold") >= 1, tap.hold);
+  check("a stuck hover can no longer freeze him in mid-air",
+    tap.stuckHover.dragging === false && lastDrag(tap.stuckHover.drags) === "end" &&
+    tap.stuckHover.hover === true, tap.stuckHover);
+  check("...but a hand that is really still on him survives the carry cap",
+    tap.stillHold.dragging === true && countDrag(tap.stillHold.drags, "hold") >= 1 &&
+    tap.stillHold.hover === true, tap.stillHold);
 
   // --- the shipped pet.html keeps animating on its own (no test hooks) ---
   // A window that is never shown produces no frames at all, no matter what
