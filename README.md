@@ -13,7 +13,7 @@ I started building tools and automation for online games and game servers in my 
 
 ---
 
-## 🫧 Pilly — my main project
+## 🫧 Pilly
 
 <p align="center">
   <img src="assets/00-cover.png" alt="Pilly Desktop - the proactive market companion" />
