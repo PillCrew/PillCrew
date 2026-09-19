@@ -71,6 +71,26 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 
 ## What's new
 
+### v1.1.4
+
+Pilly gets his freezes fixed and stays in one piece no matter how long you hold him.
+
+#### Fixed
+- **No more mid-air freezes** - after a long press the pet window could slide out
+  from under a captured mouse, the mouseout was lost and hover stayed stuck
+  forever: Pilly stopped opening the chat and had to be switched off and on. The
+  drag watchdog now asks main where the OS cursor really is - a cursor that is
+  gone puts him down and he recovers on his own, while a cursor still on him
+  keeps a genuinely still hold alive.
+- **The tap-to-snipe bubble no longer swallows clicks** - clicking the bubble
+  dismisses it, so Pilly stays clickable and draggable right after a snipe, and
+  a live hot bubble can no longer be stomped by a joke or a question.
+- **The plush coat is clean** - the belly patch is now clipped inside the
+  rounded body, so the half-transparent nub under the pill is gone.
+
+#### Validation
+- 107/107 unit tests, 163 animation checks and 15 boot checks - all green.
+
 ### v1.1.3
 
 Pilly learns Chinese, gets the plush coat, and knows his own coin.
