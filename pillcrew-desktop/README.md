@@ -71,6 +71,39 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 
 ## What's new
 
+### v1.1.3
+
+Pilly learns Chinese, gets the plush coat, and knows his own coin.
+
+#### 中文 everywhere
+- **Full Simplified Chinese UI** - every screen, menu, card and bubble now lives
+  on a single EN + ZH i18n layer and switches to 中文 with one setting. An audit
+  script (`scripts/i18n-audit.js`) checks the whole layer for missing or
+  duplicated keys, so the two languages can never drift apart silently.
+- **He answers in the language you picked** - a chat language lock makes Pilly
+  reply in Chinese (or English) no matter what language you write in, with a
+  little extra room for Chinese replies that don't need spaces.
+
+#### The plush look
+- **Plush coat** - a new pet theme drawn after the project's own mascot artwork,
+  in every state: idle, walk, sleep and chat.
+- **Bubbles stay glued to him** - when the speech bubble hugged a screen corner
+  its tail used to dangle off to the side of his head. The bubble now slides
+  through its window's spare space and the tail slides along the bubble edge, so
+  it stays pointed at Pilly even at the very edges of the screen.
+- **The stink cloud is whole again** - the poop window was too short and clipped
+  the cloud flat; it now fits the full cloud and scales with the pet size.
+
+#### He knows his own coin
+- **Pilly knows PillCrew by heart** - the project's home token lives in his
+  system prompt: warm, meme-pro pride, live numbers only, never fake data, one
+  casual "not financial advice" line. If he doesn't have the tape in front of
+  him, he says so.
+
+#### Validation
+- 107/107 unit tests, 161 animation & boot checks and 8 boot modes - all green,
+  on all three platforms.
+
 ### v1.1.2
 
 Pilly feels **more alive** and behaves more politely on macOS.
@@ -985,7 +1018,7 @@ of packages:
 ```
 dist\win-unpacked\resources\app.asar
 
-pilly-desktop@1.1.2
+pilly-desktop@1.1.3
 argparse@2.0.1                    argparse
 debug@4.4.3                       debug
 electron-updater@6.8.9            electron-updater
