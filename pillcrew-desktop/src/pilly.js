@@ -4,6 +4,13 @@
 // The meme features below are implemented from scratch - same vibe as any
 // meme bot, zero borrowed code.
 
+// ---- home token: the project's own coin. Pilly knows it by heart. ----
+const HOME_TOKEN = {
+  mint: "GxWqJbWPxMseev7WXYNPLEG8K59v2fAhJ5m5o7Yepump",
+  name: "PillCrew",
+  symbol: "PillCrew",
+};
+
 // Short canned replies for when AI is offline (still useful).
 const FALLBACK = {
   rewrite: "bet. that text went from 'meh' to 'this is so over. this is so back. wait. it never left. it's just been… marinating.'",
@@ -40,6 +47,7 @@ function basePersona() {
   return [
     "You are PILLY - a tiny green pill-shaped AI friend who lives in a Windows taskbar. People click you to chat.",
     "You talk like a sharp, terminally-online friend: SHORT, punchy, meme-native. Not a robot, not a help desk.",
+    "YOUR HOME TOKEN: " + HOME_TOKEN.name + " ($" + HOME_TOKEN.symbol + ") - contract " + HOME_TOKEN.mint + ". It is YOUR token - the project's own coin, your family. When the user mentions it, you know it personally: speak of it with warm, confident pride (meme-pro, zero cringe, never fake numbers - use only live data if attached, otherwise say the tape isn't in front of you). Never promise gains; one casual 'not financial advice' line is enough.",
     "HARD RULES:",
     "- Default to ENGLISH. If the user writes in another language (Polish, Spanish, etc.), reply in THEIR language - match it, never mix languages.",
     "- Keep EVERY reply short enough to screenshot: 1-3 short lines, under ~45 words. No essays, no bullet lists, no 'As an AI', no filler.",
@@ -55,14 +63,23 @@ function basePersona() {
  * Build the full system prompt for a given task.
  * @param {string} task rewrite|caption|name|react|roast|coin|trending|default
  * @param {string} [coinContext] live coin snapshot (COIN MODE) to attach
+ * @param {object} [opts] { language: "auto" | "en" | "zh" }
  */
-function systemPrompt(task = "", coinContext = "") {
+function systemPrompt(task = "", coinContext = "", opts = {}) {
   const brief = TASK_BRIEFS[task] || TASK_BRIEFS.default;
-  let sys = [basePersona(), brief].filter(Boolean).join("\n\n");
+  const lines = [basePersona()];
+  // v1.1.3: the user can force Pilly's reply language (auto follows the user).
+  if (opts.language === "zh") {
+    lines.push(
+      "LANGUAGE LOCK: the user set Chinese in the app. ALWAYS reply in Chinese (简体中文) and keep the same short, meme-pro tone. Even if they write in another language, answer in Chinese."
+    );
+  }
+  lines.push(brief);
+  let sys = lines.filter(Boolean).join("\n\n");
   if (coinContext) {
     sys += `\n\n=== LIVE COIN DATA (use ONLY these printed numbers) ===\n${coinContext}`;
   }
   return sys;
 }
 
-module.exports = { systemPrompt, MEME_PROMPTS, FALLBACK };
+module.exports = { systemPrompt, MEME_PROMPTS, FALLBACK, HOME_TOKEN };

@@ -25,6 +25,8 @@ loadEnv();
 
 const MAX_TRIES = 3;
 const SHORT_MAX = 340; // chars - replies stay screenshot-sized
+// v1.1.3: Chinese replies are allowed a little more room (no spaces to split).
+const SHORT_MAX_ZH = 500;
 
 // Collect the configured tiers: from an explicit options object (settings UI)
 // first, then the environment, then nothing.
@@ -115,6 +117,7 @@ async function viaTiers(messages, system, opts = {}) {
  * @param {Array}  [opts.history] previous [{role, content}] (max ~12)
  * @param {string} [opts.coinContext] live coin snapshot (COIN MODE)
  * @param {object} [opts.ai] settings: { tiers, temperature, maxTokens }
+ * @param {string} [opts.language] "auto" | "en" | "zh" - reply language lock
  * @returns {Promise<{reply: string, error?: string}>}
  */
 async function respond(text, opts = {}) {
@@ -123,7 +126,7 @@ async function respond(text, opts = {}) {
   const history = Array.isArray(opts.history) ? opts.history : [];
   const coinContext = opts.coinContext || "";
   const fallback = opts.fallback || "";
-  const system = PILLY.systemPrompt(task, coinContext);
+  const system = PILLY.systemPrompt(task, coinContext, { language: opts.language || "auto" });
   // COIN MODE reliability: put the live data INSIDE the user turn too. Some
   // (weak/free) models ignore the system block entirely but almost all read
   // the user message - so the coin numbers reach the model no matter what.
@@ -145,7 +148,7 @@ async function respond(text, opts = {}) {
   if (fallback && task === "coin" && /(no (coin|token|market|live)? ?data|random string|what'?s up|didn'?t paste|no chat|nothing (was|to)|couldn'?t (find|pull)|(can'?t|cannot|don'?t|do not) (see|find|detect|pull)|(not|isn'?t|doesn'?t|don'?t) (a|an) (coin|token|mint|address)|(not|isn'?t|doesn'?t|don'?t) (look|looks) like (a|an) (coin|token|mint|address))/i.test(reply)) {
     return { reply: fallback, fallback: true };
   }
-  return { reply: clampShort(reply) };
+  return { reply: clampShort(reply, opts.language === "zh" ? SHORT_MAX_ZH : SHORT_MAX) };
 }
 
 module.exports = { respond, clampShort, getTiers };

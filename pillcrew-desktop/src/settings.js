@@ -44,6 +44,7 @@ const DEFAULT_SETTINGS = {
     bubble: "sharp", // sharp | rounded | glass | neon | minimal
     alwaysOnTop: true,
     fontSize: "normal", // sm | normal | lg
+    language: "auto", // auto | en | zh (v1.1.3 - Pilly's UI + reply language)
   },
 };
 
@@ -155,6 +156,9 @@ function save(userDataDir, settings) {
       fontSize: ["sm", "normal", "lg"].includes(settings.chat && settings.chat.fontSize)
         ? settings.chat.fontSize
         : "normal",
+      language: ["auto", "en", "zh"].includes(settings.chat && settings.chat.language)
+        ? settings.chat.language
+        : "auto",
     },
   };
   try {

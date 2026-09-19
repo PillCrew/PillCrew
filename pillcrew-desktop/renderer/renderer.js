@@ -37,6 +37,7 @@
   const chatBubble = document.getElementById("chatBubble");
   const chatOnTop = document.getElementById("chatOnTop");
   const chatFontSize = document.getElementById("chatFontSize");
+  const chatLanguage = document.getElementById("chatLanguage");
 
   const watchlistEl = document.getElementById("watchlist");
   const watchRowsEl = document.getElementById("watchRows");
@@ -58,7 +59,7 @@
   // v1.1.0: gentle whole-window fade on open.
   document.body.classList.add("app-open");
 
-  const WELCOME_HTML = "Yo. I'm Pilly - the pill living in your taskbar. Tap the tray icon anytime. Paste a <em>Solana token address</em> (or a pump.fun link) and I'll pull its live data and give you a pro read. Try <em>🔥 trending</em>, <em>meme this</em>, <em>caption this</em> - or just talk.";
+  const WELCOME_HTML = () => t("welcomeHtml");
 
   // Pro icon set (inline SVG, stroke style, currentColor).
   const ICONS = {
@@ -73,6 +74,34 @@
 
   // Chat bubble styles selectable in settings (body class bs-*).
   const BUBBLE_STYLES = ["sharp", "rounded", "glass", "neon", "minimal"];
+
+  // ---- i18n ----
+  const t = (k, v) => window.I18N.t(k, v);
+
+  // When the language flips, re-render everything that was built dynamically.
+  window.addEventListener("pilly:i18n", () => {
+    applyMemeLang();
+    if (watchlistEl && !watchlistEl.classList.contains("hidden")) renderWatchlist();
+    if (radarEl && !radarEl.classList.contains("hidden")) renderRadar();
+    if (calcEl && !calcEl.classList.contains("hidden")) recalcCalc();
+    if (scorecardEl && !scorecardEl.classList.contains("hidden")) renderScorecard();
+    if (whaleEl && !whaleEl.classList.contains("hidden")) renderWhales();
+    if (trendingCardEl && trendingCardEl.isConnected && lastTrending) {
+      trendingCardEl.innerHTML = trendingCardHtml(lastTrending.list, lastTrending.staleAt);
+    }
+    walletCardEls.forEach((el) => {
+      const r = el && el.isConnected && walletRenders.get(el);
+      if (r) r();
+    });
+    document.querySelectorAll(".msg .coin-card").forEach((cc) => {
+      const cardEl = cc.closest(".msg");
+      const wb = cardEl && cardEl.querySelector('[data-act="watch"]');
+      const mint = wb && wb.dataset.mint;
+      const coin = mint && cardCoins.get(mint);
+      if (coin) renderCardBody(cardEl, coin);
+    });
+    document.querySelectorAll(".cc-foot").forEach((foot) => refreshWatchLabel(foot));
+  });
 
   // ---- PnL tracking (entry prices per mint) ----
   let pnlEntries = {}; // mint -> entry price
@@ -119,8 +148,26 @@
     react: "react to this: ",
     roast: "roast this lightly: ",
   };
+  const MEME_PREFIX_ZH = {
+    rewrite: "给这个币写个梗：",
+    caption: "给这个币配个文案：",
+    name: "给这个币起个离谱的名字：",
+    react: "对这个币的反应：",
+    roast: "轻轻吐槽一下这个币：",
+  };
+  // The main process may ship its own prefixes; remember them so a language
+  // switch can layer the zh set on top without losing them.
+  let MEME_BASE = Object.assign({}, MEME_PREFIX);
+  function applyMemeLang() {
+    Object.assign(MEME_PREFIX, MEME_BASE);
+    if (window.I18N.effective() === "zh") Object.assign(MEME_PREFIX, MEME_PREFIX_ZH);
+  }
   window.pilly.memePrompts().then((p) => {
-    if (p) Object.assign(MEME_PREFIX, p);
+    if (p) {
+      Object.assign(MEME_PREFIX, p);
+      MEME_BASE = Object.assign({}, p);
+    }
+    applyMemeLang();
   }).catch(() => {});
 
   // ---- helpers ----
@@ -152,14 +199,14 @@
     m.appendChild(b);
     // Pro chat: hover timestamp + one-click copy (actions survive restore
     // thanks to event delegation on #messages).
-    const t = document.createElement("span");
-    t.className = "msg-time";
-    t.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    m.appendChild(t);
+    const timeEl = document.createElement("span");
+    timeEl.className = "msg-time";
+    timeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    m.appendChild(timeEl);
     const cp = document.createElement("button");
     cp.type = "button";
     cp.className = "msg-copy";
-    cp.title = "Copy message";
+    cp.title = t("copyMsg");
     cp.innerHTML = ICONS.copy;
     m.appendChild(cp);
     messagesEl.appendChild(m);
@@ -227,7 +274,7 @@
     cardCoins.clear();
     cardSparks.clear();
     try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* ignore */ }
-    addMsg("bot", WELCOME_HTML);
+    addMsg("bot", WELCOME_HTML());
     scrollDownBtn.hidden = true;
     input.focus();
   }
@@ -245,7 +292,9 @@
     purple: { c1: "#8b5cf6", c2: "#a78bfa", c3: "#ec4899", glow: "rgba(139,92,246,0.45)" },
     pink: { c1: "#ec4899", c2: "#f472b6", c3: "#fbbf24", glow: "rgba(236,72,153,0.45)" },
     orange: { c1: "#f97316", c2: "#fbbf24", c3: "#ef4444", glow: "rgba(249,115,22,0.45)" },
+    plush: { c1: "#33b3bd", c2: "#0f8389", c3: "#0a5d62", glow: "rgba(51,179,189,0.5)" },
   };
+  let activePetTheme = "green";
   let defaultFaceMood = "";
   function applyName(name) {
     const n = String(name || "").trim();
@@ -255,7 +304,8 @@
     document.title = n + " · Pilly";
   }
   function applyPetTheme(pet) {
-    const t = (pet && PET_THEMES[pet.theme]) || PET_THEMES.green;
+    activePetTheme = pet && PET_THEMES[pet.theme] ? pet.theme : "green";
+    const t = PET_THEMES[activePetTheme];
     const rs = document.documentElement.style;
     rs.setProperty("--c1", t.c1);
     rs.setProperty("--c2", t.c2);
@@ -391,6 +441,38 @@
       ctx.stroke();
     }
   }
+  function drawFaceEyePlush(ctx, ex, ey, open, happy, lid, px, py) {
+    // Logo-style rounded-square plush eyes with two catchlights.
+    if (open) {
+      const w = 6.6, h = 7.4;
+      rr(ctx, ex - w / 2, ey - h / 2, w, h, 3.2);
+      ctx.fillStyle = "#0b0f0d";
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(ex - 1.4 + (px || 0) * 0.6, ey - 1.8 + (py || 0) * 0.6, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.6)";
+      ctx.beginPath();
+      ctx.arc(ex + 1.5 + (px || 0) * 0.6, ey + 1.8 + (py || 0) * 0.6, 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      if (lid) {
+        const lidC = getComputedStyle(document.documentElement).getPropertyValue("--c2").trim() || "#0f8389";
+        ctx.fillStyle = lidC;
+        rr(ctx, ex - w / 2, ey - h / 2, w, Math.max(1, lid * h), 3.2);
+        ctx.fill();
+      }
+    } else {
+      ctx.strokeStyle = "#0b0f0d";
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([2.2, 2]);
+      ctx.beginPath();
+      ctx.moveTo(ex - 3.2, ey);
+      ctx.lineTo(ex + 3.2, ey);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
   function drawFace(now) {
     if (!faceCtx || !faceCanvas) return;
     const W = faceCanvas.width, H = faceCanvas.height;
@@ -399,6 +481,7 @@
     const c1 = rs.getPropertyValue("--c1").trim() || "#22c55e";
     const c2 = rs.getPropertyValue("--c2").trim() || "#34d399";
     const c3 = rs.getPropertyValue("--c3").trim() || "#6366f1";
+    const isPlush = activePetTheme === "plush";
     const t = now / 1000;
     // gentle breathing bob + squash (boop / petting)
     const bob = Math.abs(Math.sin(t * 2.1)) * 1.4;
@@ -434,11 +517,40 @@
     faceCtx.strokeStyle = "rgba(0,0,0,0.16)";
     faceCtx.lineWidth = 1;
     faceCtx.stroke();
-    faceCtx.globalAlpha = 0.22;
-    faceCtx.fillStyle = "#fff";
-    rr(faceCtx, px + 5, py + 2, pw - 10, ph * 0.24, ph * 0.12);
-    faceCtx.fill();
-    faceCtx.globalAlpha = 1;
+    if (isPlush) {
+      // Crochet stitches instead of the glossy sheen + a stitched seam.
+      faceCtx.save();
+      rr(faceCtx, px + 3.5, py + 2.5, pw - 7, ph - 5, (ph - 5) / 2);
+      faceCtx.clip();
+      faceCtx.strokeStyle = c3;
+      faceCtx.globalAlpha = 0.55;
+      faceCtx.lineWidth = 1;
+      faceCtx.lineCap = "round";
+      for (let row = 0; row < 3; row++) {
+        const ry = py + 5.5 + row * ((ph - 12) / 2);
+        for (let sx = px + 6.5 + (row % 2) * 4.5; sx < px + pw - 5.5; sx += 9) {
+          faceCtx.beginPath();
+          faceCtx.moveTo(sx, ry);
+          faceCtx.lineTo(sx + 2.2, ry + 2.6);
+          faceCtx.lineTo(sx + 4.4, ry);
+          faceCtx.stroke();
+        }
+      }
+      faceCtx.globalAlpha = 1;
+      faceCtx.restore();
+      faceCtx.strokeStyle = c3;
+      faceCtx.setLineDash([3, 3]);
+      faceCtx.lineWidth = 1.4;
+      rr(faceCtx, px + 2.5, py + 2.5, pw - 5, ph - 5, (ph - 5) / 2);
+      faceCtx.stroke();
+      faceCtx.setLineDash([]);
+    } else {
+      faceCtx.globalAlpha = 0.22;
+      faceCtx.fillStyle = "#fff";
+      rr(faceCtx, px + 5, py + 2, pw - 10, ph * 0.24, ph * 0.12);
+      faceCtx.fill();
+      faceCtx.globalAlpha = 1;
+    }
     const mood = now < faceMoodUntil ? faceMood : defaultFaceMood;
     const eyesOpen = true;
     const eyeY = py + ph * 0.55;
@@ -448,12 +560,18 @@
     const ppx = petting ? 0 : (now < faceDartUntil ? faceDart.x : facePupil.x);
     const ppy = petting ? 0 : (now < faceDartUntil ? faceDart.y : facePupil.y);
     const happyEyes = mood === "happy" || mood === "love";
-    drawFaceEye(faceCtx, px + pw * 0.28, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
-    drawFaceEye(faceCtx, px + pw * 0.72, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+    if (isPlush) {
+      drawFaceEyePlush(faceCtx, px + pw * 0.28, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+      drawFaceEyePlush(faceCtx, px + pw * 0.72, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+    } else {
+      drawFaceEye(faceCtx, px + pw * 0.28, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+      drawFaceEye(faceCtx, px + pw * 0.72, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+    }
     const mx = W / 2, my = py + ph * 0.82;
     faceCtx.strokeStyle = "#0b0f0d";
-    faceCtx.lineWidth = 1.6;
+    faceCtx.lineWidth = isPlush ? 1.4 : 1.6;
     faceCtx.lineCap = "round";
+    if (isPlush) faceCtx.setLineDash([2.2, 2.2]);
     faceCtx.beginPath();
     if (mood === "happy" || mood === "love") {
       faceCtx.moveTo(mx - 4.5, my - 1);
@@ -466,6 +584,7 @@
       faceCtx.quadraticCurveTo(mx, my + 1.6, mx + 4, my);
     }
     faceCtx.stroke();
+    faceCtx.setLineDash([]);
     faceCtx.restore();
   }
   function startFaceAnim() {
@@ -528,6 +647,9 @@
 
   const cardSparks = new Map(); // mint -> {points, dir}
   const cardCoins = new Map(); // mint -> last coin object (for PnL re-render)
+  let lastTrending = null; // { list, staleAt } - rebuilt in place on language change
+  let trendingCardEl = null;
+  const walletCardEls = []; // wallet cards re-rendered on language change
   // Both maps are keyed by mint and would otherwise grow for the whole session, so
   // they are capped. cardCoins also has to stay ordered by recency: re-opening a
   // coin has to move it to the back, because the calculator reads the last entry as
@@ -555,7 +677,7 @@
   function pnlChipHtml(mint, price) {
     const p = pnlOf(mint, price);
     if (!p) return "";
-    return `<div class="cc-stat pnl ${p.pct >= 0 ? "up" : "down"}">PnL <b class="${p.pct >= 0 ? "up" : "down"}">${fmtPnl(p.pct)}</b></div>`;
+    return `<div class="cc-stat pnl ${p.pct >= 0 ? "up" : "down"}">${t("pnl")} <b class="${p.pct >= 0 ? "up" : "down"}">${fmtPnl(p.pct)}</b></div>`;
   }
 
   // Tiny 24h sparkline (SVG polyline) for the coin card.
@@ -591,14 +713,14 @@
     parts.push(`<div class="cc-price ${up ? "up" : "down"}">${coin.price != null ? fmtUsd(coin.price) : "-"}</div>`);
     const grade = coin.rug ? String(coin.rug.grade).toLowerCase().replace(/[^a-z0-9]/g, "") : "";
     return `<div class="cc-top">${parts.join("")}<div class="cc-side">${pnlChipHtml(coin.mint, coin.price)}${
-      coin.mcap != null ? `<div class="cc-stat">mcap <b>${fmtUsd(coin.mcap)}</b></div>` : ""
-    }${coin.change24h != null ? `<div class="cc-stat">24h <b class="${up ? "up" : "down"}">${fmtPct(coin.change24h)}</b></div>` : ""}</div></div><div class="cc-spark"></div><div class="cc-grid">${
-      coin.volume24h != null ? `<div class="cc-stat">vol <b>${fmtUsd(coin.volume24h)}</b></div>` : ""
-    }${coin.liquidityUsd != null ? `<div class="cc-stat">liq <b>${fmtUsd(coin.liquidityUsd)}</b></div>` : ""}${
-      coin.age ? `<div class="cc-stat">age <b>${escapeHtml(coin.age)}</b></div>` : ""
-    }${coin.buys24h != null && coin.sells24h != null ? `<div class="cc-stat">txns <b>${Number(coin.buys24h).toLocaleString()}B/${Number(coin.sells24h).toLocaleString()}S</b></div>` : ""}${
-      coin.organicScore != null ? `<div class="cc-stat">organic <b>${escapeHtml(coin.organicScore)}/100</b></div>` : ""
-    }${coin.rug ? `<div class="cc-stat rug rg-${grade}">rug <b>${escapeHtml(coin.rug.grade)} ${escapeHtml(coin.rug.score)}</b></div>` : ""}</div>`;
+      coin.mcap != null ? `<div class="cc-stat">${t("mcap")} <b>${fmtUsd(coin.mcap)}</b></div>` : ""
+    }${coin.change24h != null ? `<div class="cc-stat">${t("c24h")} <b class="${up ? "up" : "down"}">${fmtPct(coin.change24h)}</b></div>` : ""}</div></div><div class="cc-spark"></div><div class="cc-grid">${
+      coin.volume24h != null ? `<div class="cc-stat">${t("vol")} <b>${fmtUsd(coin.volume24h)}</b></div>` : ""
+    }${coin.liquidityUsd != null ? `<div class="cc-stat">${t("liq")} <b>${fmtUsd(coin.liquidityUsd)}</b></div>` : ""}${
+      coin.age ? `<div class="cc-stat">${t("age")} <b>${escapeHtml(coin.age)}</b></div>` : ""
+    }${coin.buys24h != null && coin.sells24h != null ? `<div class="cc-stat">${t("txns")} <b>${Number(coin.buys24h).toLocaleString()}B/${Number(coin.sells24h).toLocaleString()}S</b></div>` : ""}${
+      coin.organicScore != null ? `<div class="cc-stat">${t("organic")} <b>${escapeHtml(coin.organicScore)}/100</b></div>` : ""
+    }${coin.rug ? `<div class="cc-stat rug rg-${grade}">${t("rug")} <b>${escapeHtml(coin.rug.grade)} ${escapeHtml(coin.rug.score)}</b></div>` : ""}</div>`;
   }
 
   // A card whose avatar URL dies (expired CDN link, a host that refuses the
@@ -664,11 +786,11 @@
     const foot = document.createElement("div");
     foot.className = "cc-foot";
     foot.innerHTML =
-      `<button type="button" class="cc-watch" data-act="watch" data-mint="${escapeHtml(mint)}" data-sym="${escapeHtml(coin.symbol || "")}" data-name="${escapeHtml(coin.name || "")}" data-price="${coin.price != null ? escapeHtml(coin.price) : ""}" title="Watch / set alert">${ICONS.bookmark}<span class="cw-label">watch</span></button>` +
-      `<button type="button" class="cc-watch icon-only" data-act="read" data-mint="${escapeHtml(mint)}" data-read="${escapeHtml(read)}" title="Instant no-AI read">${ICONS.eye}</button>` +
-      `<button type="button" class="cc-watch icon-only" data-act="dex" data-mint="${escapeHtml(mint)}" data-pair="${escapeHtml(coin.pair || "")}" title="Open on DexScreener">${ICONS.external}</button>` +
-      `<button type="button" class="cc-watch icon-only" data-act="refresh" data-mint="${escapeHtml(mint)}" title="Refresh live data">${ICONS.refresh}</button>` +
-      `<button type="button" class="cc-watch icon-only" data-act="copy" data-mint="${escapeHtml(mint)}" title="Copy mint">${ICONS.copy}</button>`;
+      `<button type="button" class="cc-watch" data-act="watch" data-mint="${escapeHtml(mint)}" data-sym="${escapeHtml(coin.symbol || "")}" data-name="${escapeHtml(coin.name || "")}" data-price="${coin.price != null ? escapeHtml(coin.price) : ""}" title="${t("watchBtnTitle")}">${ICONS.bookmark}<span class="cw-label">${t("watch")}</span></button>` +
+      `<button type="button" class="cc-watch icon-only" data-act="read" data-mint="${escapeHtml(mint)}" data-read="${escapeHtml(read)}" title="${t("readInstant")}">${ICONS.eye}</button>` +
+      `<button type="button" class="cc-watch icon-only" data-act="dex" data-mint="${escapeHtml(mint)}" data-pair="${escapeHtml(coin.pair || "")}" title="${t("openDex")}">${ICONS.external}</button>` +
+      `<button type="button" class="cc-watch icon-only" data-act="refresh" data-mint="${escapeHtml(mint)}" title="${t("refreshLive")}">${ICONS.refresh}</button>` +
+      `<button type="button" class="cc-watch icon-only" data-act="copy" data-mint="${escapeHtml(mint)}" title="${t("copyMint")}">${ICONS.copy}</button>`;
     card.appendChild(foot);
     refreshWatchLabel(foot);
     // addEl() persisted the chat while the card was still an empty div, so the
@@ -684,7 +806,7 @@
       const items = await window.pilly.watchList().catch(() => []);
       const on = Array.isArray(items) && items.some((i) => i.mint === btn.dataset.mint);
       const label = btn.querySelector(".cw-label");
-      if (label) label.textContent = on ? "watching" : "watch";
+      if (label) label.textContent = on ? t("watching") : t("watch");
       btn.classList.toggle("active", on);
     } catch (e) { /* ignore */ }
   }
@@ -738,8 +860,8 @@
       }
       if (act === "read") {
         const read = cc.dataset.read || "";
-        if (read) addMsg("bot", `${escapeHtml(read)}<span class="fb-tag">⚡ local read</span>`);
-        else addMsg("bot err", "No local read for this one.");
+        if (read) addMsg("bot", `${escapeHtml(read)}<span class="fb-tag">${t("fbLocal")}</span>`);
+        else addMsg("bot err", t("noLocalRead"));
         return;
       }
       if (act === "refresh") {
@@ -758,11 +880,11 @@
             setTimeout(() => { cc.innerHTML = ICONS.refresh; }, 1100);
           } else {
             cc.innerHTML = ICONS.refresh;
-            addMsg("bot err", "Refresh came up empty - try again in a few seconds.");
+            addMsg("bot err", t("refreshEmpty"));
           }
         } catch (err) {
           cc.innerHTML = ICONS.refresh;
-          addMsg("bot err", "Refresh failed - try again.");
+          addMsg("bot err", t("refreshFailed"));
         } finally {
           cc.disabled = false;
         }
@@ -774,7 +896,7 @@
           cc.innerHTML = ICONS.check;
           setTimeout(() => { cc.innerHTML = ICONS.copy; }, 1100);
         } catch (err) {
-          addMsg("bot err", "Couldn't copy - clipboard blocked.");
+          addMsg("bot err", t("copyBlocked"));
         }
         return;
       }
@@ -820,14 +942,23 @@
     }
   });
 
-  function addTrendingCard(list, note) {
-    const card = addEl("msg bot");
+  function trendStaleNote(staleAt) {
+    return staleAt ? t("trendStale", { t: new Date(staleAt).toLocaleTimeString() }) : "";
+  }
+  function trendingCardHtml(list, staleAt) {
     const rows = list.slice(0, 10).map((c, i) => {
       const up = c.change24h == null || c.change24h >= 0;
-      return `<div class="tr-row"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(c.name)}${c.symbol ? ` <em>${escapeHtml(c.symbol)}</em>` : ""}</span><span class="tr-price">${c.price != null ? fmtUsd(c.price) : "-"}</span><span class="tr-chg ${up ? "up" : "down"}">${fmtPct(c.change24h)}</span><span class="tr-mcap">${c.mcap != null ? fmtUsd(c.mcap) : "-"}${c.volume24h != null ? `<small>vol ${fmtUsd(c.volume24h)}</small>` : ""}</span></div>`;
+      return `<div class="tr-row"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(c.name)}${c.symbol ? ` <em>${escapeHtml(c.symbol)}</em>` : ""}</span><span class="tr-price">${c.price != null ? fmtUsd(c.price) : "-"}</span><span class="tr-chg ${up ? "up" : "down"}">${fmtPct(c.change24h)}</span><span class="tr-mcap">${c.mcap != null ? fmtUsd(c.mcap) : "-"}${c.volume24h != null ? `<small>${t("vol")} ${fmtUsd(c.volume24h)}</small>` : ""}</span></div>`;
     }).join("");
+    const note = trendStaleNote(staleAt);
     const foot = note ? `<div class="tr-note">${escapeHtml(note)}</div>` : "";
-    card.innerHTML = `<div class="trend-card"><div class="tr-head">🔥 Trending on Solana</div><div class="tr-headrow"><span class="tr-rank">#</span><span class="tr-name">Coin</span><span class="tr-price">Price</span><span class="tr-chg">24h</span><span class="tr-mcap">Mkt Cap<small>vol</small></span></div>${rows}${foot}</div>`;
+    return `<div class="trend-card"><div class="tr-head">${t("trendingHead")}</div><div class="tr-headrow"><span class="tr-rank">#</span><span class="tr-name">${t("trCoin")}</span><span class="tr-price">${t("trPrice")}</span><span class="tr-chg">${t("c24h")}</span><span class="tr-mcap">${t("trMcap")}<small>${t("trVol")}</small></span></div>${rows}${foot}</div>`;
+  }
+  function addTrendingCard(list, staleAt) {
+    const card = addEl("msg bot");
+    card.innerHTML = trendingCardHtml(list, staleAt);
+    lastTrending = { list, staleAt: staleAt || null };
+    trendingCardEl = card;
     persistChat(); // addEl() stored this card empty - re-store it once it has rows
   }
 
@@ -837,18 +968,18 @@
     const chg = w.change24h != null
       ? ` · <b class="${w.change24h >= 0 ? "up" : "down"}">${fmtPct(w.change24h)}</b>`
       : "";
-    const rows = (w.tokens || []).slice(0, 8).map((t, i) => {
-      const up = t.change24h == null || t.change24h >= 0;
-      const pnl = pnlOf(t.mint, t.price);
-      return `<div class="wr-row" data-mint="${escapeHtml(t.mint)}"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(t.name)}${t.symbol ? ` <em>${escapeHtml(t.symbol)}</em>` : ""}</span><span class="tr-price">${t.price != null ? fmtUsd(t.price) : "-"}</span><span class="wr-pnl ${pnl ? (pnl.pct >= 0 ? "up" : "down") : ""}">${pnl ? fmtPnl(pnl.pct) : "-"}</span><input class="wr-entry" type="number" step="any" min="0" placeholder="entry" value="${pnl ? pnl.entry : ""}" title="Entry price (PnL)" /><span class="tr-vol">${t.usd != null ? fmtUsd(t.usd) : "no price"}</span></div>`;
+    const rows = (w.tokens || []).slice(0, 8).map((tok, i) => {
+      const up = tok.change24h == null || tok.change24h >= 0;
+      const pnl = pnlOf(tok.mint, tok.price);
+      return `<div class="wr-row" data-mint="${escapeHtml(tok.mint)}"><span class="tr-rank">${i + 1}</span><span class="tr-name">${escapeHtml(tok.name)}${tok.symbol ? ` <em>${escapeHtml(tok.symbol)}</em>` : ""}</span><span class="tr-price">${tok.price != null ? fmtUsd(tok.price) : "-"}</span><span class="wr-pnl ${pnl ? (pnl.pct >= 0 ? "up" : "down") : ""}">${pnl ? fmtPnl(pnl.pct) : "-"}</span><input class="wr-entry" type="number" step="any" min="0" placeholder="${t("entryPh")}" value="${pnl ? pnl.entry : ""}" title="${t("entryTitle")}" /><span class="tr-vol">${tok.usd != null ? fmtUsd(tok.usd) : t("noPrice")}</span></div>`;
     }).join("");
     const solRow = w.sol > 0
       ? `<div class="tr-row"><span class="tr-rank">◎</span><span class="tr-name">SOL</span><span class="tr-price">${w.sol.toFixed(4)}</span><span class="tr-chg"></span><span class="tr-vol">${w.solUsd > 0 ? fmtUsd(w.solUsd) : ""}</span></div>`
       : "";
     const note = (w.tokens || []).length
-      ? `<div class="tr-note">est total <b>${fmtUsd(w.totalUsd)}</b> · type an entry price per token for PnL</div>`
-      : `<div class="tr-note">no tokens - just SOL (est ${fmtUsd(w.totalUsd)})</div>`;
-    return `<div class="trend-card"><div class="tr-head">💼 wallet ${escapeHtml(short)}${chg}</div>${solRow}${rows}${note}</div>`;
+      ? `<div class="tr-note">${t("estTotal")} <b>${fmtUsd(w.totalUsd)}</b> · ${t("pnlEntryHint")}</div>`
+      : `<div class="tr-note">${t("noTokens", { v: fmtUsd(w.totalUsd) })}</div>`;
+    return `<div class="trend-card"><div class="tr-head">${t("wallet")} ${escapeHtml(short)}${chg}</div>${solRow}${rows}${note}</div>`;
   }
 
   function addWalletCard(w) {
@@ -856,6 +987,7 @@
     const render = () => { card.innerHTML = walletCardHtml(w); };
     render();
     walletRenders.set(card, render);
+    walletCardEls.push(card);
     persistChat(); // addEl() stored this card empty - re-store it once it has rows
   }
 
@@ -875,10 +1007,10 @@
     if (!task && REMINDER_INTENT.test(trimmed)) {
       const rem = await window.pilly.reminder(trimmed);
       if (rem && rem.ok) {
-        addMsg("bot", `⏰ got it — I'll remind you: <b>${escapeHtml(rem.reminder.message)}</b>.`);
+        addMsg("bot", t("reminderGot", { msg: escapeHtml(rem.reminder.message) }));
         history.push({ role: "assistant", content: `Reminder set: ${rem.reminder.message}` });
       } else {
-        addMsg("bot err", escapeHtml((rem && rem.message) || "Couldn't set that reminder."));
+        addMsg("bot err", escapeHtml((rem && rem.message) || t("reminderFail")));
       }
       return;
     }
@@ -886,32 +1018,32 @@
     // "start focus" / "pomodoro" -> kick off a focus session (no AI round-trip).
     if (!task && FOCUS_STOP_INTENT.test(trimmed)) {
       await window.pilly.focusStop();
-      addMsg("bot", "🛑 Focus off. Go stretch, then come back when you're ready.");
+      addMsg("bot", t("focusOff"));
       return;
     }
     if (!task && FOCUS_STATUS_INTENT.test(trimmed)) {
       const s = await window.pilly.focusStatus();
       if (s && s.phase !== "idle") {
         const mm = Math.ceil(s.remainingMs / 60000);
-        const label = s.phase === "focus" ? "Focus" : "Break";
+        const label = s.phase === "focus" ? t("focusWord") : t("breakWord");
         addMsg("bot", s.paused
-          ? `🍅 ${label} paused — ${mm} min left whenever you're ready.`
-          : `🍅 ${label} in progress — about ${mm} min left.`);
+          ? t("focusPaused", { label, mm })
+          : t("focusProgress", { label, mm }));
       } else {
-        addMsg("bot", "🍅 No focus session right now. Say \"start focus\" to begin a 25-minute one.");
+        addMsg("bot", t("focusNone"));
       }
       return;
     }
     if (!task && FOCUS_PAUSE_INTENT.test(trimmed)) {
       const s = await window.pilly.focusPause();
-      if (s && s.paused) addMsg("bot", "⏸️ Focus paused. Take your time — say \"resume focus\" to continue.");
-      else addMsg("bot", "🍅 Nothing to pause right now.");
+      if (s && s.paused) addMsg("bot", t("focusPauseDone"));
+      else addMsg("bot", t("nothingToPause"));
       return;
     }
     if (!task && FOCUS_RESUME_INTENT.test(trimmed)) {
       const s = await window.pilly.focusResume();
-      if (s && s.phase !== "idle" && !s.paused) addMsg("bot", "▶️ Back at it — the clock's running again.");
-      else if (s && s.phase === "idle") addMsg("bot", "🍅 Nothing to resume — say \"start focus\" to begin.");
+      if (s && s.phase !== "idle" && !s.paused) addMsg("bot", t("focusResumed"));
+      else if (s && s.phase === "idle") addMsg("bot", t("nothingToResume"));
       return;
     }
     if (!task && (FOCUS_START_INTENT.test(trimmed) || FOCUS_ALONE_INTENT.test(trimmed))) {
@@ -928,10 +1060,10 @@
       }
       const s = await window.pilly.focusStart(minutes, breakMinutes);
       if (s && s.phase === "focus") {
-        addMsg("bot", `🍅 Focus started — ${s.plannedMin} min. I'll keep the chatter down.`);
+        addMsg("bot", t("focusStarted", { m: s.plannedMin }));
       } else if (s && (s.phase === "break" || s.phase === "long_break")) {
         const mm = Math.ceil(s.remainingMs / 60000);
-        addMsg("bot", `🍅 Already on a ${s.phase.replace("_", " ")} — ${mm} min left.`);
+        addMsg("bot", t("alreadyOnPhase", { phase: s.phase.replace("_", " "), mm }));
       }
       return;
     }
@@ -940,25 +1072,25 @@
     if (!task && ACTIVITY_YESTERDAY_INTENT.test(trimmed)) {
       const y = await window.pilly.activityYesterday();
       if (y && y.total > 0) {
-        addMsg("bot", `📊 Yesterday: ${y.active} active min (${y.pct}%) of ${y.total} min logged.`);
+        addMsg("bot", t("actYesterday", { a: y.active, p: y.pct, t: y.total }));
       } else {
-        addMsg("bot", "📊 No activity logged yesterday — today's a fresh start!");
+        addMsg("bot", t("actYesterdayNone"));
       }
       return;
     }
     if (!task && ACTIVITY_TODAY_INTENT.test(trimmed)) {
-      const t = await window.pilly.activityToday();
-      if (t && t.total > 0) {
-        addMsg("bot", `📊 Today so far: ${t.active} active min (${t.pct}%) of ${t.total} min. Keep it up!`);
+      const act = await window.pilly.activityToday();
+      if (act && act.total > 0) {
+        addMsg("bot", t("actToday", { a: act.active, p: act.pct, t: act.total }));
       } else {
-        addMsg("bot", "📊 No activity logged yet today. Say \"start focus\" and let's get a session in.");
+        addMsg("bot", t("actTodayNone"));
       }
       return;
     }
     if (!task && STREAK_INTENT.test(trimmed)) {
       const s = await window.pilly.activityStreak();
-      if (s > 0) addMsg("bot", `🔥 You're on a ${s}-day streak with Pilly. Don't break it!`);
-      else addMsg("bot", "🔥 No streak yet — log some active minutes today to start one.");
+      if (s > 0) addMsg("bot", t("streak", { d: s }));
+      else addMsg("bot", t("streakNone"));
       return;
     }
 
@@ -1023,13 +1155,13 @@
               setAvatarMood(w.change24h >= 0.5 ? "happy" : w.change24h <= -0.5 ? "sad" : null);
             }
           } else {
-            addMsg("bot err", `Couldn't pull live data for <b>${escapeHtml(String(mint).slice(0, 10))}…</b> - the market APIs are throttled or it's not a known token. Try again in a few seconds or double-check the address.`);
+            addMsg("bot err", t("coinPullFail", { m: escapeHtml(String(mint).slice(0, 10)) }));
             return;
           }
         }
       } catch (e) {
         typing.remove();
-        addMsg("bot err", "Pilly couldn't reach the market data APIs.");
+        addMsg("bot err", t("coinReachFail"));
         return;
       } finally {
         setThinking(false);
@@ -1043,16 +1175,16 @@
       typing.remove();
       if (res && res.reply) {
         const body = res.fallback
-          ? `${escapeHtml(res.reply)}<span class="fb-tag">⚡ local read - AI missed the tape</span>`
+          ? `${escapeHtml(res.reply)}<span class="fb-tag">${t("fbTagAI")}</span>`
           : escapeHtml(res.reply);
         addMsg("bot", body);
         history.push({ role: "assistant", content: res.reply });
       } else {
-        addMsg("bot err", escapeHtml((res && res.error) || "Pilly went quiet - try again."));
+        addMsg("bot err", escapeHtml((res && res.error) || t("wentQuiet")));
       }
     } catch (e) {
       typing.remove();
-      addMsg("bot err", "Pilly hit a wall - try again.");
+      addMsg("bot err", t("hitWall"));
     } finally {
       setThinking(false);
       if (history.length > 16) history.splice(0, history.length - 16);
@@ -1069,22 +1201,17 @@
       if (data && data.list && data.list.length) {
         // A stale list is served when the feed blips, and it has to say so - a
         // read of the market that is silently out of date is a trap, not a favour.
-        addTrendingCard(
-          data.list,
-          data.stale
-            ? `the live feed just missed - these are the numbers from ${new Date(data.staleAt || Date.now()).toLocaleTimeString()}, ask again for a fresh read`
-            : ""
-        );
+        addTrendingCard(data.list, data.stale ? (data.staleAt || Date.now()) : null);
         const chgs = data.list.map((c) => c.change24h).filter((c) => c != null && isFinite(c));
         if (chgs.length) {
           const avg = chgs.reduce((s, c) => s + c, 0) / chgs.length;
           setAvatarMood(avg >= 0.5 ? "happy" : avg <= -0.5 ? "sad" : null);
         }
       } else if (data && data.rateLimited) {
-        addMsg("bot err", "The trending API is throttling me right now - give it a few seconds and ask again.");
+        addMsg("bot err", t("trendThrottled"));
         return;
       } else {
-        addMsg("bot err", "Trending feed is unavailable right now - the upstream API did not answer. Try again in a moment.");
+        addMsg("bot err", t("trendUnavailable"));
         // Nothing to read from, so there is nothing to ask the model: a rundown
         // written from memory would be invented coins with invented numbers.
         return;
@@ -1101,7 +1228,7 @@
       }
     } catch (e) {
       typing.remove();
-      addMsg("bot err", "Pilly hit a wall - try again.");
+      addMsg("bot err", t("hitWall"));
     } finally {
       setThinking(false);
     }
@@ -1109,14 +1236,14 @@
 
   async function showTrending() {
     if (sendBtn.disabled) return;
-    addMsg("user", "🔥 what's hot on Solana right now?");
+    addMsg("user", t("trendAsk"));
     await runTrending("give me the rundown");
   }
 
   // Roll a random trending coin, pull its full live snapshot and get Pilly's verdict.
   async function pickCoin() {
     if (sendBtn.disabled) return;
-    addMsg("user", "🎲 pick me a coin to check");
+    addMsg("user", t("pickAsk"));
     const typing = addTyping();
     setThinking(true);
     try {
@@ -1124,8 +1251,8 @@
       if (!data || !data.list || !data.list.length) {
         typing.remove();
         addMsg("bot err", data && data.rateLimited
-          ? "The trending API is throttling me right now - give it a few seconds and try again."
-          : "I have nothing to pick from - the trending feed did not answer. Try again in a moment.");
+          ? t("trendThrottled")
+          : t("pickEmpty"));
         return;
       }
       const pick = data.list[Math.floor(Math.random() * data.list.length)];
@@ -1134,7 +1261,7 @@
       if (full && full.coin) addCoinCard(full.coin);
       else addCoinCard(pick);
       const res = await window.pilly.chat({
-        text: `is ${pick.name} (${pick.symbol}) a buy? roast it and give me your call.`,
+        text: t("pickPrompt", { name: pick.name, sym: pick.symbol }),
         task: "coin",
         history,
         coinContext: full && full.context ? full.context : data.context,
@@ -1145,9 +1272,20 @@
       }
     } catch (e) {
       typing.remove();
-      addMsg("bot err", "Pilly hit a wall - try again.");
+      addMsg("bot err", t("hitWall"));
     } finally {
       setThinking(false);
+    }
+  }
+
+  // 💊 PillCrew home-token chip: pull OUR token's live card + a proud read.
+  async function showHomeCoin() {
+    if (sendBtn.disabled) return;
+    const home = await window.pilly.homeToken().catch(() => null);
+    if (home && home.mint) {
+      send(home.mint);
+    } else {
+      addMsg("bot err", t("homeFail"));
     }
   }
 
@@ -1168,6 +1306,7 @@
     if (chip.dataset.action === "calc") { openCalc(); return; }
     if (chip.dataset.action === "scorecard") { openScorecard(); return; }
     if (chip.dataset.action === "whales") { openWhales(); return; }
+    if (chip.dataset.action === "homecoin") { showHomeCoin(); return; }
     // Prefill the prompt - the user types their text AFTER it and hits Enter.
     // (Sending immediately used to fire with empty content, so the AI had
     // nothing to rewrite.)
@@ -1217,7 +1356,7 @@
     window.pilly.hideChat().catch(() => { /* the window is going away regardless */ });
   });
   document.getElementById("quitBtn").addEventListener("click", () => {
-    if (confirm("Close Pilly? This will close the app.")) window.pilly.quit();
+    if (confirm(t("quitConfirm"))) window.pilly.quit();
   });
   document.getElementById("trendBtn").addEventListener("click", showTrending);
   document.getElementById("petBtn").addEventListener("click", async () => {
@@ -1237,7 +1376,7 @@
   window.pilly.onReminderFired((r) => {
     const text = String((r && (r.message || r.text)) || "").trim();
     if (!text) return;
-    addMsg("bot", `⏰ Reminder — <b>${escapeHtml(text)}</b>`);
+    addMsg("bot", t("reminderFired", { msg: escapeHtml(text) }));
     // Also Pilly's own line in the AI history, so answering "done" right after
     // makes sense to him (same trick as his proactive questions below).
     history.push({ role: "assistant", content: "I reminded you: " + text });
@@ -1281,7 +1420,7 @@
     const mint = coin && coin.mint;
     if (!mint || sendBtn.disabled) return;
     if (mint === lastLoadedMint) {
-      addMsg("bot", escapeHtml(coin.symbol ? `already on ${coin.symbol} - ask me anything.` : "already loaded - ask me anything."));
+      addMsg("bot", escapeHtml(coin.symbol ? t("alreadyOnCoin", { sym: coin.symbol }) : t("alreadyLoadedNoSym")));
       return;
     }
     lastLoadedMint = mint;
@@ -1319,7 +1458,7 @@
       const { items, prices } = await window.pilly.watchPrices();
       const list = Array.isArray(items) ? items : [];
       if (!list.length) {
-        watchRowsEl.innerHTML = `<p class="hint">Nothing watched yet. Paste a coin, hit "👛 watch" on its card - or type <b>watch &lt;mint&gt;</b>.</p>`;
+        watchRowsEl.innerHTML = t("watchEmpty");
         if (watchStatusEl) watchStatusEl.textContent = "";
         return;
       }
@@ -1333,14 +1472,14 @@
           const entry = pnl ? pnl.entry : (pnlEntries[it.mint] || "");
           return `<div class="wl-row" data-mint="${escapeHtml(it.mint)}">
             <div class="wl-main">
-              <strong>${escapeHtml(it.symbol || it.name || "coin")}</strong>
+              <strong>${escapeHtml(it.symbol || it.name || t("coin"))}</strong>
               <small>${escapeHtml(it.name || "")}</small>
             </div>
-            <div class="wl-price ${up ? "up" : "down"}">${p && p.price != null ? fmtUsd(p.price) : "…"}<small class="wl-pnl ${pnl ? (pnl.pct >= 0 ? "up" : "down") : ""}">${pnl ? fmtPnl(pnl.pct) : "no entry"}</small></div>
+            <div class="wl-price ${up ? "up" : "down"}">${p && p.price != null ? fmtUsd(p.price) : "…"}<small class="wl-pnl ${pnl ? (pnl.pct >= 0 ? "up" : "down") : ""}">${pnl ? fmtPnl(pnl.pct) : t("noEntry")}</small></div>
             <div class="wl-chg ${up ? "up" : "down"}">${chg != null ? fmtPct(chg) : "-"}</div>
-            <input class="wl-entry" type="number" step="any" min="0" placeholder="entry" value="${escapeHtml(entry)}" title="Entry price (PnL)" />
-            <input class="wl-alert" type="number" min="1" step="1" placeholder="±%" value="${escapeHtml(alertVal)}" title="24h alert %" />
-            <button class="wl-remove" title="Remove">✕</button>
+            <input class="wl-entry" type="number" step="any" min="0" placeholder="${t("entryPh")}" value="${escapeHtml(entry)}" title="${t("entryTitle")}" />
+            <input class="wl-alert" type="number" min="1" step="1" placeholder="±%" value="${escapeHtml(alertVal)}" title="${t("alertPctTitle")}" />
+            <button class="wl-remove" title="${t("remove")}">✕</button>
           </div>`;
         })
         .join("");
@@ -1351,21 +1490,21 @@
       for (const it of list) {
         const price = prices && prices[it.mint] ? prices[it.mint].price : null;
         const pnl = pnlOf(it.mint, price);
-        if (pnl) entered.push({ sym: it.symbol || it.name || "coin", pct: pnl.pct });
+        if (pnl) entered.push({ sym: it.symbol || it.name || t("coin"), pct: pnl.pct });
       }
       if (entered.length) {
         const avg = entered.reduce((a, x) => a + x.pct, 0) / entered.length;
         const best = entered.reduce((a, x) => (x.pct > a.pct ? x : a), entered[0]);
         const worst = entered.reduce((a, x) => (x.pct < a.pct ? x : a), entered[0]);
         statsHtml = `<div class="wl-stats">
-          <div class="wl-stat"><small>Avg</small><b class="${avg >= 0 ? "up" : "down"}">${fmtPnl(avg)}</b></div>
-          <div class="wl-stat"><small>Best</small><b class="up">${escapeHtml(best.sym)} ${fmtPnl(best.pct)}</b></div>
-          <div class="wl-stat"><small>Worst</small><b class="down">${escapeHtml(worst.sym)} ${fmtPnl(worst.pct)}</b></div>
-          <div class="wl-stat"><small>Entries</small><b>${entered.length}/${list.length}</b></div>
+          <div class="wl-stat"><small>${t("wlAvg")}</small><b class="${avg >= 0 ? "up" : "down"}">${fmtPnl(avg)}</b></div>
+          <div class="wl-stat"><small>${t("wlBest")}</small><b class="up">${escapeHtml(best.sym)} ${fmtPnl(best.pct)}</b></div>
+          <div class="wl-stat"><small>${t("wlWorst")}</small><b class="down">${escapeHtml(worst.sym)} ${fmtPnl(worst.pct)}</b></div>
+          <div class="wl-stat"><small>${t("wlEntries")}</small><b>${entered.length}/${list.length}</b></div>
         </div>`;
       }
       watchRowsEl.innerHTML = statsHtml + rowsHtml;
-      if (watchStatusEl) watchStatusEl.textContent = `${list.length} watched · refreshed ${new Date().toLocaleTimeString()}`;
+      if (watchStatusEl) watchStatusEl.textContent = t("watchedStatus", { n: list.length, t: new Date().toLocaleTimeString() });
       // wire row actions
       watchRowsEl.querySelectorAll(".wl-row").forEach((row) => {
         const mint = row.dataset.mint;
@@ -1403,7 +1542,7 @@
         });
       });
     } catch (e) {
-      if (watchRowsEl) watchRowsEl.innerHTML = `<p class="hint">Couldn't load the watchlist.</p>`;
+      if (watchRowsEl) watchRowsEl.innerHTML = `<p class="hint">${t("watchLoadFail")}</p>`;
     }
   }
 
@@ -1436,14 +1575,14 @@
   watchlistBtn && watchlistBtn.addEventListener("click", openWatchlist);
   document.getElementById("watchlistClose") && document.getElementById("watchlistClose").addEventListener("click", closeWatchlist);
   document.getElementById("watchRefreshBtn") && document.getElementById("watchRefreshBtn").addEventListener("click", () => {
-    if (watchStatusEl) watchStatusEl.textContent = "refreshing…";
+    if (watchStatusEl) watchStatusEl.textContent = t("refreshing");
     renderWatchlist();
   });
 
   // Alert fired in the main process → surface it in the chat.
   window.pilly.onWatchAlert((m) => {
     if (m && m.symbol) {
-      addMsg("bot", `🔔 <b>${escapeHtml(m.symbol)}</b> moved <b class="${m.chg >= 0 ? "up" : "down"}">${m.chg >= 0 ? "+" : ""}${Number(m.chg).toFixed(1)}%</b> (24h) - your watchlist alert!`);
+      addMsg("bot", t("watchAlert", { s: escapeHtml(m.symbol), cls: m.chg >= 0 ? "up" : "down", p: (m.chg >= 0 ? "+" : "") + Number(m.chg).toFixed(1) }));
     }
   });
   window.pilly.onWatchRefresh(() => {
@@ -1486,14 +1625,14 @@
       const hidden = Number(data && data.hidden) || 0;
       const floor = floorLabel(data && data.floor);
       if (radarHintEl)
-        radarHintEl.textContent = `Newest coins on pump.fun above ${floor} - anything cheaper is a launch nobody has bought yet. Click a row for its full live card. Refreshes while open.`;
+        radarHintEl.textContent = t("radarHint", { f: floor });
       if (!list.length) {
         // An empty radar is normal: pump.fun coins start near $2.8K, so most
         // launches sit under the floor. Say so - silence would read as a bug.
         radarRowsEl.innerHTML = `<p class="hint">Nothing above ${floor} yet${
           hidden ? ` - this batch's ${hidden} smaller launch${hidden === 1 ? "" : "es"} filtered out` : ""
         }. Fresh coins start low and cross the floor once real money shows up.</p>`;
-        if (radarStatusEl) radarStatusEl.textContent = `0 fresh · ${floor}+ only`;
+        if (radarStatusEl) radarStatusEl.textContent = t("radarStatus0", { f: floor });
         return;
       }
       const seen = new Set(lastRadarMints);
@@ -1504,7 +1643,7 @@
           const up = c.change24h == null || c.change24h >= 0;
           const age = ageShort(c.createdAt);
           return `<div class="wl-row radar-row" data-mint="${escapeHtml(c.mint)}">
-            <div class="wl-main"><strong>${escapeHtml(c.name)}${c.symbol ? ` <em>${escapeHtml(c.symbol)}</em>` : ""}${isNew ? ` <span class="rad-new">NEW</span>` : ""}</strong><small>${c.price != null ? fmtUsd(c.price) : "- price"}</small></div>
+            <div class="wl-main"><strong>${escapeHtml(c.name)}${c.symbol ? ` <em>${escapeHtml(c.symbol)}</em>` : ""}${isNew ? ` <span class="rad-new">${t("newBadge")}</span>` : ""}</strong><small>${c.price != null ? fmtUsd(c.price) : t("noPrice")}</small></div>
             <div class="wl-chg ${up ? "up" : "down"}">${c.change24h != null ? fmtPct(c.change24h) : ""}</div>
             <div class="wl-mcap">${c.mcap != null ? fmtUsd(c.mcap) : "-"}${age ? `<small>${age}</small>` : ""}</div>
             <span class="rad-go">⚡</span>
@@ -1512,7 +1651,7 @@
         })
         .join("");
       if (radarStatusEl)
-        radarStatusEl.textContent = `${list.length} fresh · ${floor}+ only · updated ${new Date().toLocaleTimeString()}`;
+        radarStatusEl.textContent = t("radarStatus", { n: list.length, floor, t: new Date().toLocaleTimeString() });
       radarRowsEl.querySelectorAll(".radar-row").forEach((row) => {
         row.addEventListener("click", async () => {
           const mint = row.dataset.mint;
@@ -1526,18 +1665,18 @@
               setPanel(radarEl, false);
               stopRadarTimer();
             } else {
-              addMsg("bot err", "Couldn't pull live data for that one - try again.");
+              addMsg("bot err", t("radarNoData"));
             }
           } catch (e) {
             typing.remove();
-            addMsg("bot err", "Pilly hit a wall - try again.");
+            addMsg("bot err", t("hitWall"));
           } finally {
             setThinking(false);
           }
         });
       });
     } catch (e) {
-      if (radarRowsEl) radarRowsEl.innerHTML = `<p class="hint">Radar unavailable - check connection.</p>`;
+      if (radarRowsEl) radarRowsEl.innerHTML = `<p class="hint">${t("radarErr")}</p>`;
     } finally {
       radarBusy = false;
     }
@@ -1558,7 +1697,7 @@
   }
   document.getElementById("radarClose") && document.getElementById("radarClose").addEventListener("click", closeRadar);
   document.getElementById("radarRefreshBtn") && document.getElementById("radarRefreshBtn").addEventListener("click", () => {
-    if (radarStatusEl) radarStatusEl.textContent = "refreshing…";
+    if (radarStatusEl) radarStatusEl.textContent = t("refreshing");
     renderRadar();
   });
 
@@ -1590,7 +1729,7 @@
       ? Number(solUsd.price)
       : null;
     if (!isFinite(sol) || sol <= 0) {
-      calcOut.innerHTML = `<p class="hint">Enter SOL to spend.</p>`;
+      calcOut.innerHTML = `<p class="hint">${t("calcEnterSol")}</p>`;
     } else {
       const value = solPriceUsd ? sol * solPriceUsd : null;
       // A token count is only honest when both prices are real: falling back to a
@@ -1599,18 +1738,18 @@
       const haveCoinPrice = isFinite(price) && price > 0;
       const tokens = haveCoinPrice && value != null ? value / price : null;
       const hint = haveCoinPrice
-        ? "live SOL price unavailable - hit ↻"
-        : "add coin price to get tokens";
-      calcOut.innerHTML = `<div class="calc-line">${fmtNum(sol)} SOL${solPriceUsd ? ` ≈ <b>${fmtUsd(value)}</b>` : ""}</div>${tokens != null ? `<div class="calc-line">→ <b>${fmtNum(tokens)} tokens</b> @ ${fmtUsd(price)}</div>` : `<div class="calc-line hint">${hint}</div>`}`;
+        ? t("calcNoSolPrice")
+        : t("calcAddPrice");
+      calcOut.innerHTML = `<div class="calc-line">${fmtNum(sol)} SOL${solPriceUsd ? ` ≈ <b>${fmtUsd(value)}</b>` : ""}</div>${tokens != null ? `<div class="calc-line">→ <b>${fmtNum(tokens)} ${t("calcTokens")}</b> @ ${fmtUsd(price)}</div>` : `<div class="calc-line hint">${hint}</div>`}`;
     }
     const risk = Number(calcRisk.value);
     const stop = Number(calcStop.value);
     if (isFinite(risk) && risk > 0 && isFinite(stop) && stop > 0) {
       const positionUsd = risk / (stop / 100);
       const tokensRisk = isFinite(price) && price > 0 ? positionUsd / price : null;
-      calcRiskOut.innerHTML = `<div class="calc-line">Risk $${risk.toFixed(0)} @ ${stop}% stop → position <b>${fmtUsd(positionUsd)}</b></div>${tokensRisk != null ? `<div class="calc-line">→ <b>${fmtNum(tokensRisk)} tokens</b> @ ${fmtUsd(price)}</div>` : ""}`;
+      calcRiskOut.innerHTML = `<div class="calc-line">${t("calcRiskLine", { r: risk.toFixed(0), s: stop, p: fmtUsd(positionUsd) })}</div>${tokensRisk != null ? `<div class="calc-line">→ <b>${fmtNum(tokensRisk)} ${t("calcTokens")}</b> @ ${fmtUsd(price)}</div>` : ""}`;
     } else {
-      calcRiskOut.innerHTML = `<p class="hint">Enter risk $ and stop % for risk sizing.</p>`;
+      calcRiskOut.innerHTML = `<p class="hint">${t("calcRiskHint")}</p>`;
     }
   }
 
@@ -1643,15 +1782,15 @@
     const picks = Array.isArray(d && d.picks) ? d.picks : [];
     const st = (d && d.stats) || {};
     const lines = [];
-    lines.push("🏆 Pilly's Scorecard");
-    lines.push(`Picks: ${st.total || 0} · Wins: ${st.wins || 0} · Losses: ${st.losses || 0} · Win rate: ${st.winRate != null ? st.winRate + "%" : "-"}`);
-    if (st.avgPct != null) lines.push(`Avg move: ${scPct(st.avgPct)}`);
-    if (st.best && st.best.symbol) lines.push(`Best: ${st.best.symbol} ${scPct(st.best.pct)}`);
+    lines.push(t("scoreHead"));
+    lines.push(t("scoreLine", { t: st.total || 0, w: st.wins || 0, l: st.losses || 0, r: st.winRate != null ? st.winRate + "%" : "-" }));
+    if (st.avgPct != null) lines.push(t("avgMove", { v: scPct(st.avgPct) }));
+    if (st.best && st.best.symbol) lines.push(t("bestPick", { s: st.best.symbol, v: scPct(st.best.pct) }));
     for (const p of picks) {
-      const res = p.result === "win" ? "+" + (p.pct || 0).toFixed(1) + "%" : p.result === "loss" ? (p.pct || 0).toFixed(1) + "%" : "open";
-      lines.push(`${p.source === "hot" ? "🔥" : p.source === "sniper" ? "🔫" : p.source === "whale" ? "🐋" : "🎯"} ${p.symbol || p.name || "coin"}: ${res}`);
+      const res = p.result === "win" ? "+" + (p.pct || 0).toFixed(1) + "%" : p.result === "loss" ? (p.pct || 0).toFixed(1) + "%" : t("openPick");
+      lines.push(`${p.source === "hot" ? "🔥" : p.source === "sniper" ? "🔫" : p.source === "whale" ? "🐋" : "🎯"} ${p.symbol || p.name || t("coin")}: ${res}`);
     }
-    lines.push("made by Pilly - free AI memecoin agent (PillCrew)");
+    lines.push(t("madeBy"));
     return lines.join("\n");
   }
 
@@ -1667,32 +1806,32 @@
       if (scStatsEl) {
         const winPct = st.winRate != null ? Math.max(0, Math.min(100, st.winRate)) : 0;
         scStatsEl.innerHTML = `<div class="sc-grid">
-          <div class="sc-cell"><b>${st.total != null ? st.total : 0}</b><span>picks</span></div>
-          <div class="sc-cell up"><b>${st.wins != null ? st.wins : 0}</b><span>wins</span></div>
-          <div class="sc-cell down"><b>${st.losses != null ? st.losses : 0}</b><span>losses</span></div>
-          <div class="sc-cell"><b>${winRate}</b><span>win rate</span></div>
-          <div class="sc-cell"><b>${avg}</b><span>avg move</span></div>
-          <div class="sc-cell"><b>${g.coins != null ? g.coins : 0}</b><span>coins read</span></div>
+          <div class="sc-cell"><b>${st.total != null ? st.total : 0}</b><span>${t("scPicks")}</span></div>
+          <div class="sc-cell up"><b>${st.wins != null ? st.wins : 0}</b><span>${t("scWins")}</span></div>
+          <div class="sc-cell down"><b>${st.losses != null ? st.losses : 0}</b><span>${t("scLosses")}</span></div>
+          <div class="sc-cell"><b>${winRate}</b><span>${t("scWinRate")}</span></div>
+          <div class="sc-cell"><b>${avg}</b><span>${t("scAvgMove")}</span></div>
+          <div class="sc-cell"><b>${g.coins != null ? g.coins : 0}</b><span>${t("scCoinsRead")}</span></div>
         </div>
         <div class="sc-winbar"><i style="width:${winPct}%"></i></div>`;
       }
       if (!picks.length) {
-        scRowsEl.innerHTML = `<p class="hint">No picks recorded yet. Hot-radar flags and Pilly's picks will show up here with their outcome - receipts, on chain.</p>`;
+        scRowsEl.innerHTML = t("scoreEmpty");
       } else {
         scRowsEl.innerHTML = picks.map((p) => {
           const res = p.result === "win" ? `<b class="up">+${(p.pct || 0).toFixed(1)}%</b>`
             : p.result === "loss" ? `<b class="down">${(p.pct || 0).toFixed(1)}%</b>`
-            : `<span class="sc-open">open</span>`;
+            : `<span class="sc-open">${t("openPick")}</span>`;
           const when = new Date(p.ts).toLocaleDateString();
           return `<div class="wl-row sc-row">
-            <div class="wl-main"><strong>${escapeHtml(p.symbol || p.name || "coin")} ${p.source === "hot" ? "🔥" : p.source === "sniper" ? "🔫" : p.source === "whale" ? "🐋" : "🎯"}</strong><small>${when} · ${p.price != null ? fmtUsd(p.price) : "-"} at call</small></div>
+            <div class="wl-main"><strong>${escapeHtml(p.symbol || p.name || t("coin"))} ${p.source === "hot" ? "🔥" : p.source === "sniper" ? "🔫" : p.source === "whale" ? "🐋" : "🎯"}</strong><small>${when} · ${p.price != null ? fmtUsd(p.price) : "-"} ${t("scoreAtCall")}</small></div>
             <div class="sc-res">${res}</div>
           </div>`;
         }).join("");
       }
-      if (scStatusEl) scStatusEl.textContent = `updated ${new Date().toLocaleTimeString()}`;
+      if (scStatusEl) scStatusEl.textContent = t("scoreUpdated", { t: new Date().toLocaleTimeString() });
     } catch (e) {
-      if (scRowsEl) scRowsEl.innerHTML = `<p class="hint">Scorecard unavailable - check connection.</p>`;
+      if (scRowsEl) scRowsEl.innerHTML = `<p class="hint">${t("scoreUnavailable")}</p>`;
     }
   }
 
@@ -1708,9 +1847,9 @@
     try {
       const d = await window.pilly.picks();
       const r = await window.pilly.copyText(buildScorecardText(d));
-      if (scStatusEl) scStatusEl.textContent = (r && r.ok) ? "copied ✓ - paste it anywhere" : "copy failed";
+      if (scStatusEl) scStatusEl.textContent = (r && r.ok) ? t("copied") : t("copyFailed");
     } catch (e) {
-      if (scStatusEl) scStatusEl.textContent = "copy failed";
+      if (scStatusEl) scStatusEl.textContent = t("copyFailed");
     }
   });
 
@@ -1728,13 +1867,13 @@
       const whales = await window.pilly.whalesList();
       const list = Array.isArray(whales) ? whales : [];
       if (!list.length) {
-        whaleRowsEl.innerHTML = `<p class="hint">No whales followed yet. Paste a smart-money wallet above - Pilly will ping you the moment it opens a new position.</p>`;
+        whaleRowsEl.innerHTML = `<p class="hint">${t("whaleEmpty")}</p>`;
       } else {
         whaleRowsEl.innerHTML = list.map((w) => {
           const last = w.lastSeen ? new Date(w.lastSeen).toLocaleTimeString() : "-";
           return `<div class="wl-row sc-row" data-addr="${escapeHtml(w.address)}">
-            <div class="wl-main"><strong>${escapeHtml(w.label || w.address)}</strong><small>${escapeHtml(w.address.slice(0, 6))}…${escapeHtml(w.address.slice(-4))} · ${(w.mints || []).length} holdings · seen ${last}</small></div>
-            <button class="wl-remove" title="Unfollow">✕</button>
+            <div class="wl-main"><strong>${escapeHtml(w.label || w.address)}</strong><small>${escapeHtml(w.address.slice(0, 6))}…${escapeHtml(w.address.slice(-4))} · ${(w.mints || []).length} ${t("holdings")} · ${t("seenAt")} ${last}</small></div>
+            <button class="wl-remove" title="${t("unfollow")}">✕</button>
           </div>`;
         }).join("");
       }
@@ -1742,12 +1881,12 @@
         btn.addEventListener("click", async () => {
           const addr = btn.closest(".sc-row").dataset.addr;
           await window.pilly.whaleRemove(addr);
-          setWhaleStatus("unfollowed", true);
+          setWhaleStatus(t("unfollowed"), true);
           renderWhales();
         });
       });
     } catch (e) {
-      if (whaleRowsEl) whaleRowsEl.innerHTML = `<p class="hint">Whale list unavailable.</p>`;
+      if (whaleRowsEl) whaleRowsEl.innerHTML = `<p class="hint">${t("whaleUnavailable")}</p>`;
     }
   }
 
@@ -1761,16 +1900,16 @@
   document.getElementById("whalesClose") && document.getElementById("whalesClose").addEventListener("click", closeWhales);
   document.getElementById("whaleAddBtn") && document.getElementById("whaleAddBtn").addEventListener("click", async () => {
     const addr = whaleAddrEl && whaleAddrEl.value.trim();
-    if (!addr) { setWhaleStatus("paste a wallet address first", false); return; }
+    if (!addr) { setWhaleStatus(t("pasteWallet"), false); return; }
     const r = await window.pilly.whaleAdd(addr, "");
-    setWhaleStatus(r && r.ok ? "followed ✓ - Pilly is watching" : (r && r.error) || "failed", !!r && !!r.ok);
+    setWhaleStatus(r && r.ok ? t("followed") : (r && r.error) || t("failed"), !!r && !!r.ok);
     if (r && r.ok && whaleAddrEl) whaleAddrEl.value = "";
     renderWhales();
   });
   document.getElementById("whaleCheckBtn") && document.getElementById("whaleCheckBtn").addEventListener("click", async () => {
-    setWhaleStatus("checking wallets…", false);
+    setWhaleStatus(t("checking"), false);
     await window.pilly.whaleCheck();
-    setWhaleStatus("checked ✓", true);
+    setWhaleStatus(t("checked"), true);
     renderWhales();
   });
 
@@ -1785,21 +1924,21 @@
 
   function buildTierRows(settings) {
     knownTiers = TIERS.map((_, i) => {
-      const t = (settings.tiers && settings.tiers[i]) || { url: "", key: "", model: "", auth: "bearer" };
-      return { url: t.url || "", key: t.key || "", model: t.model || "", auth: "bearer" };
+      const tier = (settings.tiers && settings.tiers[i]) || { url: "", key: "", model: "", auth: "bearer" };
+      return { url: tier.url || "", key: tier.key || "", model: tier.model || "", auth: "bearer" };
     });
     tierRowsEl.innerHTML = "";
     TIERS.forEach((_, i) => {
-      const t = knownTiers[i];
+      const tier = knownTiers[i];
       const row = document.createElement("div");
       row.className = "tier";
       row.innerHTML = `
         <div class="tier-title">API ${i + 1}</div>
-        <input class="t-url" placeholder="https://…/chat/completions" value="${escapeHtml(t.url || "")}" />
-        <input class="t-key" type="password" placeholder="API key" value="${escapeHtml(t.key || "")}" />
-        <input class="t-model" placeholder="model" value="${escapeHtml(t.model || "")}" />
+        <input class="t-url" placeholder="https://…/chat/completions" value="${escapeHtml(tier.url || "")}" />
+        <input class="t-key" type="password" placeholder="${t("apiKey")}" value="${escapeHtml(tier.key || "")}" />
+        <input class="t-model" placeholder="${t("model")}" value="${escapeHtml(tier.model || "")}" />
         <div class="t-fetch-row">
-          <button type="button" class="t-fetch">Find free models</button>
+          <button type="button" class="t-fetch">${t("findFreeModels")}</button>
           <select class="t-select" hidden></select>
         </div>
       `;
@@ -1814,25 +1953,25 @@
       fetchBtn.addEventListener("click", async () => {
         const url = urlInput.value.trim();
         const key = keyInput.value.trim();
-        if (!url) { setStatus("Enter an API URL first.", false); return; }
+        if (!url) { setStatus(t("apiUrlFirst"), false); return; }
         fetchBtn.disabled = true;
-        fetchBtn.textContent = "Searching…";
+        fetchBtn.textContent = t("searching");
         const r = await window.pilly.settingsModels({ url, key, auth: "bearer" });
         fetchBtn.disabled = false;
-        fetchBtn.textContent = "Find free models";
+        fetchBtn.textContent = t("findFreeModels");
         if (!r.ok) { setStatus(r.error, false); return; }
         select.innerHTML = "";
         r.models.forEach((m) => {
           const o = document.createElement("option");
           o.value = m;
-          o.textContent = r.free.includes(m) ? `${m}  (free)` : m;
+          o.textContent = r.free.includes(m) ? `${m}  (${t("freeWord")})` : m;
           select.appendChild(o);
         });
         select.hidden = false;
         setStatus(
           r.free.length
-            ? `${r.free.length} free of ${r.models.length} models - pick one`
-            : `${r.models.length} models found - pick one`,
+            ? t("freeOf", { f: r.free.length, n: r.models.length })
+            : t("modelsFound", { n: r.models.length }),
           true
         );
         select.focus();
@@ -1889,6 +2028,7 @@
         bubble: chatBubble.value,
         alwaysOnTop: chatOnTop ? chatOnTop.checked : true,
         fontSize: chatFontSize ? chatFontSize.value : "normal",
+        language: chatLanguage ? chatLanguage.value : "auto",
       },
     };
   }
@@ -1935,6 +2075,7 @@
     if (chatOnTop) chatOnTop.checked = c.alwaysOnTop !== false;
     if (chatFontSize) chatFontSize.value = c.fontSize || "normal";
     applyChatFontSize(c.fontSize || "normal");
+    if (chatLanguage) chatLanguage.value = ["auto", "en", "zh"].includes(c.language) ? c.language : "auto";
     buildTierRows(s);
     settingsEl.classList.remove("hidden");
     setStatus("", false);
@@ -1979,20 +2120,31 @@
   if (chatOnTop) chatOnTop.addEventListener("change", () => window.pilly.setAlwaysOnTop(chatOnTop.checked).catch(() => {}));
   // Chat message size applies instantly too.
   if (chatFontSize) chatFontSize.addEventListener("change", () => applyChatFontSize(chatFontSize.value));
+  // Language applies instantly to the whole window and is persisted with Save.
+  if (chatLanguage) chatLanguage.addEventListener("change", async () => {
+    const lang = ["auto", "en", "zh"].includes(chatLanguage.value) ? chatLanguage.value : "auto";
+    chatLanguage.value = lang;
+    window.I18N.setLang(lang);
+    try {
+      const s = readSettings();
+      const r = await window.pilly.settingsSave(s);
+      if (r && r.ok) knownTiers = s.tiers;
+    } catch (e) { /* the in-window switch already happened */ }
+  });
   // Window position is remembered automatically; this buttons snaps it back.
   const winResetBtn = document.getElementById("winResetBtn");
   if (winResetBtn) winResetBtn.addEventListener("click", async () => {
     winResetBtn.disabled = true;
-    const t = winResetBtn.textContent;
-    winResetBtn.textContent = "↩️ Resetting…";
+    const prev = winResetBtn.textContent;
+    winResetBtn.textContent = t("resetting");
     try {
       await window.pilly.resetWindow();
-      setStatus("Window position reset ✓ - reopens above the tray.", true);
+      setStatus(t("winResetOk"), true);
     } catch (e) {
-      setStatus("Couldn't reset window position.", false);
+      setStatus(t("winResetFail"), false);
     } finally {
       winResetBtn.disabled = false;
-      winResetBtn.textContent = t;
+      winResetBtn.textContent = prev;
     }
   });
   document.getElementById("saveBtn").addEventListener("click", async () => {
@@ -2002,18 +2154,21 @@
     // that runs without the rows on screen re-posts the same values.
     if (r.ok) knownTiers = s.tiers;
     applyPetTheme(s.pet);
-    if (r.ok) setStatus("Saved ✓", true);
-    else setStatus("Save failed: " + (r.error || ""), false);
+    if (r.ok) setStatus(t("saved"), true);
+    else setStatus(t("saveFailed", { e: r.error || "" }), false);
   });
   document.getElementById("testBtn").addEventListener("click", async () => {
-    setStatus("Testing…", false);
+    setStatus(t("testing"), false);
     const r = await window.pilly.settingsTest(readSettings());
-    if (r.ok) setStatus(`Connected ✓ (API ${r.tier})`, true);
-    else setStatus(r.error || "No tier answered.", false);
+    if (r.ok) setStatus(t("connected", { t: r.tier }), true);
+    else setStatus(r.error || t("noTierAnswered"), false);
   });
 
   // Theme the chat avatar with the saved pet color + bubble style on startup.
   window.pilly.settingsGet().then((s) => {
+    const savedLang = s && s.chat && ["auto", "en", "zh"].includes(s.chat.language) ? s.chat.language : "auto";
+    if (savedLang !== "auto") window.I18N.setLang(savedLang);
+    if (chatLanguage) chatLanguage.value = savedLang;
     applyPetTheme(s && s.pet);
     applyBubbleStyle(s && s.chat);
     applyChatFontSize((s && s.chat && s.chat.fontSize) || "normal");

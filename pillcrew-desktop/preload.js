@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("pilly", {
   chat: (payload) => ipcRenderer.invoke("pilly:chat", payload),
   memePrompts: () => ipcRenderer.invoke("pilly:meme"),
   detectTask: (text) => ipcRenderer.invoke("pilly:detect-task", text),
+  homeToken: () => ipcRenderer.invoke("pilly:home-token"), // v1.1.3
   // settings
   settingsGet: () => ipcRenderer.invoke("pilly:settings:get"),
   settingsSave: (s) => ipcRenderer.invoke("pilly:settings:save", s),

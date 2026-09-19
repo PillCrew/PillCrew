@@ -59,6 +59,117 @@ function petOpts() {
   return (s && s.pet) || { theme: "green", size: "md", bubbles: true, bubbleSize: "md", walkMode: "taskbar", stopFreq: "normal", questions: true };
 }
 
+// ---- v1.1.3: main-process UI language (tray menu, tooltip, notifications).
+// The renderer has its own full i18n; the main process only needs the few
+// strings it shows outside the chat window. ----
+const MAIN_DICT = {
+  en: {
+    openChat: "Open chat",
+    summonTaken: "Summon hotkey taken by another app",
+    petOnTaskbar: "Pilly on the taskbar",
+    focusMenu: "Focus",
+    focusStart: "Start focus",
+    focusPause: "Pause focus",
+    focusResume: "Resume focus",
+    focusStop: "Stop focus",
+    resetWindow: "Reset window position",
+    startWithWindows: "Start with Windows",
+    startAtLogin: "Start at login",
+    quit: "Quit Pilly",
+    watched: "watched",
+    focusShort: "focus",
+    breakShort: "break",
+    homeShort: "PILLY",
+    alertCrossed: ({ pct }) => `crossed your ${pct}% alert.`,
+    reminderTitle: "Pilly reminder",
+    reminderPrefix: "reminder",
+    updReady: "Ready.",
+    updChecking: "Checking for updates…",
+    updAvailableFn: (v) => `Update ${v} is available. Downloading…`,
+    updLatest: "You're on the latest version.",
+    updDownloadingFn: (pct) => `Downloading update… ${pct}%`,
+    updDownloaded: "Update downloaded. Restart to install it.",
+    updInstallFailedFn: (target) => `Update ${target} could not be installed. Download it from GitHub instead.`,
+    updFailedGenericFn: (target) => `Pilly could not update to ${target}.`,
+    updDetailFn: (blame) => `${blame}\n\nThe update itself was downloaded fine - only the install step failed. Download the newest installer from GitHub and run it: it is the same file the updater already fetched.`,
+    updBlameWin: "Windows (Smart App Control) blocked the downloaded installer.",
+    updBlameOs: "The operating system blocked the downloaded installer.",
+    updTitle: "Pilly update",
+    updOpenPage: "Open download page",
+    updOk: "OK",
+    updMacManual: "This Mac build isn't signed with a Developer ID, so it can't update itself. Grab the newest version from GitHub.",
+    updDevBuild: "Updates only work in the installed app (the dev build doesn't self-update).",
+    updPortable: "This is the portable build — it can't update itself. Download the newest installer from GitHub.",
+    updCheckFailed: "Update check failed.",
+    updNoDownloaded: "No downloaded update to install yet.",
+    remParse: 'Couldn\'t understand that. Try: "remind me in 10 minutes to check SOL".',
+    remPast: "That time is already in the past.",
+    in24h: "(24h)",
+  },
+  zh: {
+    openChat: "打开聊天",
+    summonTaken: "召唤快捷键已被其他应用占用",
+    petOnTaskbar: "让 Pilly 待在任务栏",
+    focusMenu: "专注",
+    focusStart: "开始专注",
+    focusPause: "暂停专注",
+    focusResume: "继续专注",
+    focusStop: "结束专注",
+    resetWindow: "重置窗口位置",
+    startWithWindows: "开机自启动",
+    startAtLogin: "登录时启动",
+    quit: "退出 Pilly",
+    watched: "个自选",
+    focusShort: "专注",
+    breakShort: "休息",
+    homeShort: "PILLY",
+    alertCrossed: ({ pct }) => `已触发你设置的 ${pct}% 提醒。`,
+    reminderTitle: "Pilly 提醒",
+    reminderPrefix: "提醒",
+    updReady: "就绪。",
+    updChecking: "正在检查更新…",
+    updAvailableFn: (v) => `新版本 ${v} 可用，正在下载…`,
+    updLatest: "已经是最新版本。",
+    updDownloadingFn: (pct) => `正在下载更新… ${pct}%`,
+    updDownloaded: "更新已下载。重启即可安装。",
+    updInstallFailedFn: (target) => `更新 ${target} 无法安装。请从 GitHub 下载。`,
+    updFailedGenericFn: (target) => `Pilly 无法更新到 ${target}。`,
+    updDetailFn: (blame) => `更新本身下载正常——只有安装步骤失败了。请从 GitHub 下载最新安装包并运行：它和更新器下载的是同一个文件。\n\n${blame}`,
+    updBlameWin: "Windows（Smart App Control）阻止了下载的安装程序。",
+    updBlameOs: "操作系统阻止了下载的安装程序。",
+    updTitle: "Pilly 更新",
+    updOpenPage: "打开下载页",
+    updOk: "好的",
+    updMacManual: "这个 Mac 版本没有用 Developer ID 签名，所以无法自动更新。请从 GitHub 下载最新版本。",
+    updDevBuild: "只有安装版支持自动更新（开发版不能自更新）。",
+    updPortable: "这是便携版——无法自更新。请从 GitHub 下载最新安装包。",
+    updCheckFailed: "检查更新失败。",
+    updNoDownloaded: "还没有已下载的更新。",
+    remParse: "没听懂。试试：「10 分钟后提醒我查看 SOL」。",
+    remPast: "那个时间已经过去了。",
+    in24h: "（24 小时）",
+  },
+};
+
+// The chat window language setting also drives the bits the main process says.
+function chatLang() {
+  try {
+    const s = SETTINGS.load(userDataDir());
+    return ["zh", "en"].includes(s.chat && s.chat.language) ? s.chat.language : "auto";
+  } catch (e) {
+    return "auto";
+  }
+}
+
+// Main-process translation lookup. "auto" renders English (Pilly still matches
+// the user's language in chat replies).
+function L(key, vars) {
+  const lang = chatLang() === "zh" ? "zh" : "en";
+  const entry = (MAIN_DICT[lang] || MAIN_DICT.en)[key];
+  if (typeof entry === "function") return entry(vars || {});
+  return entry != null ? entry : key;
+}
+
 // Every background tick is launched from a timer, so there is nothing left to
 // catch a rejected promise - and Electron's Node only *prints* a warning for an
 // unhandled rejection, which is exactly how a broken tick stays invisible for
@@ -971,6 +1082,22 @@ const PET_JOKES = [
   "solana block time: 400ms. my gains: gone in 1.",
   "i don't need a roadmap, i need a rocket.",
 ];
+
+// v1.1.3: the same jokes for Pilly's Chinese users (his own words).
+const PET_JOKES_ZH = [
+  "meme币为什么过马路？为了去对面的 pump。",
+  "高买低卖是理论，高买不卖是信仰。",
+  "我的仓位 90% 是希望，10% 是安慰。",
+  "K线往上走，钱包却原地不动。",
+  "rug pull 只是比较激进的出场方式。",
+  "Solana 很快，但我的钱跑得更快。",
+  "dev 说不 rug。dev 又骗人。",
+  "我唯一拿住的绿蜡烛，是拿得太久的那根。",
+  "pump 它、dump 它、爱它、绝不离开它。",
+  "我的止损线是个表情包，字面意思。",
+  "Solana 出块 400 毫秒，我的利润 1 秒清零。",
+  "我不需要路线图，我需要火箭。",
+];
 let bubbleWin = null;
 let bubbleTimer = null;
 let petJokeTimer = null;
@@ -980,6 +1107,10 @@ let petJokeTimer = null;
 // of the screen. Tracks the current side so we only push it to the renderer when
 // it actually changes.
 let bubbleOrient = "above";
+// Where the bubble tail should point, relative to the bubble window's centre.
+// positionBubble() recomputes this every pet tick so the tail stays glued to
+// Pilly's head (or side) even when the window is clamped at a screen corner.
+let bubbleTail = { tx: 0, ty: 0 };
 // The very first bubble of a session used to lose its text: the window is
 // created lazily and the pet:joke was sent before bubble.html finished loading.
 // Queue the text here and deliver it on did-finish-load.
@@ -1031,7 +1162,9 @@ function ensureBubbleWin() {
     bubbleReady = true;
     // Push the current side so a freshly-created window always matches where
     // the bubble actually sits (it can't be oriented otherwise).
-    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:orient", bubbleOrient);
+    if (bubbleWin && !bubbleWin.isDestroyed()) {
+      bubbleWin.webContents.send("pet:orient", { o: bubbleOrient, tx: bubbleTail.tx, ty: bubbleTail.ty });
+    }
     if (bubblePendingJoke) {
       const t = bubblePendingJoke;
       bubblePendingJoke = null;
@@ -1062,11 +1195,11 @@ function positionBubble() {
   const spaceRight = area.x + area.width - pillRightAbs;
 
   // Pilly docked against the LEFT or RIGHT edge: a bubble above/below him would
-  // be pushed back on-screen and its tail would dangle off to the side of his
-  // head. Put the bubble BESIDE him instead (tail points at his side). A small
-  // margin still counts as "docked" so a pill a few px off the edge gets it too.
-  // Only when he is NOT also hugging the top/bottom edge (e.g. taskbar mode at
-  // the bottom-left corner) - there the above/below flip already works.
+  // be pushed back on-screen, so put the bubble BESIDE him instead (tail points
+  // at his side). A small margin still counts as "docked" so a pill a few px off
+  // the edge gets it too. Only when he is NOT also hugging the top/bottom edge
+  // (e.g. taskbar mode at the bottom-left corner) - there the above/below flip
+  // is better, and the tail slide below keeps the tip pointing at his head.
   const EDGE = 24;
   const nearLeft = spaceLeft < EDGE;
   const nearRight = spaceRight < EDGE;
@@ -1100,11 +1233,24 @@ function positionBubble() {
   // NEVER let the bubble window leave the screen.
   x = Math.max(area.x + 2, Math.min(x, area.x + area.width - bw - 2));
   y = Math.max(area.y, Math.min(y, area.y + area.height - bh));
-  if (orient !== bubbleOrient) {
+  // After that clamp the tail may no longer point at Pilly (the window parks at
+  // a corner while he hugs the edge). Tell the renderer where his head (or his
+  // side, for left/right bubbles) sits relative to the window centre - it then
+  // slides the bubble and the tail so the tip stays glued to him.
+  const nx = Math.round(x);
+  const ny = Math.round(y);
+  const tail = orient === "right" || orient === "left"
+    ? { tx: 0, ty: Math.round((pillTopAbs + pillBottomAbs) / 2 - (ny + bh / 2)) }
+    : { tx: Math.round(px + PET_W / 2 - (nx + bw / 2)), ty: 0 };
+  const tailMoved = Math.abs(tail.tx - bubbleTail.tx) >= 2 || Math.abs(tail.ty - bubbleTail.ty) >= 2;
+  if (orient !== bubbleOrient || tailMoved) {
     bubbleOrient = orient;
-    if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send("pet:orient", orient);
+    bubbleTail = tail;
+    if (bubbleWin && !bubbleWin.isDestroyed()) {
+      bubbleWin.webContents.send("pet:orient", { o: orient, tx: tail.tx, ty: tail.ty });
+    }
   }
-  bubbleWin.setPosition(Math.round(x), Math.round(y));
+  bubbleWin.setPosition(nx, ny);
 }
 
 // The bubble content measures itself and asks for a taller/shorter window so
@@ -1136,7 +1282,8 @@ function showPetJoke(text) {
 }
 
 function localPetJoke() {
-  return PET_JOKES[Math.floor(Math.random() * PET_JOKES.length)];
+  const list = chatLang() === "zh" ? PET_JOKES_ZH : PET_JOKES;
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 // Pilly is a creature of habit: late night hours make him sleepy, daytime peppy.
@@ -1201,18 +1348,29 @@ async function petJokeTick() {
   // Stage 5: sometimes Pilly shares a little fact from his memory instead.
   if (Math.random() < 0.18) {
     const s = loadStats();
-    const facts = [
-      `day ${s.days} together. i've told ${s.jokes} jokes and survived ${s.spooks} cursor scares.`,
-      `little stat: ${s.coins} coins checked, ${s.happy} good moods, ${s.sad} sad ones.`,
-      `we've been at this for ${s.days} day${s.days === 1 ? "" : "s"}. my jokes are still free.`,
-      `you've petted me ${s.pets} time${s.pets === 1 ? "" : "s"} and dragged me ${s.drags}. i remember both.`,
-    ];
+    const zh = chatLang() === "zh";
+    const facts = zh
+      ? [
+        `一起第 ${s.days} 天了。我讲过 ${s.jokes} 个笑话，扛过 ${s.spooks} 次鼠标突袭。`,
+        `小数据：查过 ${s.coins} 个币，${s.happy} 次开心，${s.sad} 次难过。`,
+        `我们在一起 ${s.days} 天了。我的笑话仍然免费。`,
+        `你摸过我 ${s.pets} 次，拖过我 ${s.drags} 次。我都记得。`,
+      ]
+      : [
+        `day ${s.days} together. i've told ${s.jokes} jokes and survived ${s.spooks} cursor scares.`,
+        `little stat: ${s.coins} coins checked, ${s.happy} good moods, ${s.sad} sad ones.`,
+        `we've been at this for ${s.days} day${s.days === 1 ? "" : "s"}. my jokes are still free.`,
+        `you've petted me ${s.pets} time${s.pets === 1 ? "" : "s"} and dragged me ${s.drags}. i remember both.`,
+      ];
     joke = facts[(Math.random() * facts.length) | 0];
   } else {
     try {
+      const zh = chatLang() === "zh";
       const r = await AI.respond(
-        "tell me a very short funny joke about solana pump.fun memecoins, one line, under 10 words",
-        { task: "", ai: aiOpts() }
+        zh
+          ? "用中文讲一个关于 solana pump.fun meme 币的超短笑话，一句话，不超过 15 个字。"
+          : "tell me a very short funny joke about solana pump.fun memecoins, one line, under 10 words",
+        { task: "", ai: aiOpts(), language: chatLang() }
       );
       if (r && r.reply) {
         const j = String(r.reply).trim();
@@ -1253,8 +1411,23 @@ const PET_QUESTIONS = [
   "best trade you never made? worst one you did?",
 ];
 
+// v1.1.3: Chinese question list - same vibe, Pilly's own words.
+const PET_QUESTIONS_ZH = [
+  "这周你见过最野的 pump.fun 币是哪个？",
+  "给你 50 刀买一个 meme 币，你买谁？为什么？",
+  "现在还算早，还是我们已经全晚了？",
+  "你的出场策略是什么？说真话。",
+  "今天你信哪个 dev？——答案是没人。",
+  "你梦想的 pump.fun 币叫什么名字？",
+  "Solana 还是 Solana，别的链真的存在吗？",
+  "猫和狗之后，下一个热点会是什么？",
+  "你怎么在 rug 之前就发现它是 rug？",
+  "你没做的最赚的一笔是什么？做的最亏的呢？",
+];
+
 function localPetQuestion() {
-  return PET_QUESTIONS[Math.floor(Math.random() * PET_QUESTIONS.length)];
+  const list = chatLang() === "zh" ? PET_QUESTIONS_ZH : PET_QUESTIONS;
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 // The bubble normally lets clicks pass through; questions make it clickable so
@@ -1367,11 +1540,11 @@ function checkReminders() {
     bumpStat("reminders");
     try {
       if (Notification.isSupported()) {
-        new Notification({ title: "Pilly reminder", body: r.message }).show();
+        new Notification({ title: L("reminderTitle"), body: r.message }).show();
       }
     } catch (e) { /* ignore */ }
     if (petActive && petOpts().bubbles) {
-      showPetJoke(`⏰ reminder: ${r.message}`);
+      showPetJoke(`⏰ ${L("reminderPrefix")}: ${r.message}`);
     } else {
       sendToChat("pilly:reminder-fired", r);
     }
@@ -1385,13 +1558,16 @@ async function petQuestionTick() {
   if (focusBusy()) return; // v1.1.1: no idle chatter during a focus session
   let q = localPetQuestion();
   try {
+    const zh = chatLang() === "zh";
     const r = await AI.respond(
-      "You're Pilly. Ask the user ONE short, fun question about pump.fun, Solana memecoins or crypto. One line, under 15 words, ends with '?'. No labels, no intro.",
-      { task: "", ai: aiOpts() }
+      zh
+        ? "你是 Pilly。用中文问用户一个简短有趣的关于 pump.fun、Solana meme 币或加密的问题。一句话，不超过 20 个字，以问号结尾。不要任何开场白。"
+        : "You're Pilly. Ask the user ONE short, fun question about pump.fun, Solana memecoins or crypto. One line, under 15 words, ends with '?'. No labels, no intro.",
+      { task: "", ai: aiOpts(), language: chatLang() }
     );
     if (r && r.reply) {
       const t = String(r.reply).trim();
-      if (t.length > 4 && t.includes("?")) {
+      if (t.length > 4 && (zh ? t.includes("？") || t.includes("?") : t.includes("?"))) {
         q = t.length > 80 ? t.slice(0, 80).replace(/\s+\S*$/, "") + "…" : t;
       }
     }
@@ -1438,15 +1614,22 @@ function scheduleNextQuestion() {
 
 // ---- Tiny poops: Pilly drops a little pile on the screen every 4-5 min ----
 const POOP_W = 22;
-const POOP_H = 28;
+// Tall enough for the stink puff's whole rise: the cloud starts ~15px above
+// the poop and floats up another 20px (see poop.html). A shorter window clips
+// the cloud flat at the top edge, which reads as a broken "chmurka".
+const POOP_H = 50;
 let poopTimer = null;
 
 function spawnPoop() {
   if (!petActive || !petWin || petWin.isDestroyed()) return;
   try {
+    const pet = petOpts();
+    const ps = pet.size === "sm" ? 0.85 : pet.size === "lg" ? 1.2 : 1;
+    const pw = Math.round(POOP_W * ps);
+    const ph = Math.round(POOP_H * ps);
     const poop = new BrowserWindow({
-      width: POOP_W,
-      height: POOP_H,
+      width: pw,
+      height: ph,
       frame: false,
       transparent: true,
       alwaysOnTop: true,
@@ -1467,8 +1650,13 @@ function spawnPoop() {
     pinToAllWorkspaces(poop);
     poop.setIgnoreMouseEvents(true, { forward: true });
     poop.loadFile(path.join(__dirname, "renderer", "poop.html"));
+    poop.webContents.on("did-finish-load", () => {
+      // Emoji sizes and the puff's flight path are CSS px, so zoom keeps the
+      // whole gag proportional to Pilly instead of a fixed-size glyph.
+      if (!poop.isDestroyed()) poop.webContents.setZoomFactor(ps);
+    });
     // Drop it right under Pilly's feet; it stays put and fades on its own.
-    poop.setPosition(Math.round(petX + PET_W / 2 - POOP_W / 2), Math.round(petY + PET_H - POOP_H - 3));
+    poop.setPosition(Math.round(petX + PET_W / 2 - pw / 2), Math.round(petY + PET_H - ph - 3));
     poop.showInactive();
     bumpStat("poops");
     // Tracked so stopPet() can take it down with the rest of the pet (see poopWins).
@@ -1942,11 +2130,11 @@ function applyMacAppMenu() {
 
 function trayMenuTemplate() {
   return [
-    { label: "Open chat", click: () => openChatWindow() },
+    { label: L("openChat"), click: () => openChatWindow() },
     // Only shown when the shortcut could not be claimed, so nobody keeps pressing
     // a key that a different app silently owns.
     ...(summonHotkeyOk === false
-      ? [{ label: "Summon hotkey taken by another app", enabled: false }]
+      ? [{ label: L("summonTaken"), enabled: false }]
       : []),
     // Information, not an action - and always present, so "checking…" is a
     // visible state rather than a line that appears out of nowhere.
@@ -1957,27 +2145,27 @@ function trayMenuTemplate() {
     // call Pilly back without opening the chat first. This writes the same saved
     // state the pet button does, so the two cannot disagree across a restart.
     {
-      label: "Pilly on the taskbar",
+      label: L("petOnTaskbar"),
       type: "checkbox",
       checked: petActive,
       click: (item) => setPetOn(!!item.checked),
     },
-    { label: "Focus", submenu: [
-      { label: "Start focus", click: () => trayFocus("start") },
-      { label: "Pause focus", click: () => trayFocus("pause") },
-      { label: "Resume focus", click: () => trayFocus("resume") },
-      { label: "Stop focus", click: () => trayFocus("stop") },
+    { label: L("focusMenu"), submenu: [
+      { label: L("focusStart"), click: () => trayFocus("start") },
+      { label: L("focusPause"), click: () => trayFocus("pause") },
+      { label: L("focusResume"), click: () => trayFocus("resume") },
+      { label: L("focusStop"), click: () => trayFocus("stop") },
     ] },
-    { label: "Reset window position", click: () => resetWindowPosition() },
+    { label: L("resetWindow"), click: () => resetWindowPosition() },
     { type: "separator" },
     {
-      label: process.platform === "win32" ? "Start with Windows" : "Start at login",
+      label: process.platform === "win32" ? L("startWithWindows") : L("startAtLogin"),
       type: "checkbox",
       checked: getAutoLaunch(),
       click: (item) => { setAutoLaunch(item.checked); },
     },
     { type: "separator" },
-    { label: "Quit Pilly", click: () => { isQuitting = true; app.quit(); } },
+    { label: L("quit"), click: () => { isQuitting = true; app.quit(); } },
   ];
 }
 
@@ -2006,7 +2194,11 @@ function fmtCompact(v) {
 // One poll: prices for the watchlist, fire alerts, refresh the tray tooltip.
 async function watchPoll() {
   const items = WATCH.list(userDataDir());
-  const prices = await COINS.fetchPrices(items.map((i) => i.mint));
+  // v1.1.3: the home token rides in the same batch so Pilly can keep an eye on
+  // his own coin in the tray tooltip (no extra round trip).
+  const mints = items.map((i) => i.mint);
+  if (!mints.includes(PILLY.HOME_TOKEN.mint)) mints.push(PILLY.HOME_TOKEN.mint);
+  const prices = await COINS.fetchPrices(mints);
   const now = Date.now();
   // Prune the 6h alert cooldown map so it can't grow forever.
   if (alertCooldown.size > 200) {
@@ -2027,8 +2219,8 @@ async function watchPoll() {
         try {
           if (Notification.isSupported()) {
             new Notification({
-              title: `${it.symbol || it.name || "Coin"} ${sign}${chg.toFixed(1)}% (24h)`,
-              body: `${it.name || it.symbol || "Watched coin"} crossed your ${it.alertPct}% alert.`,
+              title: `${it.symbol || it.name || "Coin"} ${sign}${chg.toFixed(1)}% ${L("in24h")}`,
+              body: `${it.name || it.symbol || "Watched coin"} ${L("alertCrossed", { pct: it.alertPct })}`,
               icon: iconFrames[0],
             }).show();
           }
@@ -2109,12 +2301,20 @@ function tooltipParts(sol) {
     const p = lastPrices[w0.mint];
     parts.push(`${w0.symbol || w0.name || "coin"} ${fmtCompact(p.price)}${p.change24h != null ? ` (${p.change24h >= 0 ? "+" : ""}${p.change24h.toFixed(1)}%)` : ""}`);
   }
-  if (items.length > 1) parts.push(`+${items.length - 1} watched`);
+  if (items.length > 1) parts.push(`+${items.length - 1} ${L("watched")}`);
+  // v1.1.3: Pilly keeps an eye on his own token - it rides along in the price
+  // batch, so the tooltip shows it whenever the data is there.
+  if (lastPrices && lastPrices[PILLY.HOME_TOKEN.mint]) {
+    const h = lastPrices[PILLY.HOME_TOKEN.mint];
+    if (h && h.price) {
+      parts.push(`💊 ${L("homeShort")} ${fmtCompact(h.price)}${h.change24h != null ? ` (${h.change24h >= 0 ? "+" : ""}${h.change24h.toFixed(1)}%)` : ""}`);
+    }
+  }
   // v1.1.1: surface a running focus countdown in the tooltip.
   const focus = focusDoc.state.phase !== "idle" ? FOCUS.remaining(focusDoc.state, Date.now()) : null;
   if (focus && focus.remainingMs > 0) {
     const mm = Math.ceil(focus.remainingMs / 60000);
-    parts.push(`🍅 ${focus.phase === "focus" ? "focus" : "break"} ${mm}m`);
+    parts.push(`🍅 ${focus.phase === "focus" ? L("focusShort") : L("breakShort")} ${mm}m`);
   }
   // v1.1.2: only mention the endpoint when it is actually a problem. A tooltip
   // permanently reading "RPC ok" is noise; one that reads "RPC slow" is a
@@ -2315,11 +2515,16 @@ ipcMain.handle("pilly:chat", async (event, payload) => {
       coinContext: coinContext || "",
       fallback: coinRead || "",
       ai: aiOpts(),
+      language: chatLang(), // v1.1.3: "zh" locks replies to Chinese
     });
   } catch (e) {
     return { error: String((e && e.message) || e) };
   }
 });
+
+// v1.1.3: Pilly's own home token (the project's coin) - the renderer uses this
+// for the 💊 PillCrew chip.
+ipcMain.handle("pilly:home-token", () => PILLY.HOME_TOKEN);
 
 ipcMain.handle("pilly:meme", () => PILLY.MEME_PROMPTS);
 ipcMain.handle("pilly:detect-task", (event, text) => require("./src/meme").detectTask(String(text || "")));
@@ -2330,11 +2535,14 @@ ipcMain.handle("pilly:settings:save", (event, s) => {
   // The settings form knows nothing about whether Pilly is currently running, or
   // where he is standing, so carry both over - otherwise a plain "Save" would
   // switch the pet off on the next launch and teleport him back to default.
+  const prevLang = chatLang();
   const cur = petOpts();
   const merged = Object.assign({}, s || {}, {
     pet: Object.assign({}, (s && s.pet) || {}, { on: !!cur.on, pos: cur.pos || null }),
   });
   const r = SETTINGS.save(userDataDir(), merged);
+  // v1.1.3: the tray menu is translated, so a language switch must rebuild it.
+  if (chatLang() !== prevLang) applyTrayMenu();
   applyPetSettings();
   // Apply window preferences immediately.
   try {
@@ -2430,6 +2638,12 @@ ipcMain.handle("pilly:coin", async (event, mint, silent) => {
     // spam the "coins" stat or make the taskbar pet react to every card.
     if (!silent) bumpStat("coins");
     const data = await COINS.fetchCoinContext(String(mint || "").trim());
+    // v1.1.3: when the user checks the project's own token, Pilly knows his
+    // family - the AI read gets a home-token note so it speaks with pride.
+    if (data && data.coin && data.context && String(mint).trim() === PILLY.HOME_TOKEN.mint) {
+      data.coin.home = true;
+      data.context += `\n\nNOTE: this is ${PILLY.HOME_TOKEN.name} ($${PILLY.HOME_TOKEN.symbol}) - PILLY'S OWN home token, the project's coin. Speak of it with warm, proud familiarity (meme-pro, never fake numbers, one casual 'not financial advice').`;
+    }
     if (!silent && data && data.coin && data.coin.change24h != null && isFinite(data.coin.change24h)) {
       const chg = data.coin.change24h;
       sendPetMarket({ kind: chg >= 0.5 ? "up" : chg <= -0.5 ? "down" : "flat", name: data.coin.name || "" });
@@ -2511,10 +2725,10 @@ ipcMain.handle("pilly:pnl:all", () => PNL.all(userDataDir()));
 ipcMain.handle("pilly:reminder", (event, text) => {
   const parsed = REMINDERS.parseReminder(String(text || ""));
   if (!parsed) {
-    return { ok: false, message: "Couldn't understand that. Try: \"remind me in 10 minutes to check SOL\"." };
+    return { ok: false, message: L("remParse") };
   }
   const r = REMINDERS.add(userDataDir(), parsed);
-  if (!r.ok) return { ok: false, message: "That time is already in the past." };
+  if (!r.ok) return { ok: false, message: L("remPast") };
   return { ok: true, reminder: r.reminder };
 });
 ipcMain.handle("pilly:reminders:list", () => REMINDERS.list(userDataDir()));
@@ -2876,7 +3090,7 @@ ipcMain.handle("pilly:reset-window", () => {
 // builds self-update; the portable build and unsigned macOS builds can't
 // replace themselves, so they get a friendly pointer to GitHub instead of a
 // cryptic updater error.
-let updateState = { state: "idle", version: app.getVersion(), message: "Ready." };
+let updateState = { state: "idle", version: app.getVersion(), message: L("updReady") };
 
 // macOS auto-update only works on a Developer ID signed bundle - the updater
 // verifies the signature before swapping the .app out. An unsigned/ad-hoc
@@ -2899,8 +3113,6 @@ function macCanSelfUpdate() {
   }
   return macSignCheck;
 }
-
-const MAC_MANUAL_MSG = "This Mac build isn't signed with a Developer ID, so it can't update itself. Grab the newest version from GitHub.";
 
 function sendUpdateStatus() {
   try {
@@ -2946,20 +3158,18 @@ function handleUpdateAttemptMarker() {
     return;
   }
   // Still on the version that started the update: the installer never ran.
-  const blame = process.platform === "win32"
-    ? "Windows (Smart App Control) blocked the downloaded installer."
-    : "The operating system blocked the downloaded installer.";
+  const blame = process.platform === "win32" ? L("updBlameWin") : L("updBlameOs");
   setUpdateStatus({
     state: "error",
     version: target,
-    message: `Update ${target} could not be installed. Download it from GitHub instead.`,
+    message: L("updInstallFailedFn", target),
   });
   dialog.showMessageBox({
     type: "warning",
-    title: "Pilly update",
-    message: `Pilly could not update to ${target}.`,
-    detail: `${blame}\n\nThe update itself was downloaded fine - only the install step failed. Download the newest installer from GitHub and run it: it is the same file the updater already fetched.`,
-    buttons: ["Open download page", "OK"],
+    title: L("updTitle"),
+    message: L("updFailedGenericFn", target),
+    detail: L("updDetailFn", blame),
+    buttons: [L("updOpenPage"), L("updOk")],
   }).then((r) => {
     if (r.response === 0) openExternal("https://github.com/PillCrew/PillCrew/releases");
   }).catch(() => { /* the dialog is best effort */ }).finally(() => {
@@ -2973,56 +3183,53 @@ let updaterIsBusy = false;
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
-autoUpdater.on("checking-for-update", () => setUpdateStatus({ state: "checking", message: "Checking for updates…" }));
+autoUpdater.on("checking-for-update", () => setUpdateStatus({ state: "checking", message: L("updChecking") }));
 autoUpdater.on("update-available", (info) => setUpdateStatus({
   state: "available",
   version: info && info.version,
-  message: `Update ${info && info.version ? info.version : ""} is available. Downloading…`,
+  message: L("updAvailableFn", info && info.version ? info.version : ""),
 }));
 autoUpdater.on("update-not-available", (info) => setUpdateStatus({
   state: "latest",
   version: (info && info.version) || app.getVersion(),
-  message: "You're on the latest version.",
+  message: L("updLatest"),
 }));
 autoUpdater.on("download-progress", (p) => {
   const pct = p && p.percent != null ? Math.round(p.percent) : 0;
-  setUpdateStatus({ state: "downloading", message: `Downloading update… ${pct}%` });
+  setUpdateStatus({ state: "downloading", message: L("updDownloadingFn", pct) });
 });
 autoUpdater.on("update-downloaded", (info) => setUpdateStatus({
   state: "ready",
   version: info && info.version,
-  message: "Update downloaded. Restart to install it.",
+  message: L("updDownloaded"),
 }));
 autoUpdater.on("error", (err) => {
-  const raw = err && err.message ? err.message : "Update check failed.";
-  // The updater's signature failures are unreadable; swap in plain English.
+  const raw = err && err.message ? err.message : L("updCheckFailed");
+  // The updater's signature failures are unreadable; swap in plain language.
   const sig = process.platform === "darwin" && /code ?sign|signature|codesign/i.test(raw);
-  setUpdateStatus({ state: "error", message: sig ? MAC_MANUAL_MSG : raw });
+  setUpdateStatus({ state: "error", message: sig ? L("updMacManual") : raw });
 });
 
 function checkForUpdates(manual) {
   if (!app.isPackaged) {
-    if (manual) setUpdateStatus({ state: "error", message: "Updates only work in the installed app (the dev build doesn't self-update)." });
+    if (manual) setUpdateStatus({ state: "error", message: L("updDevBuild") });
     return;
   }
   // The portable build can't replace itself while running, so it can't
   // auto-update. Point the user at GitHub instead of raising a cryptic error.
   if (process.env.PORTABLE_EXECUTABLE_DIR) {
-    if (manual) setUpdateStatus({
-      state: "error",
-      message: "This is the portable build — it can't update itself. Download the newest installer from GitHub.",
-    });
+    if (manual) setUpdateStatus({ state: "error", message: L("updPortable") });
     return;
   }
   // Unsigned macOS builds: fail fast with something readable.
   if (!macCanSelfUpdate()) {
-    if (manual) setUpdateStatus({ state: "error", message: MAC_MANUAL_MSG });
+    if (manual) setUpdateStatus({ state: "error", message: L("updMacManual") });
     return;
   }
   if (updaterIsBusy) return;
   updaterIsBusy = true;
   autoUpdater.checkForUpdates()
-    .catch((err) => setUpdateStatus({ state: "error", message: err && err.message ? err.message : "Update check failed." }))
+    .catch((err) => setUpdateStatus({ state: "error", message: err && err.message ? err.message : L("updCheckFailed") }))
     .finally(() => { updaterIsBusy = false; });
 }
 
@@ -3040,7 +3247,7 @@ ipcMain.handle("pilly:update:install", () => {
     autoUpdater.quitAndInstall(false, true);
     return { ok: true };
   }
-  return { ok: false, message: "No downloaded update to install yet." };
+  return { ok: false, message: L("updNoDownloaded") };
 });
 ipcMain.handle("pilly:update:state", () => updateState);
 ipcMain.handle("pilly:update:open", async () => {

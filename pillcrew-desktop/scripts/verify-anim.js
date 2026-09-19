@@ -1572,6 +1572,66 @@ app.whenReady().then(async () => {
   check("nothing stays painted over the poop window's fade",
     poopFade.peak < 0.05, poopFade);
 
+  // --- the bubble tail follows Pilly into the screen corners --------------
+  // The bubble window is clamped to the screen, so when Pilly parks in a corner
+  // the tail used to dangle off to the side of his head. main.js now sends the
+  // pill's position relative to the window centre and the bubble slides the
+  // bubble + tail so the tip stays glued to him.
+  const bubbleWin = new BrowserWindow({
+    show: false, width: 190, height: 160, frame: false, transparent: true, skipTaskbar: true, focusable: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: PRELOAD, backgroundThrottling: false },
+  });
+  bubbleWin.webContents.on("console-message", (e, level, msg) => { if (level >= 3) rendererErrors.push("bubble: " + msg); });
+  await bubbleWin.loadFile(path.join(ROOT, "renderer", "bubble.html"));
+  await new Promise((r) => setTimeout(r, 300));
+  const bubbleTail = await bubbleWin.webContents.executeJavaScript(`(async () => {
+    // bubble is the page's own top-level element binding (bubble.html).
+    const tick = () => new Promise((r) => setTimeout(r, 60));
+    const M = () => {
+      const cs = getComputedStyle(document.documentElement);
+      const r = bubble.getBoundingClientRect();
+      const num = (v) => parseFloat(v) || 0;
+      return {
+        bx: num(cs.getPropertyValue("--bx")), tx: num(cs.getPropertyValue("--tx")),
+        by: num(cs.getPropertyValue("--by")), ty: num(cs.getPropertyValue("--ty")),
+        w: r.width, h: r.height, left: r.left, top: r.top,
+        winW: window.innerWidth, winH: window.innerHeight, cls: document.body.className,
+      };
+    };
+    window.pilly.__fire("joke", "PillCrew GxWqJbWPxMseev7WXYNPLEG8K59v2fAhJ5m5o7Yepump is the token of the people and I hold it with both little hands");
+    window.pilly.__fire("petOrient", { o: "above", tx: -67, ty: 0 });
+    await tick(); const corner = M();
+    window.pilly.__fire("petOrient", { o: "above", tx: -500, ty: 0 });
+    await tick(); const extreme = M();
+    window.pilly.__fire("petOrient", { o: "left", tx: 0, ty: 30 });
+    await tick(); const side = M();
+    window.pilly.__fire("petOrient", { o: "above", tx: 0, ty: 0 });
+    await tick(); const reset = M();
+    window.pilly.__fire("petOrient", "below"); // legacy string payload
+    await tick(); const legacy = M();
+    return { corner, extreme, side, reset, legacy };
+  })()`);
+  bubbleWin.destroy();
+  const tailC = bubbleTail.corner, tailE = bubbleTail.extreme, tailS = bubbleTail.side,
+    tailR = bubbleTail.reset, tailL = bubbleTail.legacy;
+  // Above/below: the tail tip lands at window centre + requested offset.
+  const tipX = (m) => m.left + m.w / 2 + m.tx;
+  check("corner bubble: the tail slides to Pilly's head (not the window centre)",
+    Math.abs(tipX(tailC) - (tailC.winW / 2 - 67)) < 1.5 && Math.abs(tailC.bx + tailC.tx + 67) < 1.5 &&
+    tipX(tailC) >= 0 && tipX(tailC) <= tailC.winW, tailC);
+  check("corner bubble: the bubble itself stays inside the window",
+    tailC.left >= 0 && tailC.left + tailC.w <= tailC.winW, tailC);
+  check("extreme corner: the tail can never leave the bubble window",
+    tipX(tailE) >= 0 && tipX(tailE) <= tailE.winW &&
+    Math.abs(tailE.bx + tailE.tx) <= tailE.winW / 2 - 8 + 0.5, tailE);
+  const tipY = (m) => m.top + m.h / 2 + m.ty;
+  check("side bubble: the tail shifts vertically onto Pilly's side",
+    /side-left/.test(tailS.cls) && Math.abs(tipY(tailS) - (tailS.winH / 2 + 30)) < 1.5 &&
+    tipY(tailS) >= 0 && tipY(tailS) <= tailS.winH, tailS);
+  check("a centred pill puts the bubble back in the middle",
+    Math.abs(tipX(tailR) - tailR.winW / 2) < 1.5 && tailR.bx === 0 && tailR.tx === 0, tailR);
+  check("a legacy string orientation still applies", /flip/.test(tailL.cls), tailL);
+
   check("no renderer errors on any page", rendererErrors.length === 0, rendererErrors.slice(0, 5));
 
   console.log("VERIFY_DONE checks=" + checks + " failures=" + failures.length);
