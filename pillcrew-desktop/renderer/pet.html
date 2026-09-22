@@ -91,12 +91,15 @@
         // v1.1.3: the plush look - Pilly as the crocheted toy from the brand
         // logo, teal yarn with button eyes and stitched seams.
         plush: { c1: "#3ab8c4", c2: "#26929f", c3: "#0d7c86", plush: true },
+        // v1.1.5: the mascot ball - the round crocheted plush from the logo,
+        // deep teal yarn with big embroidered eyes.
+        ball: { c1: "#73c3c0", c2: "#217174", c3: "#085960", plush: true, ball: true },
       };
-      let theme = THEMES.green;
+      let theme = THEMES.ball;
       let ps = 1; // size scale (sm 0.85 / md 1 / lg 1.2)
 
       function applyPetSettings(pet) {
-        theme = (pet && THEMES[pet.theme]) || THEMES.green;
+        theme = (pet && THEMES[pet.theme]) || THEMES.ball;
         ps = pet && pet.size === "sm" ? 0.85 : pet && pet.size === "lg" ? 1.2 : 1;
         soundsOn = !pet || pet.sounds !== false;
         soundVol = pet && pet.soundVol != null ? Math.max(0, Math.min(100, Number(pet.soundVol))) : 60;
@@ -1047,6 +1050,51 @@
 
       function drawEye(ex, ey, open, excited, squint, pupilX, pupilY, lid, heart) {
         if (open) {
+          if (theme.ball) {
+            // v1.1.5: the mascot's big embroidered eye - a large dark oval
+            // stitched on, with two catchlights and a pupil that still tracks
+            // the cursor (a toy that watches you is a toy with character).
+            const bw = 4.6, bh = 5.6;
+            ctx.fillStyle = "#0d1b16";
+            ctx.beginPath();
+            ctx.ellipse(ex, ey - 0.4, bw, bh, 0, 0, Math.PI * 2);
+            ctx.fill();
+            if (heart) {
+              ctx.fillStyle = "#f43f5e";
+              heartPath(ex + pupilX, ey + pupilY + 0.6, 2.3);
+              ctx.fill();
+              ctx.fillStyle = "rgba(255,255,255,0.8)";
+              ctx.beginPath();
+              ctx.arc(ex + pupilX - 0.7, ey + pupilY - 1.1, 0.7, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              const pr = excited ? 2.3 : 1.7;
+              ctx.fillStyle = "#fff";
+              ctx.beginPath();
+              ctx.arc(ex + pupilX * 1.15, ey + pupilY * 1.15, pr, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.fillStyle = "rgba(255,255,255,0.85)";
+            ctx.beginPath();
+            ctx.arc(ex - 1.6, ey - 3.1, 1.05, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.45)";
+            ctx.beginPath();
+            ctx.arc(ex + 1.6, ey + 2.6, 0.7, 0, Math.PI * 2);
+            ctx.fill();
+            // eyelid: the yarn folded over the eye while blinking or squinting
+            const lidH = lid ? lid * 11.2 : squint ? 4.2 : 0;
+            if (lidH > 0) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.ellipse(ex, ey - 0.4, bw, bh, 0, 0, Math.PI * 2);
+              ctx.clip();
+              ctx.fillStyle = theme.c2;
+              ctx.fillRect(ex - bw - 1, ey - bh - 2, (bw + 1) * 2, lidH + 0.6);
+              ctx.restore();
+            }
+            return;
+          }
           if (theme.plush) {
             // button eye: a solid black oval stitched onto the yarn, with a
             // single white glint. No tracking pupil - toys do not eyeball the
@@ -1115,6 +1163,19 @@
             ctx.fill();
           }
         } else {
+          if (theme.ball) {
+            // closed: one thick stitched dash, like a seam in the yarn
+            ctx.strokeStyle = "#101512";
+            ctx.lineWidth = 1.7;
+            ctx.lineCap = "round";
+            ctx.setLineDash([1.6, 1.4]);
+            ctx.beginPath();
+            ctx.moveTo(ex - 3.6, ey - 0.6);
+            ctx.lineTo(ex + 3.6, ey - 0.6);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            return;
+          }
           if (theme.plush) {
             // closed eye: a single stitch instead of a lid line
             ctx.strokeStyle = "#101512";
@@ -1141,6 +1202,19 @@
       // Drawing the whole expression is what makes being petted read as bliss
       // instead of as a half-finished blink.
       function drawHappyEye(ex, ey) {
+        if (theme.ball) {
+          // a big stitched "^" - bliss stitched into the yarn
+          ctx.strokeStyle = "#101512";
+          ctx.lineWidth = 1.9;
+          ctx.lineCap = "round";
+          ctx.setLineDash([1.4, 1.3]);
+          ctx.beginPath();
+          ctx.moveTo(ex - 3.8, ey + 1.6);
+          ctx.quadraticCurveTo(ex, ey - 3.3, ex + 3.8, ey + 1.6);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          return;
+        }
         ctx.strokeStyle = "#0b0f0d";
         ctx.lineWidth = 1.6;
         ctx.lineCap = "round";
@@ -1155,6 +1229,24 @@
       // v1.1.2: dizzy eyes after a rough ride - a white spiral instead of a
       // pupil. Cheap to draw and unmistakable even at 30px.
       function drawDizzyEye(ex, ey) {
+        if (theme.ball) {
+          // dizzy: the big eye spins a white spiral
+          ctx.fillStyle = "#0d1b16";
+          ctx.beginPath();
+          ctx.ellipse(ex, ey - 0.4, 4.6, 5.6, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 0.9;
+          ctx.beginPath();
+          for (let i = 0; i <= 50; i++) {
+            const a = (i / 50) * Math.PI * 5;
+            const r = 0.2 + (i / 50) * 2.5;
+            if (i === 0) ctx.moveTo(ex + Math.cos(a) * r, ey + Math.sin(a) * r);
+            else ctx.lineTo(ex + Math.cos(a) * r, ey + Math.sin(a) * r);
+          }
+          ctx.stroke();
+          return;
+        }
         ctx.fillStyle = "#0b0f0d";
         roundRect(ex - 3, ey - 3.5, 6, 7, 3);
         ctx.fill();
@@ -1307,6 +1399,60 @@
       }
 
       function drawBody(now) {
+        if (theme.ball) {
+          // v1.1.5: the mascot ball - a round crocheted ball resting on the
+          // same baseline as the capsule, so walking, hopping and dragging
+          // feel exactly the same.
+          const R = 17, CY = -17;
+          const grd = ctx.createRadialGradient(-5.5, CY - 7.5, 2.5, 0, CY, R + 1.5);
+          grd.addColorStop(0, theme.c1);
+          grd.addColorStop(0.55, theme.c2);
+          grd.addColorStop(1, theme.c3);
+          ctx.fillStyle = grd;
+          ctx.beginPath();
+          ctx.arc(0, CY, R, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(0,0,0,0.16)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          // crochet rounds - stitch rings worked in the round, like real yarn
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(0, CY, R, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.strokeStyle = "rgba(5, 72, 78, 0.22)";
+          ctx.lineWidth = 0.8;
+          ctx.lineCap = "round";
+          for (let ring = 0; ring < 4; ring++) {
+            const r = 5 + ring * 3.2;
+            ctx.beginPath();
+            ctx.arc(0, CY, r, 0, Math.PI * 2);
+            ctx.stroke();
+            for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+              const x0 = Math.cos(a) * r, y0 = CY + Math.sin(a) * r;
+              const x1 = Math.cos(a + 0.1) * (r - 1.2), y1 = CY + Math.sin(a + 0.1) * (r - 1.2);
+              ctx.beginPath();
+              ctx.moveTo(x0, y0);
+              ctx.lineTo(x1, y1);
+              ctx.stroke();
+            }
+          }
+          // glossy sheen hugging the top-left, like the plush in the photo
+          const gl = ctx.createRadialGradient(-6, CY - 8, 1, -6, CY - 8, 8.5);
+          gl.addColorStop(0, "rgba(255,255,255,0.30)");
+          gl.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.fillStyle = gl;
+          ctx.beginPath();
+          ctx.arc(-6, CY - 8, 8.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          // v1.1.5: no ears - the ball is just a soft round plush, like the
+          // logo. Ears used to stick out above the circle and got clipped
+          // off the top of the canvas during a hop, so they are gone.
+          // a ball has no forehead - the whole face shifts up
+          ctx.save();
+          ctx.translate(0, -6.5);
+        } else {
         // capsule body
         const grd = ctx.createLinearGradient(0, -23, 0, 0);
         grd.addColorStop(0, theme.c1);
@@ -1369,6 +1515,7 @@
           ctx.quadraticCurveTo(1.4, -17.5, 0, -14);
           ctx.stroke();
           ctx.setLineDash([]);
+        }
         }
 
         // face
@@ -1441,11 +1588,18 @@
           ctx.strokeStyle = "#0b0f0d";
           ctx.lineWidth = 1.6;
           ctx.beginPath();
-          ctx.moveTo(-17, -22.5); ctx.lineTo(-6, -19.5);
-          ctx.moveTo(17, -22.5); ctx.lineTo(6, -19.5);
+          if (theme.ball) {
+            // on a ball the browline sits inside the circle
+            ctx.moveTo(-12, -21.5); ctx.lineTo(-5, -19);
+            ctx.moveTo(12, -21.5); ctx.lineTo(5, -19);
+          } else {
+            ctx.moveTo(-17, -22.5); ctx.lineTo(-6, -19.5);
+            ctx.moveTo(17, -22.5); ctx.lineTo(6, -19.5);
+          }
           ctx.stroke();
         }
         drawMouth(cur.mouth, now, mood);
+        if (theme.ball) ctx.restore();
       }
 
       // v1.1.2: the focus ring. A thin ring above his head drains as the current
@@ -1558,12 +1712,24 @@
           // v1.1.2: anticipation crouch, an uncoil into a stretch off the
           // ground, neutral at the apex, then a squash on the way down. The
           // squash is anchored at the feet, so he coils instead of floating.
+          // v1.1.5: the mascot ball is 34px tall where the capsule is 23px, so
+          // the same 18px lift used to drive its crown right up to the top
+          // edge of the 64px canvas. The ball hops a little lower so its whole
+          // head stays in frame with room to spare - and the lift is scaled by
+          // the size factor, because at lg the ball is 40.8px tall and a fixed
+          // 12px lift would kiss the top edge.
+          const hopLift = theme.ball ? Math.min(12, 53 - 34 * ps - 4) : 18;
           const p = (now - hopStart) / HOP_MS;
           const kf = hopShapeAt(p, hopKf);
+          // A circle reads as "ball" only while it stays round; the capsule's
+          // 14% uncoil would turn the ball into an egg and push its crown past
+          // the top edge at lg size. Soften the keyframes so the squash/stretch
+          // stays subtle.
+          if (theme.ball) kf.y = 1 + (kf.y - 1) * 0.55;
           cur.squX = kf.x;
           cur.squY = kf.y;
           const q = Math.max(0, (p - HOP_ANTIC) / (1 - HOP_ANTIC));
-          bodyY = -Math.sin(q * Math.PI) * 18;
+          bodyY = -Math.sin(q * Math.PI) * hopLift;
           if (q > 0.85) dust(30);
           if (q >= 0.97) landingUntil = now + 170;
         }
@@ -1575,7 +1741,9 @@
         if (state !== "pause" && state !== "sleep" && !dragOverride.active && !reduceMotion) {
           const busy = state === "walk" || state === "eat" || state === "dance" || state === "flee";
           breathY = Math.sin(t * (busy ? 3.6 : 2.2)) * (busy ? 0.5 : 0.65);
-          bodyY -= Math.abs(breathY);
+          // The hop already has its own airborne arc; a breath lift on top of it
+          // does not read as life, it just pushes a tall body into the canvas edge.
+          if (state !== "hop") bodyY -= Math.abs(breathY);
           // The chest rise must never fight a body that something else is already
           // shaping: the hop keyframes and the gesture branches assign the squash
           // directly, and easing over them would flatten them (the hop's airborne
@@ -1585,14 +1753,19 @@
           breathY = 0;
         }
         // happy bounce when the market goes green
-        if (now < bounceUntil) {
+        // v1.1.5: the bounce is a background accent, not a story beat - if Pilly
+        // is already mid-spook or mid-perk, another lift on top would stack the
+        // offsets and shove the ball's crown past the top edge at lg size.
+        if (now < bounceUntil && state !== "hop" && !(now < spookUntil) && !(now < perkUntil)) {
           const p = (now - bounceStart) / 720;
           bodyY -= Math.sin(p * Math.PI) * 7;
         }
         // spooked jump when the cursor pokes Pilly
-        if (now < spookUntil) {
+        if (now < spookUntil && state !== "hop") {
           const p = (now - spookStart) / 420;
-          bodyY -= Math.sin(p * Math.PI) * 10;
+          // v1.1.5: same size-aware cap as the hop - at lg the ball has little
+          // headroom, so a fixed 10px scare would brush the top edge.
+          bodyY -= Math.sin(p * Math.PI) * (theme.ball ? Math.min(10, 53 - 34 * ps - 4) : 10);
         }
         // v1.1.2: back to work - a small, deliberate nod when a break ends.
         if (now < focusNodUntil) {
@@ -1805,16 +1978,19 @@
         // free - the cheapest way to keep a long idle window from looking asleep.
         // Deferred while asleep, carried, talking or mid-gesture, and skipped for a
         // few seconds instead of being skipped for another 30.
-        const perkPw = now < perkUntil
+        // v1.1.5: the perk never stacks on top of a hop or a scare - together
+        // they would lift the ball's crown (and its 5% stretch) past the top
+        // edge at lg size. Aborting it here reads as him reacting to the click.
+        const perkPw = (now < perkUntil && state !== "hop" && !(now < spookUntil))
           ? Math.sin(Math.min(1, Math.max(0, 1 - (perkUntil - now) / PERK_MS)) * Math.PI)
           : 0;
-        if (now < perkUntil) {
+        if (now < perkUntil && state !== "hop" && !(now < spookUntil)) {
           bodyY -= perkPw * 2.1;
           rot += perkPw * 0.05 * petDirNow;
         } else if (perkUntil) {
           perkUntil = 0;
         } else if (now > perkNext) {
-          const free = state !== "sleep" && !dragOverride.active && !talking && !gesture && now >= marketUntil && !bliss;
+          const free = state !== "sleep" && state !== "hop" && !dragOverride.active && !talking && !gesture && now >= marketUntil && !bliss;
           if (free) perkUntil = now + PERK_MS;
           else perkNext = now + 5000;
         }
@@ -1934,17 +2110,26 @@
 
         // v1.1.2: the coin flip rides in front of him, anchored to the top of his
         // head so it tracks his size, his hops and the breathing.
+        // v1.1.5: the ball is taller than the capsule, so at lg size there is no
+        // headroom left above its crown - the old "over the head" arc pushed the
+        // coin clean out of the 64px canvas. For the ball the toss flips in front
+        // of his face instead, where the big embroidered eyes make a natural
+        // stage and the arc always stays in frame.
         if (coin) {
-          const bodyTop = 53 + bodyY - 23 * ps;
-          drawCoin(30 + petDirNow * 2 * ps, bodyTop - 7 - coin.h * 20 * ps, 5 * ps, coin.sx);
+          const bodyTop = 53 + bodyY - (theme.ball ? 34 : 23) * ps;
+          const coinY = theme.ball
+            ? bodyTop + 14 * ps - coin.h * 8 * ps
+            : bodyTop - 7 - coin.h * 20 * ps;
+          drawCoin(30 + petDirNow * 2 * ps, coinY, 5 * ps, coin.sx);
         }
 
         // v1.1.1: a little battery badge while the laptop is running low.
+        // v1.1.5: clamped so a hop cannot lift it out of the top of the canvas.
         if (batteryLow) {
           ctx.font = "10px sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "alphabetic";
-          ctx.fillText("🔋", 30, 22 + bodyY);
+          ctx.fillText("🔋", 30, Math.max(12, (theme.ball ? 14 : 22) + bodyY));
         }
 
         // v1.1.2: the focus ring, drawn last so nothing he does can hide the one

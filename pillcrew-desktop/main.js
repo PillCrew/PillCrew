@@ -56,7 +56,7 @@ function aiOpts() {
 
 function petOpts() {
   const s = SETTINGS.effective(userDataDir());
-  return (s && s.pet) || { theme: "green", size: "md", bubbles: true, bubbleSize: "md", walkMode: "taskbar", stopFreq: "normal", questions: true };
+  return (s && s.pet) || { theme: "ball", size: "md", bubbles: true, bubbleSize: "md", walkMode: "taskbar", stopFreq: "normal", questions: true };
 }
 
 // ---- v1.1.3: main-process UI language (tray menu, tooltip, notifications).

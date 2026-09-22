@@ -48,6 +48,12 @@ const BRIDGE = `
         get reduceMotion() { return reduceMotion; }, set reduceMotion(v) { reduceMotion = v; },
         get thoughtNext() { return thoughtNext; }, set thoughtNext(v) { thoughtNext = v; },
         get hopStart() { return hopStart; }, set hopStart(v) { hopStart = v; },
+        get spookStart() { return spookStart; }, set spookStart(v) { spookStart = v; },
+        get spookUntil() { return spookUntil; }, set spookUntil(v) { spookUntil = v; },
+        get bounceStart() { return bounceStart; }, set bounceStart(v) { bounceStart = v; },
+        get bounceUntil() { return bounceUntil; }, set bounceUntil(v) { bounceUntil = v; },
+        applyPetSettings: (p) => applyPetSettings(p),
+        get ps() { return ps; },
         get cur() { return cur; },
         get cursor() { return cursor; }, set cursor(v) { cursor = v; },
         get petDirNow() { return petDirNow; },
@@ -152,6 +158,14 @@ const BRIDGE = `
             }
           }
           return sw ? sx / sw : 0;
+        },
+        // v1.1.5 ball look: expose the active look flags and a single-pixel
+        // probe so the tests can prove the ball is round where the capsule
+        // is flat (and vice versa).
+        get theme() { return theme; }, set theme(k) { theme = THEMES[k] || THEMES.green; },
+        pixel: (x, y) => {
+          const d = ctx.getImageData(x, y, 1, 1).data;
+          return { a: d[3], r: d[0], g: d[1], b: d[2] };
         },
       };
 `;
@@ -437,7 +451,10 @@ app.whenReady().then(async () => {
     return frames;
   })()`);
   check("hop crouches before launching (anticipation)", hop[1].x > 1.05 && hop[1].y < 0.95, hop[1]);
-  check("hop stretches tall in the air", hop[4].y > 1.05 || hop[5].y > 1.05, [hop[4], hop[5]]);
+  // v1.1.5: the default look is the mascot ball, which intentionally softens
+  // the capsule's 14% uncoil (a circle turned into an egg would read as a
+  // glitch), so its airborne stretch is a subtle ~4.6% rather than ~8%.
+  check("hop stretches tall in the air", hop[4].y > 1.03 || hop[5].y > 1.03, [hop[4], hop[5]]);
 
   const hopCont = await win.webContents.executeJavaScript(`(() => {
     const t = window.__t;
@@ -633,7 +650,7 @@ app.whenReady().then(async () => {
   check("a running block draws the ring for that phase", ring.midState === "focus" && !!ring.mid && ring.mid.phase === "focus", ring.midState);
   check("ring drains with the clock (10 of 25 min gone => 40%)", Math.abs(ring.mid.pct - 0.4) < 0.001, ring.mid.pct);
   check("ring shows the minutes left", ring.mid.label === "15", ring.mid.label);
-  check("ring wears the pet's own colour until the final minute", ring.mid.color === "#22c55e", ring.mid.color);
+  check("ring wears the pet's own colour until the final minute", ring.mid.color === "#73c3c0", ring.mid.color);
   check("the once-a-minute tick does not re-trigger a reaction", ring.noRepeat === true && ring.tickedDown === true, ring);
   check("final minute turns amber", ring.lastMin.color === "#fbbf24" && ring.lastMin.label === "1", ring.lastMin);
   check("paused block says so", ring.paused.label === "❚❚" && ring.paused.paused === true, ring.paused);
@@ -1569,6 +1586,201 @@ app.whenReady().then(async () => {
       errors.some((m) => /could not open the chat/.test(m)) &&
       !errors.some((m) => /unhandled|uncaught/i.test(m)), { ...r, errors: errors.slice(0, 3) });
   }
+
+  // --- v1.1.5: the mascot ball look -------------------------------------
+  // The ball is a circle where the capsule is flat: the same baseline, a round
+  // body and the face shifted up. These probes are geometry, not colour -
+  // they must stay true for every theme and mood, so they only read alpha.
+  const ball = await win.webContents.executeJavaScript(`(() => {
+    const t = window.__t;
+    t.reduceMotion = false;
+    t.dragOverride.active = false;
+    t.hover = false;
+    t.cursor = { x: 400, y: 400 };
+    const quiet = () => {
+      t.state = "pause";
+      t.gesture = ""; t.gestureUntil = 0;
+      t.landingUntil = 0; t.wobbleStart = 0; t.wobbleUntil = 0;
+      t.dizzyUntil = 0; t.tickleUntil = 0; t.resetStroke();
+      t.market = ""; t.marketUntil = 0;
+      t.talking = false;
+      t.cur.eyes = 1; t.cur.annoyed = false; t.cur.mouth = 0;
+      t.face.squint = false; t.face.excited = false; t.face.px = 0; t.face.py = 0;
+      t.blinkStart = 0; t.blinkUntil = 0;
+    };
+    const probe = (k) => {
+      t.theme = k;
+      quiet();
+      t.draw(performance.now(), 16.67);
+      const b = t.face.bodyY; // real bodyY of the frame we just drew
+      const px = (x, y) => t.pixel(Math.round(x), Math.round(y));
+      const a = (x, y) => px(x, y).a;
+      // The mascot eye is a dark oval that sways with the idle rotation (up to a
+      // few px). A single pixel reads the sway, not the eye, so count solid dark
+      // pixels across the eye's whole band: the ball paints several here, while
+      // every pill theme keeps this band plain body. Pill/plush button eyes sit
+      // ~7px lower, so they can never bleed into the count.
+      const eye = () => {
+        let n = 0;
+        for (let dy = -2; dy <= 1; dy++)
+          for (let dx = -6; dx <= 1; dx++) {
+            const p = px(19 + dx, 31 + b + dy);
+            if (p.a > 200 && p.r < 70 && p.g < 70) n++;
+          }
+        return n;
+      };
+      return {
+        flag: t.theme && t.theme.ball === true,
+        bodyY: Number(b.toFixed(2)),
+        center: a(30, 36 + b),        // both looks: middle of the body
+        capsuleOnly: a(40, 52 + b),   // capsule bottom-right corner; outside the ball's circle
+        ballOnly: a(38, 23 + b),      // ball's top-left arc; above the capsule's top edge
+        topGap: a(30, 26 + b),        // above the capsule, inside the ball
+        eye: eye(),
+      };
+    };
+    const ball = probe("ball");
+    const cap = probe("green");
+    const plush = probe("plush");
+    return { ball, cap, plush };
+  })()`);
+  check("ball look: the flag flips with the theme", ball.ball.flag && !ball.cap.flag && !ball.plush.flag,
+    [ball.ball.flag, ball.cap.flag, ball.plush.flag]);
+  check("ball look: both looks have a body at the same baseline",
+    ball.ball.center > 0 && ball.cap.center > 0 && ball.plush.center > 0, ball);
+  check("ball look: the ball is round where the capsule is flat",
+    ball.ball.ballOnly > 0 && ball.ball.topGap > 0 && ball.ball.capsuleOnly === 0, ball.ball);
+  check("ball look: the capsule keeps its flat silhouette",
+    ball.cap.capsuleOnly > 0 && ball.cap.ballOnly === 0 && ball.cap.topGap === 0, ball.cap);
+  check("ball look: switching back to a pill theme restores the capsule",
+    ball.plush.capsuleOnly > 0 && ball.plush.ballOnly === 0 && ball.plush.topGap === 0, ball.plush);
+  check("ball look: the big mascot eyes are actually painted (solid dark pixels where the pill shows body)",
+    ball.ball.eye >= 4 && ball.cap.eye === 0 && ball.plush.eye === 0,
+    [ball.ball.eye, ball.cap.eye, ball.plush.eye]);
+  const ballGestures = await win.webContents.executeJavaScript(`(() => {
+    const t = window.__t;
+    const list = ${JSON.stringify(gestures)};
+    const out = {};
+    for (const g of list) {
+      try {
+        t.theme = "ball";
+        t.state = "pause";
+        t.gesture = g; t.gestureStart = performance.now() - 200; t.gestureUntil = performance.now() + 1200;
+        t.particles.length = 0;
+        for (let i = 0; i < 40; i++) t.draw(performance.now() + i * 25, 25);
+        out[g] = t.opaque();
+      } catch (e) {
+        out[g] = "THREW: " + (e && e.message ? e.message : String(e));
+      }
+    }
+    t.gesture = ""; t.gestureUntil = 0;
+    return out;
+  })()`);
+  for (const g of gestures) {
+    const v = ballGestures[g];
+    check(`ball look: gesture "${g}" animates 40 frames without throwing`,
+      typeof v === "number" && v > 100, v);
+  }
+  // v1.1.5: the ball used to carry little yarn ears above its circle, and a
+  // hop lifts him off the canvas. The ears are gone now; prove the ball itself
+  // never clips at ANY size. At lg he is 40.8px tall in the 64px canvas, so a
+  // fixed lift used to kiss the top edge - and a perk or a scare stacking onto
+  // a hop would push the crown clean out of frame. Every one of those is a
+  // regression test now, not a fix we hope keeps working.
+  const clipProbe = await win.webContents.executeJavaScript(`(() => {
+    const t = window.__t;
+    const topRowLight = () => {
+      let m = 0;
+      for (let x = 0; x < 60; x++) m = Math.max(m, t.pixel(x, 0).a);
+      return m;
+    };
+    const quiet = () => {
+      t.state = "pause";
+      t.gesture = ""; t.gestureUntil = 0;
+      t.landingUntil = 0; t.wobbleStart = 0; t.wobbleUntil = 0;
+      t.dizzyUntil = 0; t.tickleUntil = 0; t.perkUntil = 0; t.perkNext = 1e12;
+      t.spookUntil = 0; t.bounceUntil = 0; t.particles.length = 0;
+    };
+    const out = {};
+    for (const size of ["sm", "md", "lg"]) {
+      t.applyPetSettings({ theme: "ball", size });
+      quiet();
+      // 1) a full hop
+      const now0 = performance.now() + 10;
+      t.state = "hop"; t.hopStart = now0;
+      let hopMax = 0;
+      for (let i = 0; i <= 40; i++) {
+        t.draw(now0 + i * 18, 18); // 0 .. 720ms, the full hop
+        hopMax = Math.max(hopMax, topRowLight());
+      }
+      quiet();
+      // 2) the same hop while a perk is mid-flight: the lift + 5% stretch
+      //    must never stack on top of the hop
+      const now1 = performance.now() + 10;
+      t.perkUntil = now1 + t.perkMs;
+      t.state = "hop"; t.hopStart = now1;
+      let perkHopMax = 0;
+      for (let i = 0; i <= 40; i++) {
+        t.draw(now1 + i * 18, 18);
+        perkHopMax = Math.max(perkHopMax, topRowLight());
+      }
+      quiet();
+      // 3) a scare jump
+      const now2 = performance.now() + 10;
+      t.spookStart = now2; t.spookUntil = now2 + 420;
+      let spookMax = 0;
+      for (let i = 0; i <= 24; i++) {
+        t.draw(now2 + i * 18, 18); // 0 .. 432ms, past the 420ms jump
+        spookMax = Math.max(spookMax, topRowLight());
+      }
+      quiet();
+      // 4) a scare landing on top of a market-green bounce - the happy bounce
+      //    must step aside so the two lifts never stack into the top edge
+      const now3 = performance.now() + 10;
+      t.bounceStart = now3; t.bounceUntil = now3 + 720;
+      t.spookStart = now3; t.spookUntil = now3 + 420;
+      let spookBounceMax = 0;
+      for (let i = 0; i <= 40; i++) {
+        t.draw(now3 + i * 18, 18);
+        spookBounceMax = Math.max(spookBounceMax, topRowLight());
+      }
+      quiet();
+      // 5) a perk landing on top of a market-green bounce - same story
+      const now4 = performance.now() + 10;
+      t.bounceStart = now4; t.bounceUntil = now4 + 720;
+      t.perkUntil = now4 + t.perkMs;
+      let perkBounceMax = 0;
+      for (let i = 0; i <= 40; i++) {
+        t.draw(now4 + i * 18, 18);
+        perkBounceMax = Math.max(perkBounceMax, topRowLight());
+      }
+      quiet();
+      // 6) a full coin flip - the coin itself (not just the body) must stay in
+      //    frame, because the old "over the head" arc fired the coin clean out
+      //    of the top of the 64px canvas on the taller ball
+      const now5 = performance.now() + 10;
+      t.gesture = "coin"; t.gestureStart = now5; t.gestureUntil = now5 + 1250;
+      let coinMax = 0;
+      for (let i = 0; i <= 70; i++) {
+        t.draw(now5 + i * 18, 18); // 0 .. 1260ms, the full flip
+        coinMax = Math.max(coinMax, topRowLight());
+      }
+      quiet();
+      out[size] = { ps: t.ps, hopMax, perkHopMax, spookMax, spookBounceMax, perkBounceMax, coinMax };
+    }
+    return out;
+  })()`);
+  for (const size of ["sm", "md", "lg"]) {
+    const r = clipProbe[size];
+    check(`ball look: a full hop never clips at ${size} size (${r.ps}x)`, r.hopMax === 0, r);
+    check(`ball look: a perk never stacks into a clip during a hop at ${size} size`, r.perkHopMax === 0, r);
+    check(`ball look: a scare never clips at ${size} size`, r.spookMax === 0, r);
+    check(`ball look: a scare never stacks into a clip with a bounce at ${size} size`, r.spookBounceMax === 0, r);
+    check(`ball look: a perk never stacks into a clip with a bounce at ${size} size`, r.perkBounceMax === 0, r);
+    check(`ball look: a coin flip never clips at ${size} size`, r.coinMax === 0, r);
+  }
+  // Leave the pet on the default look for the remaining checks.
+  await win.webContents.executeJavaScript(`(() => { window.__t.theme = "ball"; window.__t.state = "pause"; return true; })()`);
 
   // --- main.js keeps the overlays animating when the OS occludes them ----
   // macOS marks a window on a non-active Space, or behind a full-screen app, as

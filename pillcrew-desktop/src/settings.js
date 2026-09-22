@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS = {
     on: false, // v1.1.2: was Pilly running when the app last closed?
     pos: null, // v1.1.2: where the user parked him ({x,y}) so he comes back there
     mood: "neutral",
-    theme: "green",
+    theme: "ball",
     size: "md",
     bubbles: true,
     bubbleSize: "md",
@@ -114,7 +114,7 @@ function save(userDataDir, settings) {
         return isFinite(x) && isFinite(y) ? { x: Math.round(x), y: Math.round(y) } : null;
       })(),
       mood: String((settings.pet && settings.pet.mood) || "neutral"),
-      theme: String((settings.pet && settings.pet.theme) || "green"),
+      theme: String((settings.pet && settings.pet.theme) || "ball"),
       size: String((settings.pet && settings.pet.size) || "md"),
       bubbles: !settings.pet || settings.pet.bubbles !== false,
       bubbleSize: String((settings.pet && settings.pet.bubbleSize) || "md"),

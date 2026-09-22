@@ -71,6 +71,26 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 
 ## What's new
 
+### v1.1.5
+
+Pilly swaps the capsule for the PillCrew ball — the crocheted mascot from the logo is now the default look.
+
+#### The ball look
+- **Ball by default** - the round crocheted plush (deep teal yarn, big embroidered
+  eyes) is the default in the pet window, the chat header and settings, and the
+  persona text now describes the mascot.
+- **No ears** - the little yarn ears are gone; the ball is a clean round plush.
+- **Motion clipping fixed** - the ball is taller than the old capsule, so the
+  hop, scare, perk and coin-flip lifts are now size-aware and the market bounce
+  yields to them, keeping the whole body and the tossed coin on screen at every
+  size.
+- **Fresh branding** - new cover image, a smoother 30fps animation reel and a
+  new theme-switch reel cycling through every look (GIFs) re-shot in the new
+  style.
+
+#### Validation
+- 107/107 unit tests, 198 animation checks and 15 boot checks - all green.
+
 ### v1.1.4
 
 Pilly gets his freezes fixed and stays in one piece no matter how long you hold him.

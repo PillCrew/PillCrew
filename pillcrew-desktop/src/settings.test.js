@@ -90,8 +90,8 @@ test("settings: a fresh profile gets defaults the app cannot permanently rewrite
   const b = tmpDir(t);
   const first = SETTINGS.load(a); // no file yet -> defaults
   first.pet.theme = "neon";
-  assert.equal(SETTINGS.load(b).pet.theme, "green", "the fallback must not hand out DEFAULT_SETTINGS itself");
-  assert.equal(SETTINGS.DEFAULT_SETTINGS.pet.theme, "green");
+  assert.equal(SETTINGS.load(b).pet.theme, "ball", "the fallback must not hand out DEFAULT_SETTINGS itself");
+  assert.equal(SETTINGS.DEFAULT_SETTINGS.pet.theme, "ball");
 });
 
 test("settings: save() is strict, so callers must carry a known pos over (main.js does)", (t) => {

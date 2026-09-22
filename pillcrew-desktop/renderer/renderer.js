@@ -293,8 +293,9 @@
     pink: { c1: "#ec4899", c2: "#f472b6", c3: "#fbbf24", glow: "rgba(236,72,153,0.45)" },
     orange: { c1: "#f97316", c2: "#fbbf24", c3: "#ef4444", glow: "rgba(249,115,22,0.45)" },
     plush: { c1: "#33b3bd", c2: "#0f8389", c3: "#0a5d62", glow: "rgba(51,179,189,0.5)" },
+    ball: { c1: "#73c3c0", c2: "#217174", c3: "#085960", glow: "rgba(115,195,192,0.5)" },
   };
-  let activePetTheme = "green";
+  let activePetTheme = "ball";
   let defaultFaceMood = "";
   function applyName(name) {
     const n = String(name || "").trim();
@@ -304,7 +305,7 @@
     document.title = n + " · Pilly";
   }
   function applyPetTheme(pet) {
-    activePetTheme = pet && PET_THEMES[pet.theme] ? pet.theme : "green";
+    activePetTheme = pet && PET_THEMES[pet.theme] ? pet.theme : "ball";
     const t = PET_THEMES[activePetTheme];
     const rs = document.documentElement.style;
     rs.setProperty("--c1", t.c1);
@@ -473,6 +474,48 @@
       ctx.setLineDash([]);
     }
   }
+  function drawFaceEyeBall(ctx, ex, ey, open, happy, lid, px, py) {
+    // v1.1.5: the mascot's big embroidered eye in the chat avatar.
+    if (open) {
+      const w = 7.6, h = 8.6;
+      ctx.fillStyle = "#0d1b16";
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const pr = happy ? 2.1 : 1.8;
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(ex + (px || 0) * 0.7, ey + (py || 0) * 0.7, pr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.beginPath();
+      ctx.arc(ex - 1.9, ey - 3.4, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.beginPath();
+      ctx.arc(ex + 1.9, ey + 3, 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      if (lid) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, w / 2, h / 2, 0, 0, Math.PI * 2);
+        ctx.clip();
+        const lidC = getComputedStyle(document.documentElement).getPropertyValue("--c2").trim() || "#0f8389";
+        ctx.fillStyle = lidC;
+        ctx.fillRect(ex - w / 2 - 1, ey - h / 2 - 1, w + 2, lid * h + 1);
+        ctx.restore();
+      }
+    } else {
+      ctx.strokeStyle = "#0b0f0d";
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([2, 1.8]);
+      ctx.beginPath();
+      ctx.moveTo(ex - 3.6, ey);
+      ctx.lineTo(ex + 3.6, ey);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
   function drawFace(now) {
     if (!faceCtx || !faceCanvas) return;
     const W = faceCanvas.width, H = faceCanvas.height;
@@ -482,6 +525,7 @@
     const c2 = rs.getPropertyValue("--c2").trim() || "#34d399";
     const c3 = rs.getPropertyValue("--c3").trim() || "#6366f1";
     const isPlush = activePetTheme === "plush";
+    const isBall = activePetTheme === "ball";
     const t = now / 1000;
     // gentle breathing bob + squash (boop / petting)
     const bob = Math.abs(Math.sin(t * 2.1)) * 1.4;
@@ -502,10 +546,54 @@
     }
     const pw = 46 / squish * pop, ph = 20 * squish * pop;
     const px = (W - pw) / 2, cy = H / 2 + bob, py = cy - ph / 2;
+    const ballR = 17 * pop;
     faceCtx.save();
     faceCtx.translate(W / 2, cy);
     faceCtx.rotate(rot);
     faceCtx.translate(-W / 2, -cy);
+    if (isBall) {
+      // v1.1.5: the mascot ball in the chat header - round, crocheted, big eyes.
+      const grd = faceCtx.createRadialGradient(W / 2 - 5.5, cy - 7, 2, W / 2, cy, ballR + 1.5);
+      grd.addColorStop(0, c1);
+      grd.addColorStop(0.55, c2);
+      grd.addColorStop(1, c3);
+      faceCtx.beginPath();
+      faceCtx.arc(W / 2, cy, ballR, 0, Math.PI * 2);
+      faceCtx.fillStyle = grd;
+      faceCtx.fill();
+      faceCtx.strokeStyle = "rgba(0,0,0,0.16)";
+      faceCtx.lineWidth = 1;
+      faceCtx.stroke();
+      faceCtx.save();
+      faceCtx.beginPath();
+      faceCtx.arc(W / 2, cy, ballR, 0, Math.PI * 2);
+      faceCtx.clip();
+      faceCtx.strokeStyle = "rgba(5, 72, 78, 0.25)";
+      faceCtx.lineWidth = 0.8;
+      faceCtx.lineCap = "round";
+      for (let ring = 0; ring < 4; ring++) {
+        const r = 5 + ring * 3.2;
+        faceCtx.beginPath();
+        faceCtx.arc(W / 2, cy, r, 0, Math.PI * 2);
+        faceCtx.stroke();
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+          const x0 = W / 2 + Math.cos(a) * r, y0 = cy + Math.sin(a) * r;
+          const x1 = W / 2 + Math.cos(a + 0.1) * (r - 1.2), y1 = cy + Math.sin(a + 0.1) * (r - 1.2);
+          faceCtx.beginPath();
+          faceCtx.moveTo(x0, y0);
+          faceCtx.lineTo(x1, y1);
+          faceCtx.stroke();
+        }
+      }
+      faceCtx.restore();
+      const gl = faceCtx.createRadialGradient(W / 2 - 6, cy - 8, 1, W / 2 - 6, cy - 8, 8.5);
+      gl.addColorStop(0, "rgba(255,255,255,0.3)");
+      gl.addColorStop(1, "rgba(255,255,255,0)");
+      faceCtx.fillStyle = gl;
+      faceCtx.beginPath();
+      faceCtx.arc(W / 2 - 6, cy - 8, 8.5, 0, Math.PI * 2);
+      faceCtx.fill();
+    } else {
     const grad = faceCtx.createLinearGradient(0, py, 0, py + ph);
     grad.addColorStop(0, c1);
     grad.addColorStop(0.55, c2);
@@ -517,7 +605,8 @@
     faceCtx.strokeStyle = "rgba(0,0,0,0.16)";
     faceCtx.lineWidth = 1;
     faceCtx.stroke();
-    if (isPlush) {
+    }
+    if (isPlush && !isBall) {
       // Crochet stitches instead of the glossy sheen + a stitched seam.
       faceCtx.save();
       rr(faceCtx, px + 3.5, py + 2.5, pw - 7, ph - 5, (ph - 5) / 2);
@@ -544,7 +633,7 @@
       rr(faceCtx, px + 2.5, py + 2.5, pw - 5, ph - 5, (ph - 5) / 2);
       faceCtx.stroke();
       faceCtx.setLineDash([]);
-    } else {
+    } else if (!isBall) {
       faceCtx.globalAlpha = 0.22;
       faceCtx.fillStyle = "#fff";
       rr(faceCtx, px + 5, py + 2, pw - 10, ph * 0.24, ph * 0.12);
@@ -553,25 +642,30 @@
     }
     const mood = now < faceMoodUntil ? faceMood : defaultFaceMood;
     const eyesOpen = true;
-    const eyeY = py + ph * 0.55;
+    const eyeY = isBall ? cy - 4 : py + ph * 0.55;
+    const eyeLX = isBall ? W / 2 - 11 : px + pw * 0.28;
+    const eyeRX = isBall ? W / 2 + 11 : px + pw * 0.72;
     const droop = now < faceMoodUntil && faceMood === "sad" ? 0.6 : 0;
     const lid = Math.max(droop, faceBlinkAmount(now));
     // v1.1.2: pupils glance around on their own every so often.
     const ppx = petting ? 0 : (now < faceDartUntil ? faceDart.x : facePupil.x);
     const ppy = petting ? 0 : (now < faceDartUntil ? faceDart.y : facePupil.y);
     const happyEyes = mood === "happy" || mood === "love";
-    if (isPlush) {
-      drawFaceEyePlush(faceCtx, px + pw * 0.28, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
-      drawFaceEyePlush(faceCtx, px + pw * 0.72, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+    if (isBall) {
+      drawFaceEyeBall(faceCtx, eyeLX, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+      drawFaceEyeBall(faceCtx, eyeRX, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+    } else if (isPlush) {
+      drawFaceEyePlush(faceCtx, eyeLX, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+      drawFaceEyePlush(faceCtx, eyeRX, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
     } else {
-      drawFaceEye(faceCtx, px + pw * 0.28, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
-      drawFaceEye(faceCtx, px + pw * 0.72, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+      drawFaceEye(faceCtx, eyeLX, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
+      drawFaceEye(faceCtx, eyeRX, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
     }
-    const mx = W / 2, my = py + ph * 0.82;
+    const mx = W / 2, my = isBall ? cy + 1.5 : py + ph * 0.82;
     faceCtx.strokeStyle = "#0b0f0d";
     faceCtx.lineWidth = isPlush ? 1.4 : 1.6;
     faceCtx.lineCap = "round";
-    if (isPlush) faceCtx.setLineDash([2.2, 2.2]);
+    if (isPlush || isBall) faceCtx.setLineDash([2.2, 2.2]);
     faceCtx.beginPath();
     if (mood === "happy" || mood === "love") {
       faceCtx.moveTo(mx - 4.5, my - 1);
@@ -2047,7 +2141,7 @@
     setTemp.value = s.temperature != null ? s.temperature : 0.8;
     setTokens.value = s.maxTokens != null ? s.maxTokens : 240;
     const p = s.pet || {};
-    petTheme.value = p.theme || "green";
+    petTheme.value = p.theme || "ball";
     petSize.value = p.size || "md";
     petBubbleSize.value = p.bubbleSize || "md";
     petBubbleText.value = p.bubbleText || "md";
