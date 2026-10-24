@@ -13,6 +13,9 @@
     btnPet: "Let Pilly walk on the taskbar",
     btnClear: "Clear chat",
     btnGit: "PillCrew on GitHub",
+    btnSite: "pillcrew.fun - Pilly's home",
+    linksBlock: "🔗 PillCrew",
+    linksHint: "The site, the docs, the coin, the game and the crew - one click each.",
     btnHide: "Hide",
     btnQuit: "Quit",
 
@@ -182,7 +185,7 @@
     themePink: "Pink",
     themeOrange: "Orange",
     themePlush: "🧸 Plush (PillCrew)",
-    themeBall: "⚪ Ball (PillCrew)",
+    themeBall: "🟢 Ball (PillCrew)",
     sizeLabel: "Pill size",
     sizeSm: "Small",
     sizeMd: "Medium",
@@ -412,6 +415,9 @@
     btnPet: "让 Pilly 在任务栏散步",
     btnClear: "清空聊天",
     btnGit: "GitHub 上的 PillCrew",
+    btnSite: "pillcrew.fun - Pilly 的家",
+    linksBlock: "🔗 PillCrew",
+    linksHint: "官网、文档、代币、游戏和社区 - 各点一下即可。",
     btnHide: "隐藏",
     btnQuit: "退出",
 
@@ -565,7 +571,7 @@
     themePink: "粉色",
     themeOrange: "橙色",
     themePlush: "🧸 毛绒款 (PillCrew)",
-    themeBall: "⚪ 球球款 (PillCrew)",
+    themeBall: "🟢 球球款 (PillCrew)",
     sizeLabel: "体型",
     sizeSm: "小",
     sizeMd: "中",
@@ -812,7 +818,13 @@
         el.setAttribute("placeholder", I18N.t(el.dataset.i18nPh));
       });
       document.querySelectorAll("[data-i18n-title]").forEach(function (el) {
-        el.setAttribute("title", I18N.t(el.dataset.i18nTitle));
+        var label = I18N.t(el.dataset.i18nTitle);
+        el.setAttribute("title", label);
+        // v1.1.6: the chat header is nine icon-only buttons, and a tooltip is
+        // not something a screen reader reads out. For a button with no visible
+        // text the translated tooltip becomes its accessible name; a button that
+        // does have text keeps its own, so the label can never contradict it.
+        if (!el.textContent.trim()) el.setAttribute("aria-label", label);
       });
       document.querySelectorAll("[data-i18n-html]").forEach(function (el) {
         el.innerHTML = I18N.t(el.dataset.i18nHtml);
@@ -823,4 +835,17 @@
   };
 
   window.I18N = I18N;
+
+  // v1.1.6: the HTML is written in English, so on an English install nothing had
+  // to run at boot - apply() only fired on a language change. But the buttons'
+  // accessible names are written by apply() too, and a screen reader on an
+  // English install therefore got nine nameless icons. One pass at load, before
+  // renderer.js builds anything, keeps the DOM and the reader in step; the
+  // English strings it writes are the ones already in the markup.
+  try {
+    I18N.apply();
+  } catch (e) {
+    // A translation sweep must never be the reason the chat does not open.
+    if (window.console && console.warn) console.warn("[pilly] i18n pass failed:", e && e.message);
+  }
 })();

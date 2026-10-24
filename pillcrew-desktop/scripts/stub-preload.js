@@ -63,6 +63,17 @@ contextBridge.exposeInMainWorld("pilly", {
   picks: P, copyText: P,
   whalesList: P, whaleAdd: P, whaleRemove: P, whaleCheck: P,
   radar: P, spark: P, openExternal: P, solPrice: P,
+  // v1.1.6: the links bridge, stubbed so the renderer's settings panel builds
+  // its chips against a real shape instead of throwing in the harness.
+  links: (lang) => Promise.resolve([
+    { id: "site", label: lang === "zh" ? "pillcrew.fun" : "pillcrew.fun" },
+    { id: "docs", label: lang === "zh" ? "文档" : "Docs" },
+    { id: "buy", label: lang === "zh" ? "购买 $PILLY" : "Buy $PILLY" },
+    { id: "game", label: lang === "zh" ? "玩游戏" : "Play the game" },
+    { id: "x", label: "X" },
+    { id: "github", label: "GitHub" },
+  ]),
+  openLink: P,
   reminder: P, remindersList: P, reminderRemove: P, onReminderFired: onCapture("reminder"),
   focusStatus: P, focusConfig: P, focusStart: P, focusStop: P,
   focusPause: P, focusResume: P,

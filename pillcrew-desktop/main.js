@@ -36,6 +36,7 @@ const REMINDERS = require("./src/reminders");
 const FOCUS = require("./src/focus");
 const ACTIVITY = require("./src/activity");
 const RPC = require("./src/rpc");
+const LINKS = require("./src/links");
 const { autoUpdater } = require("electron-updater");
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -2206,6 +2207,17 @@ function trayMenuTemplate() {
     ] },
     { label: L("resetWindow"), click: () => resetWindowPosition() },
     { type: "separator" },
+    // v1.1.6: the site, the docs, the coin, the game, X and GitHub in one
+    // submenu. Pilly lives here; a user should not have to remember a URL to
+    // find the rest of him.
+    {
+      label: "PillCrew",
+      submenu: LINKS.list(chatLang()).map((link) => ({
+        label: link.label,
+        click: () => { safely("opening " + link.id, () => openExternal(LINKS.url(link.id))); },
+      })),
+    },
+    { type: "separator" },
     {
       label: process.platform === "win32" ? L("startWithWindows") : L("startAtLogin"),
       type: "checkbox",
@@ -2840,6 +2852,15 @@ ipcMain.handle("pilly:spark", async (event, mint) => {
 ipcMain.handle("pilly:openExternal", async (event, url) => {
   const u = String(url || "");
   if (!/^https?:\/\//i.test(u)) return { ok: false };
+  return { ok: await openExternal(u) };
+});
+// v1.1.6: PillCrew's own addresses. The renderer asks by id and never sees a
+// URL, so nothing in the page can point the browser somewhere else - and the
+// live list is the same one the tray menu draws.
+ipcMain.handle("pilly:links", (event, lang) => LINKS.list(lang === "zh" || lang === "en" ? lang : chatLang()));
+ipcMain.handle("pilly:link", async (event, id) => {
+  const u = LINKS.url(id);
+  if (!u) return { ok: false };
   return { ok: await openExternal(u) };
 });
 ipcMain.handle("pilly:solprice", async () => {

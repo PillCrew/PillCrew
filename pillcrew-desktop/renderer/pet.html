@@ -91,12 +91,20 @@
         // v1.1.3: the plush look - Pilly as the crocheted toy from the brand
         // logo, teal yarn with button eyes and stitched seams.
         plush: { c1: "#3ab8c4", c2: "#26929f", c3: "#0d7c86", plush: true },
-        // v1.1.5: the mascot ball - the round crocheted plush from the logo,
-        // deep teal yarn with big embroidered eyes.
-        ball: { c1: "#73c3c0", c2: "#217174", c3: "#085960", plush: true, ball: true },
+        // v1.1.5: the mascot ball - the round crocheted plush from the logo.
+        // v1.1.6: it is the brand mark now (pillcrew.fun/brand), so the yarn is
+        // the site's own green - bright on top, deep at the base - with the
+        // quilted lattice, the fringe round the rim and the smile.
+        ball: { c1: "#8bf53a", c2: "#4ecb16", c3: "#16882a", plush: true, ball: true },
       };
       let theme = THEMES.ball;
       let ps = 1; // size scale (sm 0.85 / md 1 / lg 1.2)
+
+      // v1.1.6: the ball's whole silhouette, not just its circle - the fringe
+      // reaches ~1.6px past the 34px rim. Every lift is capped against this, so
+      // no animation can push the crown off the top of the 64px canvas.
+      const BALL_TOP = 35.6;
+      const ballLift = (cap, scale) => Math.max(0, Math.min(cap, 53 - BALL_TOP * scale - 5));
 
       function applyPetSettings(pet) {
         theme = (pet && THEMES[pet.theme]) || THEMES.ball;
@@ -1054,7 +1062,9 @@
             // v1.1.5: the mascot's big embroidered eye - a large dark oval
             // stitched on, with two catchlights and a pupil that still tracks
             // the cursor (a toy that watches you is a toy with character).
-            const bw = 4.6, bh = 5.6;
+            // v1.1.6: the brand mark's own proportions - wider than tall, so
+            // the face reads as the mascot on the site.
+            const bw = 5, bh = 4.4;
             ctx.fillStyle = "#0d1b16";
             ctx.beginPath();
             ctx.ellipse(ex, ey - 0.4, bw, bh, 0, 0, Math.PI * 2);
@@ -1233,7 +1243,7 @@
           // dizzy: the big eye spins a white spiral
           ctx.fillStyle = "#0d1b16";
           ctx.beginPath();
-          ctx.ellipse(ex, ey - 0.4, 4.6, 5.6, 0, 0, Math.PI * 2);
+          ctx.ellipse(ex, ey - 0.4, 5, 4.4, 0, 0, Math.PI * 2);
           ctx.fill();
           ctx.strokeStyle = "#fff";
           ctx.lineWidth = 0.9;
@@ -1331,7 +1341,9 @@
         ctx.strokeStyle = "#0b0f0d";
         ctx.lineWidth = 1.5;
         ctx.lineCap = "round";
-        if (theme.plush) ctx.setLineDash([1.3, 1.1]);
+        // v1.1.6: the ball IS the brand mark, and the mark's smile is a clean
+        // line - the stitch dashes belong to the plush toy look, not to it.
+        if (theme.plush && !theme.ball) ctx.setLineDash([1.3, 1.1]);
         ctx.beginPath();
         if (mood === "happy" || mood === "love") {
           // smile (love gets the same warm grin, plus heart eyes + blush)
@@ -1346,7 +1358,7 @@
           ctx.quadraticCurveTo(0, -5.5 + v * 3.4, 4.5, -5.5);
         }
         ctx.stroke();
-        if (theme.plush) ctx.setLineDash([]);
+        if (theme.plush && !theme.ball) ctx.setLineDash([]);
       }
 
       // v1.1.2: the coin flip - his own gesture rather than a generic pet trick.
@@ -1400,14 +1412,30 @@
 
       function drawBody(now) {
         if (theme.ball) {
-          // v1.1.5: the mascot ball - a round crocheted ball resting on the
-          // same baseline as the capsule, so walking, hopping and dragging
-          // feel exactly the same.
+          // v1.1.5: the mascot ball - a round body resting on the same
+          // baseline as the capsule, so walking, hopping and dragging feel
+          // exactly the same.
+          // v1.1.6: drawn as the brand mark - the fringe of little bumps round
+          // the rim, the quilted lattice of the logo and the same green
+          // gradient, so the pet on the taskbar IS the mark on the site.
           const R = 17, CY = -17;
           const grd = ctx.createRadialGradient(-5.5, CY - 7.5, 2.5, 0, CY, R + 1.5);
           grd.addColorStop(0, theme.c1);
           grd.addColorStop(0.55, theme.c2);
           grd.addColorStop(1, theme.c3);
+          // The fringe sits behind the ball and reaches ~1.2px past the circle,
+          // the mark's own proportion. That still clears the top of the canvas
+          // at every pet size during a hop (see the clip probes in
+          // scripts/verify-anim.js). Painted with the body's own gradient, so
+          // the bumps are bright at the top and deep at the base exactly like
+          // the mark instead of reading as a dark ruffle.
+          ctx.fillStyle = grd;
+          for (let i = 0; i < 14; i++) {
+            const a = (i / 14) * Math.PI * 2 - Math.PI / 2;
+            ctx.beginPath();
+            ctx.arc(Math.cos(a) * (R + 0.2), CY + Math.sin(a) * (R + 0.2), 1.35, 0, Math.PI * 2);
+            ctx.fill();
+          }
           ctx.fillStyle = grd;
           ctx.beginPath();
           ctx.arc(0, CY, R, 0, Math.PI * 2);
@@ -1415,36 +1443,40 @@
           ctx.strokeStyle = "rgba(0,0,0,0.16)";
           ctx.lineWidth = 1;
           ctx.stroke();
-          // crochet rounds - stitch rings worked in the round, like real yarn
+          // quilted lattice - the diamond weave of the mark, worked in the round
+          // like yarn. Clipped to the ball so it can never spill past the rim.
           ctx.save();
           ctx.beginPath();
           ctx.arc(0, CY, R, 0, Math.PI * 2);
           ctx.clip();
-          ctx.strokeStyle = "rgba(5, 72, 78, 0.22)";
-          ctx.lineWidth = 0.8;
+          ctx.strokeStyle = "rgba(6, 74, 20, 0.13)";
+          ctx.lineWidth = 0.7;
           ctx.lineCap = "round";
-          for (let ring = 0; ring < 4; ring++) {
-            const r = 5 + ring * 3.2;
+          for (let d = -2 * R; d <= 2 * R; d += 3.8) {
             ctx.beginPath();
-            ctx.arc(0, CY, r, 0, Math.PI * 2);
+            ctx.moveTo(d - R, CY - R);
+            ctx.lineTo(d + R, CY + R);
             ctx.stroke();
-            for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
-              const x0 = Math.cos(a) * r, y0 = CY + Math.sin(a) * r;
-              const x1 = Math.cos(a + 0.1) * (r - 1.2), y1 = CY + Math.sin(a + 0.1) * (r - 1.2);
-              ctx.beginPath();
-              ctx.moveTo(x0, y0);
-              ctx.lineTo(x1, y1);
-              ctx.stroke();
-            }
+            ctx.beginPath();
+            ctx.moveTo(d + R, CY - R);
+            ctx.lineTo(d - R, CY + R);
+            ctx.stroke();
           }
-          // glossy sheen hugging the top-left, like the plush in the photo
-          const gl = ctx.createRadialGradient(-6, CY - 8, 1, -6, CY - 8, 8.5);
-          gl.addColorStop(0, "rgba(255,255,255,0.30)");
+          // glossy sheen hugging the top-left, like the mark
+          const gl = ctx.createRadialGradient(-6, CY - 8, 1, -6, CY - 8, 9);
+          gl.addColorStop(0, "rgba(255,255,255,0.26)");
           gl.addColorStop(1, "rgba(255,255,255,0)");
           ctx.fillStyle = gl;
           ctx.beginPath();
-          ctx.arc(-6, CY - 8, 8.5, 0, Math.PI * 2);
+          ctx.arc(-6, CY - 8, 9, 0, Math.PI * 2);
           ctx.fill();
+          // and the deep shade pooled at the base, which is what makes a flat
+          // circle read as a ball
+          const sh = ctx.createLinearGradient(0, CY - 4, 0, CY + R);
+          sh.addColorStop(0, "rgba(3, 54, 14, 0)");
+          sh.addColorStop(1, "rgba(3, 54, 14, 0.34)");
+          ctx.fillStyle = sh;
+          ctx.fillRect(-R, CY - 4, 2 * R, R + 4);
           ctx.restore();
           // v1.1.5: no ears - the ball is just a soft round plush, like the
           // logo. Ears used to stick out above the circle and got clipped
@@ -1548,7 +1580,11 @@
         }
         const eyesOpen = cur.eyes === 1;
         const lidAmt = Math.max(blinkAmount(now), squeeze);
-        const eyeY = -14.5;
+        // v1.1.6: the ball's face wears the brand mark's eyes - a touch higher,
+        // wider apart and better centred on the circle than the capsule's pair.
+        const eyeLX = theme.ball ? -8.4 : -11;
+        const eyeRX = theme.ball ? 8.4 : 9;
+        const eyeY = theme.ball ? -17.2 : -14.5;
         // v1.1.2: a droopy lid when the market is red or the battery is low, plus
         // the night droop - but never while he is excited or talking, because a
         // pet that looks half asleep while answering you is just broken.
@@ -1564,41 +1600,71 @@
         const blissNow = blissLevel(now) > 0;
         const pleasedEyes = blissNow || now < tickleUntil || (gesture === "giggle" && now < gestureUntil);
         if (!eyesOpen) {
-          drawEye(-11, eyeY, false, false, false, 0, 0, 0, false);
-          drawEye(9, eyeY, false, false, false, 0, 0, 0, false);
+          drawEye(eyeLX, eyeY, false, false, false, 0, 0, 0, false);
+          drawEye(eyeRX, eyeY, false, false, false, 0, 0, 0, false);
         } else if (dizzyNow) {
-          drawDizzyEye(-11, eyeY);
-          drawDizzyEye(9, eyeY);
+          drawDizzyEye(eyeLX, eyeY);
+          drawDizzyEye(eyeRX, eyeY);
         } else if (pleasedEyes) {
-          drawHappyEye(-11, eyeY);
-          drawHappyEye(9, eyeY);
+          drawHappyEye(eyeLX, eyeY);
+          drawHappyEye(eyeRX, eyeY);
         } else {
-          drawEye(-11, eyeY, true, face.excited, face.squint, face.px, face.py, lid, heartEyes);
-          drawEye(9, eyeY, true, face.excited, face.squint, face.px, face.py, lid, heartEyes);
+          drawEye(eyeLX, eyeY, true, face.excited, face.squint, face.px, face.py, lid, heartEyes);
+          drawEye(eyeRX, eyeY, true, face.excited, face.squint, face.px, face.py, lid, heartEyes);
         }
         if (heartEyes || blissNow) {
-          // blush
-          ctx.fillStyle = "rgba(244, 63, 94, 0.30)";
-          ctx.beginPath();
-          ctx.ellipse(-14, -9.5, 3.1, 1.7, 0, 0, Math.PI * 2);
-          ctx.ellipse(14, -9.5, 3.1, 1.7, 0, 0, Math.PI * 2);
-          ctx.fill();
+          if (theme.ball) {
+            // v1.1.6: a red wash over the brand's green turns brown (red + green
+            // is mud), so the mascot blushes in stitches instead - three short
+            // rose lines per cheek, which is what embroidery does and what the
+            // yarn look wants.
+            ctx.strokeStyle = "rgba(244, 90, 130, 0.55)";
+            ctx.lineWidth = 0.9;
+            ctx.lineCap = "round";
+            for (const side of [-1, 1]) {
+              for (let i = 0; i < 3; i++) {
+                const bx = side * (11.2 + i * 1.6);
+                ctx.beginPath();
+                ctx.moveTo(bx, -10.4);
+                ctx.lineTo(bx - side * 1.1, -8.6);
+                ctx.stroke();
+              }
+            }
+          } else {
+            // blush
+            ctx.fillStyle = "rgba(244, 63, 94, 0.30)";
+            ctx.beginPath();
+            ctx.ellipse(-14, -9.5, 3.1, 1.7, 0, 0, Math.PI * 2);
+            ctx.ellipse(14, -9.5, 3.1, 1.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
         if (cur.annoyed) {
           ctx.strokeStyle = "#0b0f0d";
           ctx.lineWidth = 1.6;
           ctx.beginPath();
           if (theme.ball) {
-            // on a ball the browline sits inside the circle
-            ctx.moveTo(-12, -21.5); ctx.lineTo(-5, -19);
-            ctx.moveTo(12, -21.5); ctx.lineTo(5, -19);
+            // on a ball the browline sits inside the circle, above the big eyes
+            ctx.moveTo(-13, -24.5); ctx.lineTo(-5, -22);
+            ctx.moveTo(13, -24.5); ctx.lineTo(5, -22);
           } else {
             ctx.moveTo(-17, -22.5); ctx.lineTo(-6, -19.5);
             ctx.moveTo(17, -22.5); ctx.lineTo(6, -19.5);
           }
           ctx.stroke();
         }
-        drawMouth(cur.mouth, now, mood);
+        if (theme.ball) {
+          // the mark's smile: wider, and with the mark's own curve depth - the
+          // mouth value of every mood is amplified, not replaced, so a grin,
+          // a frown and a sleepy little line all stay in proportion
+          ctx.save();
+          ctx.translate(0, 1.6);
+          ctx.scale(1.4, 1.4);
+          drawMouth(Math.max(-0.85, Math.min(1, cur.mouth * 2.4)), now, mood);
+          ctx.restore();
+        } else {
+          drawMouth(cur.mouth, now, mood);
+        }
         if (theme.ball) ctx.restore();
       }
 
@@ -1712,13 +1778,15 @@
           // v1.1.2: anticipation crouch, an uncoil into a stretch off the
           // ground, neutral at the apex, then a squash on the way down. The
           // squash is anchored at the feet, so he coils instead of floating.
-          // v1.1.5: the mascot ball is 34px tall where the capsule is 23px, so
-          // the same 18px lift used to drive its crown right up to the top
-          // edge of the 64px canvas. The ball hops a little lower so its whole
-          // head stays in frame with room to spare - and the lift is scaled by
-          // the size factor, because at lg the ball is 40.8px tall and a fixed
-          // 12px lift would kiss the top edge.
-          const hopLift = theme.ball ? Math.min(12, 53 - 34 * ps - 4) : 18;
+          // v1.1.5: the mascot ball is taller than the capsule, so the same
+          // 18px lift used to drive its crown right up to the top edge of the
+          // 64px canvas. The ball hops a little lower so its whole head stays
+          // in frame with room to spare - and the lift is capped against the
+          // ball's own silhouette at this size, because at lg it is 42.7px
+          // tall and a fixed 12px lift would kiss the top edge.
+          // v1.1.6: the cap lives in ballLift() so the hop, the scare and the
+          // fringe all agree on where the crown actually is.
+          const hopLift = theme.ball ? ballLift(12, ps) : 18;
           const p = (now - hopStart) / HOP_MS;
           const kf = hopShapeAt(p, hopKf);
           // A circle reads as "ball" only while it stays round; the capsule's
@@ -1765,7 +1833,7 @@
           const p = (now - spookStart) / 420;
           // v1.1.5: same size-aware cap as the hop - at lg the ball has little
           // headroom, so a fixed 10px scare would brush the top edge.
-          bodyY -= Math.sin(p * Math.PI) * (theme.ball ? Math.min(10, 53 - 34 * ps - 4) : 10);
+          bodyY -= Math.sin(p * Math.PI) * (theme.ball ? ballLift(10, ps) : 10);
         }
         // v1.1.2: back to work - a small, deliberate nod when a break ends.
         if (now < focusNodUntil) {

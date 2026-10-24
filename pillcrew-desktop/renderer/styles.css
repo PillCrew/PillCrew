@@ -32,8 +32,8 @@ body {
 .bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 10px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
@@ -53,12 +53,14 @@ body {
 .pill-avatar.thinking { animation: pillThink 1.2s ease-in-out infinite; }
 .bar-id { display: flex; flex-direction: column; line-height: 1.15; }
 .bar-id strong { font-size: 13px; letter-spacing: 0.01em; }
-.bar-id small { color: var(--dim); font-size: 10px; display: flex; align-items: center; gap: 4px; }
-.bar-id .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c1, var(--green)); animation: dotPulse 1.6s infinite; }
-.bar-actions { margin-left: auto; display: flex; gap: 4px; }
+.bar-id small { color: var(--dim); font-size: 10px; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.bar-id .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c1, var(--green)); animation: dotPulse 1.6s infinite; flex-shrink: 0; }
+/* v1.1.6: the header gained a globe, so the row had to give the name back its
+   one line - nine 26px buttons squeezed "in your taskbar" onto two. */
+.bar-actions { margin-left: auto; display: flex; gap: 3px; }
 .bar-actions button {
   background: transparent; border: none; color: var(--dim);
-  width: 26px; height: 26px; cursor: pointer; border-radius: var(--radius);
+  width: 24px; height: 24px; cursor: pointer; border-radius: var(--radius);
   display: flex; align-items: center; justify-content: center;
 }
 .bar-actions button svg { width: 15px; height: 15px; display: block; }
@@ -523,6 +525,24 @@ body.fs-lg .coin-card, body.fs-lg .trend-card { font-size: 13px; }
 .settings-actions .primary { background: var(--green); border: none; color: #04120a; }
 .settings-actions .ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
 .settings-actions .ghost:hover { border-color: rgba(34,197,94,0.5); }
+/* v1.1.6: PillCrew's own addresses - a wrapped row of small chips, so six
+   links cost two lines instead of six rows of the settings panel. */
+.link-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.link-chip {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
+}
+.link-chip:hover { border-color: rgba(34,197,94,0.55); background: rgba(34,197,94,0.08); }
+.link-chip:active { transform: scale(0.97); }
+.link-chip:focus-visible { outline: 2px solid rgba(34,197,94,0.6); outline-offset: 2px; }
 .settings .status { margin-top: 8px; font-size: 11.5px; min-height: 15px; }
 .settings .status.ok { color: var(--green); }
 .settings .status.err { color: #fca5a5; }

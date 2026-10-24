@@ -583,6 +583,11 @@ app.whenReady().then(async () => {
     const out = {};
     out.wired = typeof fire === "function" && typeof (window.pilly.onPetFocus) === "function";
     const now = performance.now();
+    // v1.1.6: the ring wears whatever colour the active theme carries, so the
+    // check below reads it from the theme instead of pinning a hex - the ball
+    // became the brand's green and a hardcoded teal would have failed a test
+    // for a deliberate palette change.
+    out.themeC1 = t.theme && t.theme.c1;
 
     // Main process pushes pet:focus, not the renderer.
     fire("focus", { phase: "idle" });
@@ -650,7 +655,7 @@ app.whenReady().then(async () => {
   check("a running block draws the ring for that phase", ring.midState === "focus" && !!ring.mid && ring.mid.phase === "focus", ring.midState);
   check("ring drains with the clock (10 of 25 min gone => 40%)", Math.abs(ring.mid.pct - 0.4) < 0.001, ring.mid.pct);
   check("ring shows the minutes left", ring.mid.label === "15", ring.mid.label);
-  check("ring wears the pet's own colour until the final minute", ring.mid.color === "#73c3c0", ring.mid.color);
+  check("ring wears the pet's own colour until the final minute", ring.mid.color === ring.themeC1, [ring.mid.color, ring.themeC1]);
   check("the once-a-minute tick does not re-trigger a reaction", ring.noRepeat === true && ring.tickedDown === true, ring);
   check("final minute turns amber", ring.lastMin.color === "#fbbf24" && ring.lastMin.label === "1", ring.lastMin);
   check("paused block says so", ring.paused.label === "❚❚" && ring.paused.paused === true, ring.paused);
@@ -1617,14 +1622,16 @@ app.whenReady().then(async () => {
       const a = (x, y) => px(x, y).a;
       // The mascot eye is a dark oval that sways with the idle rotation (up to a
       // few px). A single pixel reads the sway, not the eye, so count solid dark
-      // pixels across the eye's whole band: the ball paints several here, while
+      // pixels across the eye's whole band: the ball paints many here, while
       // every pill theme keeps this band plain body. Pill/plush button eyes sit
-      // ~7px lower, so they can never bleed into the count.
+      // ~9px lower, so they can never bleed into the count.
+      // v1.1.6: the band follows the brand eyes (wider apart, wider ovals, a
+      // touch higher) - a fixed 8x4 window would have measured the old sprite.
       const eye = () => {
         let n = 0;
-        for (let dy = -2; dy <= 1; dy++)
-          for (let dx = -6; dx <= 1; dx++) {
-            const p = px(19 + dx, 31 + b + dy);
+        for (let y = 25; y <= 33; y++)
+          for (let x = 15; x <= 45; x++) {
+            const p = px(x, y + b);
             if (p.a > 200 && p.r < 70 && p.g < 70) n++;
           }
         return n;
@@ -1655,7 +1662,7 @@ app.whenReady().then(async () => {
   check("ball look: switching back to a pill theme restores the capsule",
     ball.plush.capsuleOnly > 0 && ball.plush.ballOnly === 0 && ball.plush.topGap === 0, ball.plush);
   check("ball look: the big mascot eyes are actually painted (solid dark pixels where the pill shows body)",
-    ball.ball.eye >= 4 && ball.cap.eye === 0 && ball.plush.eye === 0,
+    ball.ball.eye >= 40 && ball.cap.eye === 0 && ball.plush.eye === 0,
     [ball.ball.eye, ball.cap.eye, ball.plush.eye]);
   const ballGestures = await win.webContents.executeJavaScript(`(() => {
     const t = window.__t;
@@ -1681,6 +1688,70 @@ app.whenReady().then(async () => {
     check(`ball look: gesture "${g}" animates 40 frames without throwing`,
       typeof v === "number" && v > 100, v);
   }
+  // --- v1.1.6: the ball is the brand mark --------------------------------
+  // v1.1.5 asked whether a ball was painted. This asks whether it is THE ball:
+  // the mark's green, the fringe round the rim and the smile under the eyes.
+  // The sprite drifted away from the brand once already (a teal ball while the
+  // site showed a green one), so the look is a test now, not a screenshot.
+  const brand = await win.webContents.executeJavaScript(`(() => {
+    const t = window.__t;
+    t.reduceMotion = false;
+    t.dragOverride.active = false;
+    t.hover = false;
+    t.cursor = { x: 400, y: 400 };
+    t.state = "pause";
+    t.gesture = ""; t.gestureUntil = 0;
+    t.landingUntil = 0; t.wobbleStart = 0; t.wobbleUntil = 0;
+    t.dizzyUntil = 0; t.tickleUntil = 0; t.resetStroke();
+    t.market = ""; t.marketUntil = 0; t.talking = false;
+    t.cur.eyes = 1; t.cur.annoyed = false; t.cur.mouth = 0;
+    t.face.squint = false; t.face.excited = false; t.face.px = 0; t.face.py = 0;
+    t.blinkStart = 0; t.blinkUntil = 0;
+    t.theme = "ball";
+    t.draw(performance.now(), 16.67);
+    const b = t.face.bodyY;
+    const cx = 30, cy = 36 + b;              // the circle's centre on the canvas
+    const px = (x, y) => t.pixel(Math.round(x), Math.round(y));
+    // furthest painted pixel from the centre: the rim is 17, so anything past
+    // 17.5 is a fringe bump and anything past 19 would be a rogue silhouette
+    let maxR = 0;
+    for (let y = Math.floor(cy - 22); y <= Math.ceil(cy + 22); y++) {
+      for (let x = cx - 22; x <= cx + 22; x++) {
+        if (x < 0 || x > 59 || y < 0 || y > 63) continue;
+        if (px(x, y).a > 200) maxR = Math.max(maxR, Math.hypot(x - cx, y - cy));
+      }
+    }
+    // the yarn colour, sampled between the eyes on the bright upper face (the
+    // old probe read the eye itself and reported near-black "yarn")
+    const body = px(cx, cy - 12);
+    // the smile: solid dark pixels in the band under the eyes
+    let smile = 0;
+    for (let y = Math.round(cy) + 2; y <= Math.round(cy) + 9; y++)
+      for (let x = cx - 9; x <= cx + 9; x++) {
+        const p = px(x, y);
+        if (p.a > 200 && p.r < 70 && p.g < 70) smile++;
+      }
+    // and the same band on the pill, which keeps its own small mouth
+    t.theme = "green";
+    t.draw(performance.now(), 16.67);
+    const pillB = t.face.bodyY;
+    let pillSmile = 0;
+    for (let y = Math.round(36 + pillB) + 2; y <= Math.round(36 + pillB) + 9; y++)
+      for (let x = cx - 9; x <= cx + 9; x++) {
+        const p = px(x, y);
+        if (p.a > 200 && p.r < 70 && p.g < 70) pillSmile++;
+      }
+    t.theme = "ball";
+    t.draw(performance.now(), 16.67);
+    return { maxR: Number(maxR.toFixed(2)), body: [body.r, body.g, body.b], smile, pillSmile };
+  })()`);
+  check("brand ball: the fringe reaches past the rim (a plain circle stops at 17)",
+    brand.maxR >= 17.5 && brand.maxR <= 20, brand.maxR);
+  check("brand ball: the yarn is the mark's green, not the old teal",
+    brand.body[1] > 150 && brand.body[1] > brand.body[0] + 40 && brand.body[1] > brand.body[2] + 60,
+    brand.body);
+  check("brand ball: the smile is painted under the eyes",
+    brand.smile >= 8 && brand.smile > brand.pillSmile, [brand.smile, brand.pillSmile]);
   // v1.1.5: the ball used to carry little yarn ears above its circle, and a
   // hop lifts him off the canvas. The ears are gone now; prove the ball itself
   // never clips at ANY size. At lg he is 40.8px tall in the 64px canvas, so a

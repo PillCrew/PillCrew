@@ -41,6 +41,11 @@ contextBridge.exposeInMainWorld("pilly", {
   radar: () => ipcRenderer.invoke("pilly:radar"),
   spark: (mint) => ipcRenderer.invoke("pilly:spark", mint),
   openExternal: (url) => ipcRenderer.invoke("pilly:openExternal", url),
+  // v1.1.6: PillCrew's own addresses, by id - the URL never reaches the page.
+  // The language rides along so the labels are in the language the page is
+  // showing right now, not the one the settings file may not have saved yet.
+  links: (lang) => ipcRenderer.invoke("pilly:links", lang),
+  openLink: (id) => ipcRenderer.invoke("pilly:link", id),
   img: (url) => ipcRenderer.invoke("pilly:img", url), // v1.1.2: logo fetch that bypasses CDN CORP blocks
   solPrice: () => ipcRenderer.invoke("pilly:solprice"),
   // reminders (v1.1.1)

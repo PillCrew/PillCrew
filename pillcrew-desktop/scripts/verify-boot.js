@@ -265,6 +265,18 @@ try {
 }
 const RPC_LINE_PREFIX = "Solana RPC: ";
 const RPC_LINE_OK = /^Solana RPC: (checking…|unreachable|slow · [\d.]+ s|ok · \d+ ms)$/;
+
+// v1.1.6: PillCrew's own addresses live in one list (src/links.js) that the tray
+// submenu and the chat's Settings panel both draw. The submenu is the only one of
+// the two visible from the main process, so its shape is checked here: a menu
+// that quietly lost its links is a link that stopped working everywhere.
+function pillcrewSubmenu() {
+  for (const tpl of trayMenus) {
+    const item = (tpl || []).find((i) => i && i.label === "PillCrew" && Array.isArray(i.submenu));
+    if (item) return item.submenu;
+  }
+  return null;
+}
 function rpcMenuLines() {
   const out = [];
   for (const tpl of trayMenus) {
@@ -507,6 +519,16 @@ async function main() {
   check("the RPC line is informational, never clickable",
     trayMenus.some((tpl) => (tpl || []).some((i) => i && i.label === rpcLine && i.enabled === false)),
     rpcMenuLines());
+
+  // v1.1.6: the tray carries PillCrew's own addresses in one submenu.
+  const linksMenu = pillcrewSubmenu();
+  const linkLabels = (linksMenu || []).map((i) => i && i.label);
+  check("the tray carries a PillCrew submenu with every link",
+    !!linksMenu && linksMenu.length === 6 && linksMenu.every((i) => typeof i.click === "function"),
+    linkLabels);
+  check("the tray submenu names the site and the coin",
+    linkLabels.indexOf("pillcrew.fun") >= 0 && linkLabels.some((l) => /\$PILLY/.test(l || "")),
+    linkLabels);
 
   // The tooltip side of the same rule, both directions.
   const rpcTooltips = trayTooltips.filter((t) => /RPC /.test(t));

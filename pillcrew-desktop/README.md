@@ -57,7 +57,8 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 - **Start with Windows** - optional, from the tray menu.
 - **The whole app is in the tray menu** - Open chat, the Solana RPC health line,
   **Pilly on the taskbar** (the same switch as the heart button in the chat),
-  focus session controls, Reset window position, Start at login and Quit.
+  focus session controls, Reset window position, a **PillCrew** submenu with the
+  site, the docs, `$PILLY`, the game, X and GitHub, Start at login and Quit.
 - **Auto-update** - Pilly checks GitHub for new releases when you open it and updates itself; the installed build restarts into the new version (the portable .exe links you to the releases page instead).
 - **Settings polish** - the window position is remembered automatically, with one-click **Reset window position** if Pilly ever lands off-screen (tray menu still has it too).
 
@@ -70,6 +71,49 @@ Pilly is an original PillCrew character - its own persona, prompts and meme brai
 | ![Whale Follow](../assets/features-whales.png) | ![Settings](../assets/features-settings.png) | |
 
 ## What's new
+
+### v1.1.6
+
+Pilly wears the official PillCrew brand mark now, and the app finally has doors to the rest of the crew.
+
+#### The brand look, everywhere
+- **The mascot is the brand mark** - `pillcrew.fun/brand` is the single source of
+  truth. The taskbar pet, the chat-header avatar, the tray icon and the Windows,
+  macOS and Linux icons are all the same green ball: the fringe round the rim, the
+  quilted lattice, the big embroidered eyes and the smile.
+- **Green yarn** - the ball is the site's own green (bright on top, deep at the
+  base) instead of the old teal, so the sprite and the logo can never drift apart
+  again - the animation harness checks the colour and the fringe now.
+- **Stitched blush** - a red wash over green turns brown, so the ball blushes in
+  short rose stitches while the heart eyes do the talking.
+- **Icons derived from the mark** - `scripts/gen-icon.js` decodes the brand PNG
+  and generates every size from it (pure Node, no image libraries), so
+  re-exporting the mark updates every icon.
+- **One Pilly, not two** - the pet and the chat avatar keep their palettes in two
+  files and had already drifted (the plush look was darker in the header). They
+  match again, and `src/palette.test.js` fails the suite if either side is edited
+  alone.
+- **The header speaks** - the icon-only buttons had a tooltip and no accessible
+  name, and on an English install nothing ran the translation sweep at all, so a
+  screen reader saw nine nameless icons. The header is named in both languages now.
+- **A header that still fits** - the globe brought the header to nine buttons, so
+  the bar is a pixel tighter and the name keeps its one line.
+- **Fresh art** - new cover, a re-shot 30fps animation reel, the theme-switch reel,
+  the chat screenshot and the settings screenshot.
+
+#### PillCrew links
+- **Globe in the header** - one click to pillcrew.fun.
+- **Settings → PillCrew** - the site, the docs, `$PILLY`, the game, X and GitHub
+  as chips.
+- **Tray menu → PillCrew** - the same list, in the reader's language.
+- **Links are ids, not URLs** - `src/links.js` is the only place a URL lives; the
+  page can only ask for an id, so nothing in the renderer can open anything that
+  is not ours.
+
+#### Validation
+- 118/118 unit tests (7 for the link list, 4 for the palette agreement), 201
+  animation checks (3 new for the brand ball) and 17 boot checks (2 new for the
+  tray submenu) - all green.
 
 ### v1.1.5
 

@@ -292,8 +292,13 @@
     purple: { c1: "#8b5cf6", c2: "#a78bfa", c3: "#ec4899", glow: "rgba(139,92,246,0.45)" },
     pink: { c1: "#ec4899", c2: "#f472b6", c3: "#fbbf24", glow: "rgba(236,72,153,0.45)" },
     orange: { c1: "#f97316", c2: "#fbbf24", c3: "#ef4444", glow: "rgba(249,115,22,0.45)" },
-    plush: { c1: "#33b3bd", c2: "#0f8389", c3: "#0a5d62", glow: "rgba(51,179,189,0.5)" },
-    ball: { c1: "#73c3c0", c2: "#217174", c3: "#085960", glow: "rgba(115,195,192,0.5)" },
+    // v1.1.6: the same triple pet.html paints. The two used to drift (the header
+    // plush was darker than the pet's), which is exactly how the avatar ended up
+    // looking like an older Pilly - src/palette.test.js holds them together now.
+    plush: { c1: "#3ab8c4", c2: "#26929f", c3: "#0d7c86", glow: "rgba(58,184,196,0.5)" },
+    // v1.1.6: the brand mark's own green (pillcrew.fun/brand) - the same triple
+    // the pet paints, so the header avatar and the taskbar pet are one character.
+    ball: { c1: "#8bf53a", c2: "#4ecb16", c3: "#16882a", glow: "rgba(126,230,40,0.45)" },
   };
   let activePetTheme = "ball";
   let defaultFaceMood = "";
@@ -476,8 +481,9 @@
   }
   function drawFaceEyeBall(ctx, ex, ey, open, happy, lid, px, py) {
     // v1.1.5: the mascot's big embroidered eye in the chat avatar.
+    // v1.1.6: the mark's proportions - wider than tall, like the pet's.
     if (open) {
-      const w = 7.6, h = 8.6;
+      const w = 9.4, h = 8.2;
       ctx.fillStyle = "#0d1b16";
       ctx.beginPath();
       ctx.ellipse(ex, ey, w / 2, h / 2, 0, 0, Math.PI * 2);
@@ -500,7 +506,7 @@
         ctx.beginPath();
         ctx.ellipse(ex, ey, w / 2, h / 2, 0, 0, Math.PI * 2);
         ctx.clip();
-        const lidC = getComputedStyle(document.documentElement).getPropertyValue("--c2").trim() || "#0f8389";
+        const lidC = getComputedStyle(document.documentElement).getPropertyValue("--c2").trim() || "#4ecb16";
         ctx.fillStyle = lidC;
         ctx.fillRect(ex - w / 2 - 1, ey - h / 2 - 1, w + 2, lid * h + 1);
         ctx.restore();
@@ -553,10 +559,20 @@
     faceCtx.translate(-W / 2, -cy);
     if (isBall) {
       // v1.1.5: the mascot ball in the chat header - round, crocheted, big eyes.
+      // v1.1.6: it is the brand mark, so it carries the mark's fringe, its
+      // quilted lattice and its smile - the header must not be an older Pilly
+      // than the one on the taskbar.
       const grd = faceCtx.createRadialGradient(W / 2 - 5.5, cy - 7, 2, W / 2, cy, ballR + 1.5);
       grd.addColorStop(0, c1);
       grd.addColorStop(0.55, c2);
       grd.addColorStop(1, c3);
+      faceCtx.fillStyle = grd;
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2 - Math.PI / 2;
+        faceCtx.beginPath();
+        faceCtx.arc(W / 2 + Math.cos(a) * (ballR + 0.2), cy + Math.sin(a) * (ballR + 0.2), 1.35 * pop, 0, Math.PI * 2);
+        faceCtx.fill();
+      }
       faceCtx.beginPath();
       faceCtx.arc(W / 2, cy, ballR, 0, Math.PI * 2);
       faceCtx.fillStyle = grd;
@@ -568,31 +584,32 @@
       faceCtx.beginPath();
       faceCtx.arc(W / 2, cy, ballR, 0, Math.PI * 2);
       faceCtx.clip();
-      faceCtx.strokeStyle = "rgba(5, 72, 78, 0.25)";
-      faceCtx.lineWidth = 0.8;
+      faceCtx.strokeStyle = "rgba(6, 74, 20, 0.13)";
+      faceCtx.lineWidth = 0.7;
       faceCtx.lineCap = "round";
-      for (let ring = 0; ring < 4; ring++) {
-        const r = 5 + ring * 3.2;
+      for (let d = -2 * ballR; d <= 2 * ballR; d += 3.8) {
         faceCtx.beginPath();
-        faceCtx.arc(W / 2, cy, r, 0, Math.PI * 2);
+        faceCtx.moveTo(W / 2 + d - ballR, cy - ballR);
+        faceCtx.lineTo(W / 2 + d + ballR, cy + ballR);
         faceCtx.stroke();
-        for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
-          const x0 = W / 2 + Math.cos(a) * r, y0 = cy + Math.sin(a) * r;
-          const x1 = W / 2 + Math.cos(a + 0.1) * (r - 1.2), y1 = cy + Math.sin(a + 0.1) * (r - 1.2);
-          faceCtx.beginPath();
-          faceCtx.moveTo(x0, y0);
-          faceCtx.lineTo(x1, y1);
-          faceCtx.stroke();
-        }
+        faceCtx.beginPath();
+        faceCtx.moveTo(W / 2 + d + ballR, cy - ballR);
+        faceCtx.lineTo(W / 2 + d - ballR, cy + ballR);
+        faceCtx.stroke();
       }
-      faceCtx.restore();
-      const gl = faceCtx.createRadialGradient(W / 2 - 6, cy - 8, 1, W / 2 - 6, cy - 8, 8.5);
-      gl.addColorStop(0, "rgba(255,255,255,0.3)");
+      const gl = faceCtx.createRadialGradient(W / 2 - 6, cy - 8, 1, W / 2 - 6, cy - 8, 9);
+      gl.addColorStop(0, "rgba(255,255,255,0.26)");
       gl.addColorStop(1, "rgba(255,255,255,0)");
       faceCtx.fillStyle = gl;
       faceCtx.beginPath();
-      faceCtx.arc(W / 2 - 6, cy - 8, 8.5, 0, Math.PI * 2);
+      faceCtx.arc(W / 2 - 6, cy - 8, 9, 0, Math.PI * 2);
       faceCtx.fill();
+      const sh = faceCtx.createLinearGradient(0, cy - 4, 0, cy + ballR);
+      sh.addColorStop(0, "rgba(3, 54, 14, 0)");
+      sh.addColorStop(1, "rgba(3, 54, 14, 0.34)");
+      faceCtx.fillStyle = sh;
+      faceCtx.fillRect(W / 2 - ballR, cy - 4, 2 * ballR, ballR + 4);
+      faceCtx.restore();
     } else {
     const grad = faceCtx.createLinearGradient(0, py, 0, py + ph);
     grad.addColorStop(0, c1);
@@ -642,9 +659,11 @@
     }
     const mood = now < faceMoodUntil ? faceMood : defaultFaceMood;
     const eyesOpen = true;
-    const eyeY = isBall ? cy - 4 : py + ph * 0.55;
-    const eyeLX = isBall ? W / 2 - 11 : px + pw * 0.28;
-    const eyeRX = isBall ? W / 2 + 11 : px + pw * 0.72;
+    // v1.1.6: the mark's eye seats - wider apart and a touch higher than the
+    // pill pair, matching the pet's own face.
+    const eyeY = isBall ? cy - 6.6 : py + ph * 0.55;
+    const eyeLX = isBall ? W / 2 - 8.6 : px + pw * 0.28;
+    const eyeRX = isBall ? W / 2 + 8.6 : px + pw * 0.72;
     const droop = now < faceMoodUntil && faceMood === "sad" ? 0.6 : 0;
     const lid = Math.max(droop, faceBlinkAmount(now));
     // v1.1.2: pupils glance around on their own every so often.
@@ -661,18 +680,23 @@
       drawFaceEye(faceCtx, eyeLX, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
       drawFaceEye(faceCtx, eyeRX, eyeY, eyesOpen, happyEyes, lid, ppx, ppy);
     }
-    const mx = W / 2, my = isBall ? cy + 1.5 : py + ph * 0.82;
+    const mx = W / 2, my = isBall ? cy + 4.4 : py + ph * 0.82;
     faceCtx.strokeStyle = "#0b0f0d";
     faceCtx.lineWidth = isPlush ? 1.4 : 1.6;
     faceCtx.lineCap = "round";
-    if (isPlush || isBall) faceCtx.setLineDash([2.2, 2.2]);
+    // v1.1.6: the mark's smile is a clean line - the stitch dashes belong to the
+    // plush toy, not to the brand mark.
+    if (isPlush) faceCtx.setLineDash([2.2, 2.2]);
     faceCtx.beginPath();
     if (mood === "happy" || mood === "love") {
-      faceCtx.moveTo(mx - 4.5, my - 1);
-      faceCtx.quadraticCurveTo(mx, my + 2.6, mx + 4.5, my - 1);
+      faceCtx.moveTo(mx - (isBall ? 6 : 4.5), my - 1);
+      faceCtx.quadraticCurveTo(mx, my + (isBall ? 4 : 2.6), mx + (isBall ? 6 : 4.5), my - 1);
     } else if (mood === "sad") {
-      faceCtx.moveTo(mx - 4.5, my + 1);
-      faceCtx.quadraticCurveTo(mx, my - 2.8, mx + 4.5, my + 1);
+      faceCtx.moveTo(mx - (isBall ? 6 : 4.5), my + 1);
+      faceCtx.quadraticCurveTo(mx, my - (isBall ? 4 : 2.8), mx + (isBall ? 6 : 4.5), my + 1);
+    } else if (isBall) {
+      faceCtx.moveTo(mx - 6, my - 1);
+      faceCtx.quadraticCurveTo(mx, my + 3.2, mx + 6, my - 1);
     } else {
       faceCtx.moveTo(mx - 4, my);
       faceCtx.quadraticCurveTo(mx, my + 1.6, mx + 4, my);
@@ -1485,6 +1509,8 @@
   });  document.getElementById("clearBtn").addEventListener("click", clearChat);
 
   document.getElementById("gitBtn").addEventListener("click", () => window.pilly.github());
+  // v1.1.6: the globe in the header is the site itself - Pilly's home.
+  document.getElementById("siteBtn").addEventListener("click", () => window.pilly.openLink("site"));
 
   messagesEl.addEventListener("scroll", () => {
     scrollDownBtn.hidden = isNearBottom();
@@ -2304,6 +2330,34 @@
   });
   if (window.pilly.onUpdateStatus) window.pilly.onUpdateStatus(renderUpdateStatus);
   window.pilly.updateState && window.pilly.updateState().then((s) => renderUpdateStatus(s)).catch(() => {});
+
+  // ---- PillCrew links (v1.1.6) ----
+  // One chip per place the crew lives. The list comes from the main process, so
+  // the tray menu, this panel and the header globe can never disagree - and the
+  // page only ever asks for an id, never for a URL.
+  const linkChips = document.getElementById("linkChips");
+  function renderLinks(list) {
+    if (!linkChips) return;
+    linkChips.textContent = "";
+    for (const link of Array.isArray(list) ? list : []) {
+      if (!link || !link.id || !link.label) continue;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "link-chip";
+      btn.dataset.link = link.id;
+      btn.textContent = link.label;
+      btn.addEventListener("click", () => {
+        if (window.pilly.openLink) window.pilly.openLink(link.id).catch(() => {});
+      });
+      linkChips.appendChild(btn);
+    }
+  }
+  if (window.pilly.links) window.pilly.links(window.I18N && I18N.effective ? I18N.effective() : undefined).then(renderLinks).catch(() => {});
+  // The chips are built once, but the language can change under them: the main
+  // process translates the labels, so a language switch re-asks for the list.
+  document.addEventListener("pilly:i18n", () => {
+    if (window.pilly.links) window.pilly.links(window.I18N && I18N.effective ? I18N.effective() : undefined).then(renderLinks).catch(() => {});
+  });
 
   // Bring back the previous conversation (minimize/restart must not lose it).
   restoreChat();
