@@ -34,6 +34,9 @@ Live coin checks · Trending · Portfolio · Watchlist & PnL · Whale follow · 
 ---
 
 ## Other projects
+### 🎯 PillCrew Sniper
+Desktop Pump.fun trading bot for Windows, macOS and Linux - a real UI with a built-in encrypted Solana wallet, live scores and exit rules you can see, one-press presets and shareable settings codes. Node.js + Electron, works with no API key.
+→ [github.com/PillCrew/pillcrew-sniper](https://github.com/PillCrew/pillcrew-sniper)
 
 ### 🌐 pillcrew.fun — the web platform
 A trading desk staffed by **ten AI specialists**. Paste any Solana token and get instant analysis from a full crew — live market data, Crew Verdicts, charts, price alerts and PnL tracking.
@@ -54,6 +57,9 @@ Bulk-clean your X timeline from your browser — delete your own posts, remove l
 ### 🚀 Voyager Simulator
 A WebXR arcade space shooter built with A-Frame — playable on desktop and VR headsets.
 → [github.com/PillCrew/voyager-simulator](https://github.com/PillCrew/voyager-simulator)
+
+
+https://github.com/PillCrew/pillcrew-sniper
 
 ---
 
