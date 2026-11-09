@@ -102,11 +102,18 @@ with `CSC_IDENTITY_AUTO_DISCOVERY: false` and uploads them as artifacts — it i
 2. Version bumped in `package.json` **and** `package-lock.json` (both places), with a `CHANGELOG.md` section written.
 3. The app starts, wallet flows work, Practice Mode runs for a few minutes with no console errors.
 4. `npm run dist:<os>` on each system; smoke-test the packaged binary with a throwaway `--user-data-dir`.
-5. Tag `v<version>` and push it. The CI builds Windows, Linux and a universal macOS installer on real runners and puts
-   all four files on a **draft** release with generated notes — nothing reaches a user until you read that draft and
-   press **Publish**. Paste the changelog section into the notes before publishing; the generated notes list commits,
-   not consequences.
-6. Say what changed in plain words — including anything that got slower, louder, or was not fixed.
+5. **Windows ships the bytes you built here**, not bytes a runner built: run the installer and the portable file through
+   `_pilly-tools\sac-check.ps1` (build locally → test **the same files** → upload **the same files**). A rebuild is a new
+   hash and the Smart App Control verdict has to be earned again. macOS and Linux cannot be built on Windows, so they come
+   from CI on the same commit.
+6. `scripts\release-github.ps1` creates the release from the verified Windows files (it reads the token from git's own
+   credential store and never prints it), then CI's packaging artifacts for macOS (both architectures) and Linux are added,
+   `scripts\release-publish.ps1` writes the checksums into the notes and publishes. Nothing reaches a user before that last
+   step — the release stays a draft until then.
+7. Say what changed in plain words — including anything that got slower, louder, or was not fixed.
+
+Tagging `v<version>` still triggers CI's own draft release (Windows, Linux and a universal macOS build). Use one route or
+the other, not both, or the same file name will be uploaded twice with two different hashes.
 
 ## Notes that save an afternoon
 
