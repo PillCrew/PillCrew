@@ -13,6 +13,13 @@ const PORT = 9389;
 const electron = require('electron');
 const profile = mkdtempSync(path.join(os.tmpdir(), 'pillcrew-boot-'));
 
+// A window needs a screen. A Linux runner without one has no X server and Electron cannot open a window there at all, so this
+// case is reported as skipped instead of failing a build for a machine that has no display - the test runs on every desktop.
+if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+  console.log('Boot test skipped: this Linux machine has no display, so no window can be opened here');
+  process.exit(0);
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
