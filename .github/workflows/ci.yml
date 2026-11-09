@@ -36,10 +36,17 @@ jobs:
         include:
           - os: windows-latest
             script: dist:win
+            label: win
           - os: ubuntu-latest
             script: dist:linux
+            label: linux
+          # Both Macs, because a runner is only one architecture: the second entry asks for Intel explicitly.
           - os: macos-latest
             script: dist:mac
+            label: mac-arm64
+          - os: macos-latest
+            script: 'dist:mac -- --x64'
+            label: mac-x64
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -52,7 +59,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - uses: actions/upload-artifact@v7
         with:
-          name: installer-${{ matrix.os }}
+          name: installer-${{ matrix.label }}
           path: |
             dist/*.exe
             dist/*.dmg
