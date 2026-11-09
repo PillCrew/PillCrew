@@ -1,0 +1,78 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  /* The hero: the picture on the top of the repository page and the main image of the X article. Everything here is the real
+     program - the mascot is the shipped icon, the card on the right is a real screenshot of the shipped window, and the words
+     are the ones the README uses. Rendered to PNG by `scripts/render-promo.js` at 1600x900. */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1600px; height: 900px; overflow: hidden; position: relative; color: #eaf7f1;
+    font-family: "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+    background: radial-gradient(1200px 700px at 18% 12%, #0d3b2c 0%, #08171a 42%, #05080b 74%, #04060a 100%); }
+  .glow { position: absolute; border-radius: 50%; filter: blur(90px); }
+  .g1 { width: 620px; height: 620px; left: -180px; top: -160px; background: #17a86e; opacity: .34; }
+  .g2 { width: 520px; height: 520px; right: -120px; bottom: -200px; background: #0d5f6b; opacity: .40; }
+  .g3 { width: 300px; height: 300px; left: 620px; bottom: 40px; background: #35f08c; opacity: .12; }
+  .grid { position: absolute; inset: 0; opacity: .5;
+    background-image: linear-gradient(rgba(53,240,140,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(53,240,140,.055) 1px, transparent 1px);
+    background-size: 64px 64px; mask-image: radial-gradient(900px 620px at 40% 40%, #000 0%, transparent 78%); }
+  .wrap { position: relative; height: 100%; display: flex; align-items: center; gap: 54px; padding: 0 74px; }
+
+  .left { width: 620px; flex: 0 0 auto; }
+  .brand { display: flex; align-items: center; gap: 22px; }
+  .brand img { width: 104px; height: 104px; border-radius: 26px;
+    box-shadow: 0 0 0 1px rgba(53,240,140,.30), 0 0 60px rgba(53,240,140,.28), 0 26px 60px rgba(0,0,0,.62); }
+  .word { font-size: 74px; font-weight: 800; letter-spacing: -2.4px; line-height: .92; }
+  .word small { display: block; margin-top: 10px; font-size: 14px; font-weight: 700; letter-spacing: 8px; color: #35f08c; }
+  h1 { margin: 34px 0 18px; font-size: 40px; line-height: 1.16; font-weight: 760; letter-spacing: -.9px; }
+  h1 em { font-style: normal; color: #35f08c; }
+  p.sub { font-size: 17px; line-height: 1.62; color: #9cb3ac; max-width: 590px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+  .chip { font-size: 13px; font-weight: 650; padding: 9px 15px; border-radius: 999px; color: #c6f2e4;
+    background: rgba(53,240,140,.09); border: 1px solid rgba(53,240,140,.24); }
+  .plat { margin-top: 28px; font-size: 12.5px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #6d8a84; }
+  .free { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 13.5px; font-weight: 700; color: #35f08c; }
+  .free i { width: 8px; height: 8px; border-radius: 50%; background: #35f08c; box-shadow: 0 0 12px #35f08c; }
+
+  .right { flex: 1 1 auto; position: relative; height: 640px; }
+  .shot { position: absolute; inset: 0; border-radius: 20px; overflow: hidden;
+    border: 1px solid rgba(120,255,200,.16);
+    box-shadow: 0 50px 120px rgba(0,0,0,.72), 0 0 0 1px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06);
+    background: #070c0d; }
+  .shot img { width: 100%; height: 100%; object-fit: cover; object-position: 0 0; display: block;
+    -webkit-mask-image: linear-gradient(90deg, #000 82%, rgba(0,0,0,.15) 100%);
+    mask-image: linear-gradient(90deg, #000 82%, rgba(0,0,0,.15) 100%); }
+  .shot::after { content: ""; position: absolute; inset: 0;
+    background: linear-gradient(115deg, rgba(5,9,10,.55) 0%, rgba(5,9,10,0) 38%, rgba(5,9,10,0) 100%); }
+  .tag { position: absolute; left: -26px; bottom: 96px; padding: 16px 22px; border-radius: 16px;
+    background: rgba(8,20,18,.92); border: 1px solid rgba(53,240,140,.28); box-shadow: 0 26px 60px rgba(0,0,0,.6); }
+  .tag b { display: block; font-size: 15px; font-weight: 750; color: #eaf7f1; }
+  .tag small { display: block; margin-top: 4px; font-size: 12px; letter-spacing: 1.6px; text-transform: uppercase; color: #6f8b85; font-weight: 700; }
+  .coin { position: absolute; right: -18px; top: -26px; padding: 10px 16px; border-radius: 999px; font-size: 12.5px; font-weight: 800;
+    letter-spacing: .6px; color: #04140c; background: linear-gradient(180deg, #55ffab, #22d98a); box-shadow: 0 16px 40px rgba(34,217,138,.35); }
+</style></head>
+<body>
+  <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div><div class="grid"></div>
+  <div class="wrap">
+    <div class="left">
+      <div class="brand">
+        <img src="../build/icon.png" alt="">
+        <div class="word">PillCrew<small>TRADING DESK</small></div>
+      </div>
+      <h1>One program. <em>Sniper, bump desk,<br>AI council</em> — and Pilly on your taskbar.</h1>
+      <p class="sub">A desktop desk for Solana memecoins: it scores every pump.fun launch, buys the strong ones, manages
+      its own exits, runs a bump desk from wallets it creates itself, and answers questions with AI models on your own keys.</p>
+      <div class="chips">
+        <span class="chip">Practice Mode, free</span>
+        <span class="chip">Wallet inside the app</span>
+        <span class="chip">Your own AI keys</span>
+        <span class="chip">Windows · macOS · Linux</span>
+      </div>
+      <div class="plat">pillcrew.fun · open source · MIT</div>
+      <div class="free"><i></i>No account. No server. Nothing to subscribe to.</div>
+    </div>
+    <div class="right">
+      <div class="shot"><img src="../assets/shots/01-dashboard.png" alt=""></div>
+      <div class="coin">LIVE · PRACTICE MODE</div>
+      <div class="tag"><b>Every coin scored 0–100</b><small>and the sentence that says why</small></div>
+    </div>
+  </div>
+</body></html>

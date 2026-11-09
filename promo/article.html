@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PillCrew 1.2.1 — one program: sniper, bump desk, AI council and Pilly</title>
+<meta name="description" content="PillCrew 1.2: one Solana memecoin desk that runs on your own PC. A sniper with an exit plan, a volume desk of wallets it owns, a council of your own AI models, and Pilly on your desktop. Windows, macOS, Linux.">
+<style>
+  /* One file, no fonts from a CDN, no external anything: this article can be dropped on any host and it looks the same. */
+  :root {
+    --bg: #070b09; --panel: #0d1512; --panel-2: #111c17; --line: #1e2f27;
+    --fg: #e8f4ee; --mute: #8fa79c; --accent: #4ef0a5; --accent-2: #0f3d2a; --warn: #ffb4a2; --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+  body { font: 16px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(78,240,165,.35); }
+  a:hover { border-bottom-color: var(--accent); }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 48px 22px 90px; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: 12px; color: var(--accent); font-weight: 700; }
+  h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.12; margin: 10px 0 14px; letter-spacing: -.02em; }
+  h2 { font-size: clamp(22px, 3vw, 28px); margin: 52px 0 10px; letter-spacing: -.01em; }
+  h3 { font-size: 18px; margin: 28px 0 6px; }
+  p { margin: 0 0 14px; }
+  .lede { font-size: 19px; color: #cfe4da; }
+  .mute { color: var(--mute); }
+  figure { margin: 22px 0 26px; }
+  figure img { display: block; width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel); }
+  figcaption { font-size: 13.5px; color: var(--mute); margin-top: 8px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; margin: 18px 0; }
+  .card.read { border-color: #4a2a26; background: #150d0c; }
+  .card.read b { color: var(--warn); }
+  ul, ol { margin: 0 0 16px; padding-left: 22px; }
+  li { margin: 6px 0; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; }
+  code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0 20px; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--mute); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #06120c; background: var(--accent); border-radius: 999px; padding: 3px 10px; }
+  .xpost { background: var(--panel-2); border: 1px dashed var(--line); border-radius: var(--radius); padding: 16px 18px; margin: 26px 0 6px; white-space: pre-wrap; }
+  footer { margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--mute); font-size: 14px; }
+  .hr { height: 1px; background: var(--line); margin: 44px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+       THE UPDATE (2026-11-09 · PillCrew 1.2.1). This is the part written now: one program, Pilly Desktop and the sniper
+       merged, the mascot with its whole configuration, the chat that finally behaves, and the bugs that were fixed on the
+       way. Everything below the divider is the article exactly as it was published before - kept, not deleted, because the
+       old post is still up and its animated GIFs still live there.
+       ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════ -->
+  <div class="eyebrow">PillCrew · update · 1.2.1</div>
+  <h1>One program now. Pilly and the sniper are the same app.</h1>
+  <p class="lede">For a while there were two PillCrew installers on your PC: <b>Pilly Desktop</b>, the little green pill with
+  the free-AI chat, and <b>PillCrew Sniper</b>, the trading desk. Two windows, two settings files, two wallets' worth of
+  confusion. That is over — they are now <b>one program called PillCrew</b>, and it does all of it in a single window on
+  Windows, macOS and Linux.</p>
+  <p class="mute">One installer. One profile. Your old Sniper profile is copied across on the first boot — nothing is deleted,
+  nothing has to be set up again.</p>
+
+  <figure>
+    <img src="hero.png" alt="PillCrew 1.2.1 — the sniper, the bump desk, the AI council and Pilly in one window">
+    <figcaption>The whole program: the desk on the left of your screen, Pilly on your taskbar, your own models in the chat,
+    and the bump desk on a coin you launched.</figcaption>
+  </figure>
+
+  <h2>What this update is</h2>
+
+  <h3>1. Everything Pilly had, inside the desk</h3>
+  <p>The whole mascot panel came across — <b>he is not a sticker</b>. His name, his colours, his size, how fast he walks,
+  <b>where</b> he walks (across the screen or along the taskbar line), how often he stops, his resting mood, speech bubbles
+  with their size, text size and six styles, his voice and its volume, reduce motion, and six switches that decide what he is
+  allowed to tell you: hot movers, fresh launches, the morning brief, his pick of the day, whale alerts, and his mood, which
+  follows your PnL.</p>
+  <p>He walks without leaving the screen, turns around <b>short of the corner</b> instead of parking himself in it, and stays
+  exactly where you drag him. Everything he says is built from numbers the app already has — he is not allowed to invent one.</p>
+
+  <h3>2. The chat has its own window, chips and keys</h3>
+  <p>Thirteen quick actions — trending, watchlist, pick a coin, radar, size, scorecard, whales, PillCrew, and the five meme
+  jobs — and every one of them assembles <b>the app's own numbers</b> in the main process before the question goes out, so a
+  model can never be told what a price is by the page. Paste a DeepSeek or OpenRouter key and press <b>Find free models</b>:
+  the panel asks the provider what it actually offers today and picks the best free one, because models come and go and a
+  hard-coded name is how a chat starts answering <i>"HTTP 404"</i>.</p>
+
+  <h3>3. And the things that were simply broken are fixed</h3>
+  <div class="card">
+    <ul>
+      <li><b>The chat repeated itself.</b> With one model, the read and the only answer were the same sentence printed twice.
+      The per-model list is now drawn only when there is more than one voice, or when a voice failed.</li>
+      <li><b>Saving the look of the chat did nothing.</b> A helper the save path needs existed only inside the window
+      constructor, so the save threw before it wrote anything — the bubble style and the text size were never stored. It now
+      lives where both the first boot and every save can reach it.</li>
+      <li><b>Pilly's hop was drawn outside his own window</b> (his hat sits 13 px below the top of a 64 px window and the hop
+      asked for 18), and his walk went flush to the edge of the screen. Both are capped and measured now.</li>
+      <li><b>The scorecard's four numbers stacked in one column</b> because the grid class it asked for did not exist, and two
+      chat colours asked for variables this theme does not define. Both fixed, and the pictures on this page are the proof.</li>
+    </ul>
+  </div>
+
+  <h2>The program, in pictures</h2>
+  <p>Real market data, Practice Mode, the shipped build — not a mock-up.</p>
+  <div class="grid">
+    <figure><img src="../assets/shots/01-dashboard.png" alt="PillCrew dashboard, bot running in Practice Mode">
+      <figcaption>The dashboard with the bot running: balance, win rate, coins seen, and the picks it is watching.</figcaption></figure>
+    <figure><img src="../assets/shots/05-feed.png" alt="PillCrew Live Feed: 80 coins scored">
+      <figcaption>The feed: every launch scored 0–100 with the sentence that says why it was refused.</figcaption></figure>
+    <figure><img src="../assets/shots/02-bump-desk.png" alt="PillCrew bump desk">
+      <figcaption>The bump desk, before a run: the ticket, the fees, the rent — printed before a lamport moves.</figcaption></figure>
+    <figure><img src="../assets/shots/03-chat.png" alt="PillCrew chat, the council">
+      <figcaption>The council: your endpoints, your keys, thirteen chips and the app's own numbers.</figcaption></figure>
+    <figure><img src="../assets/shots/04-settings.png" alt="Pilly on screen, the whole mascot configuration">
+      <figcaption>Pilly's whole configuration, in the same Settings tab as everything else.</figcaption></figure>
+    <figure><img src="../assets/shots/07-crew.png" alt="Pilly's scorecard and the watchlist">
+      <figcaption>His scorecard (wins and losses) and your watchlist, judged on the 5-minute move.</figcaption></figure>
+  </div>
+
+  <h2>A post you can copy</h2>
+  <div class="xpost">PillCrew 1.2.1 is out — and it is ONE program now.
+
+Pilly Desktop and PillCrew Sniper are the same app: the sniper, the bump desk, the AI council on your own keys, and Pilly
+walking on your taskbar. One installer, one wallet, one settings file. Your old Sniper profile is copied across on first
+boot — nothing to set up again.
+
+What's inside:
+- every new pump.fun coin scored 0-100, with the sentence that says why
+- Practice Mode first: 5 SOL of fake money, a separate ledger
+- a bump desk from wallets the app creates itself (real buys, real sells — it says what it costs before you press)
+- chat with your own DeepSeek / OpenRouter key, free-model finder included
+- Pilly with his whole configuration, and a scorecard that keeps his losses too
+
+Windows · macOS · Linux. Open source, no account, no subscription.
+github.com/PillCrew/PillCrew
+
+#Solana #memecoins #PillCrew</div>
+
+  <div class="hr"></div>
+  <div class="eyebrow">Previously published · PillCrew 1.2.0</div>
+  <p class="mute">Everything below is the original article, kept as it went out — the animated GIFs of Pilly still live in it,
+  and the screenshots of the desk are the ones taken then.</p>
+
+  <div class="eyebrow">PillCrew · 1.2.0</div>
+  <h1>One app: the sniper, the tape, the council — and Pilly.</h1>
+  <p class="lede">PillCrew is a Solana memecoin desk that runs on <b>your</b> computer — Windows, macOS or Linux — and does
+  four jobs in one window: it watches new Pump.fun coins and trades the ones that pass your gate, it makes a tape on a coin you
+  launched from wallets it owns, it lets you ask <b>your own</b> AI models what they think before you press anything, and it
+  keeps the crew's ball on your desktop while it works.</p>
+  <p class="mute">No account here. No subscription. No server of ours in the middle of your money. Your keys stay on your disk.</p>
+
+  <figure>
+    <img src="../assets/shots/02-bump-desk.png" alt="PillCrew, Bump desk tab: the cost of a run, printed before a lamport moves">
+    <figcaption>The bump desk, before a run: every number on that screen is arithmetic the app prints before a single lamport
+    moves — the ticket, the fees, the rent it parks, and what the whole run will push through the coin.</figcaption>
+  </figure>
+
+  <div class="card read">
+    <p><b>Read this once.</b> A volume desk is a tape, not a trend. Every bump is a <b>real</b> buy and a <b>real</b> sell, paid from
+    your wallet; about <b>3.5%</b> of each round trip goes to the coin's own curve and to the trade door, plus the network fee.
+    It is built for a token <b>you</b> launched, to make its tape look like a crowd instead of one wallet. It cannot make a coin
+    trend by itself, it is not an investment, and a dry run costs nothing — start there.</p>
+  </div>
+
+  <h2>1. The sniper</h2>
+  <p>A new coin is a decision made about two seconds after it exists. The gate is a list of numbers you set — buyers, net flow,
+  market cap, liquidity, holder count, the age of the token — and a coin that does not clear all of them is never bought:</p>
+
+  <figure>
+    <img src="../assets/shots/01-dashboard.png" alt="PillCrew dashboard on a clean install">
+    <figcaption>The dashboard of a fresh install: practice mode, nothing connected, no positions invented for the picture.</figcaption>
+  </figure>
+  <ul>
+    <li><b>One entry, one plan.</b> Every position gets a take-profit, a stop, a maximum hold, and a break-even rule. The plan is
+    printed before the buy, not after the loss.</li>
+    <li><b>Fees are part of the gate.</b> The round trip has a floor: if the take-profit cannot pay the curve, the door and the
+    network and still leave something, the app refuses the trade instead of quietly trading at a loss.</li>
+    <li><b>Practice first.</b> Paper mode is the same engine with a simulated order book: the same gate, the same exits, no
+    money. It is the default, and it is where a new install should live for a while.</li>
+    <li><b>It sells everything, always.</b> Stop, sell-all, and a withdrawal that closes the emptied token accounts so their rent
+    comes back.</li>
+  </ul>
+
+  <h2>2. The tape: a desk that owns its wallets</h2>
+  <p>The bump desk is the part most bots get wrong, so here is exactly how it works.</p>
+
+  <h3>One address, its own keys</h3>
+  <p>You send SOL to <b>one</b> address. The desk splits it across the wallets it generated, trades from them, and brings every
+  lamport home when the run ends. The keys are generated on your machine and sealed with <b>your</b> wallet password
+  (scrypt + AES-256-GCM) — there is no channel in the app that exports one.</p>
+
+  <h3>A round: N buys, then one sell of the whole bag</h3>
+  <p>A wallet buys <b>N</b> times (1–10, or a fresh random count every round), holds the bag for a randomised band, then sells
+  <b>the whole bag in one transaction</b> and starts again. One buy and one sell is the default — a 50/50 tape. Three buys and
+  one sell is a 75% buy tape. The buy share is not a knob that fights the round; it is what the round produces.</p>
+  <p><b>A round has to fit in one wallet's share.</b> A wallet parks its rent, buys its tickets, and only then sells — so the
+  desk prices the whole round against a single wallet before the run starts, refuses the combination if it does not fit, and
+  names the count that does: <span class="mono">“4 buys a round need 0.0047 SOL in one wallet, and each of the 3 gets
+  0.0039. Set “Buys in one round” to 2.”</span> A wallet that runs short mid-round closes the round <b>now</b> and sells what it
+  holds, instead of buying until it is dry.</p>
+
+  <h3>It finishes the job</h3>
+  <ul>
+    <li><b>Every wallet's bag is sold</b> on the way out — and the <b>chain</b> says what each wallet holds, so a trade that
+    landed late is found and sold too, not left behind.</li>
+    <li><b>The rent comes back.</b> An emptied token account holds ~0.00204 SOL; the desk closes it instead of abandoning it.</li>
+    <li><b>The money goes home to your wallet</b> — not just to the desk address — in the same press that stops the run.</li>
+    <li><b>Rescue, per wallet.</b> Any row can be sold and reclaimed on its own when something jams; it is the manual version of
+    what the desk does by itself.</li>
+  </ul>
+
+  <figure>
+    <img src="../assets/shots/06-wallet.png" alt="PillCrew wallet tab">
+    <figcaption>One wallet, one balance, one withdrawal — and a sell-all that closes the emptied token accounts so their rent comes
+    back to you.</figcaption>
+  </figure>
+  <figure>
+    <img src="../assets/shots/05-feed.png" alt="PillCrew live feed">
+    <figcaption>The live feed: every new coin the gate looked at, and the number it was refused on. A coin that passes is the rare
+    case, which is the point.</figcaption>
+  </figure>
+
+  <h3>Jito, honestly</h3>
+  <p>Each trade is offered to Jito's block engine as a bundle first — one wallet's trade plus its own tip — and if the bundle
+  does not land, the <b>identical bytes</b> go out through the normal route. One signature can execute at most once, so the
+  second path can never trade twice, and the tip is only ever paid by a bundle that actually lands. A bundle is a first try at a
+  better slot, never the wire the trade hangs on.</p>
+
+  <h2>3. The council: your models, your keys</h2>
+  <p>The chat is not a wrapper around our account — we do not have one. A “tier” is a URL, a key and a model name, so the same
+  panel serves DeepSeek, OpenRouter's free lane, a local Ollama, or any OpenAI-compatible endpoint you point it at. Three rows
+  ship with the app and <b>none of them carries a key</b>.</p>
+
+  <figure>
+    <img src="../assets/shots/03-chat.png" alt="PillCrew, Chat tab: your own endpoints, a key that never leaves the computer">
+    <figcaption>The council. Paste your key once; test each endpoint with one press; ask anything. “No endpoint set yet” is what
+    a fresh install says, because there is nothing of ours in there to ask.</figcaption>
+  </figure>
+
+  <p><b>The worst answer decides.</b> Every usable tier is asked in parallel: one <b>VETO</b> from any model refuses the coin,
+  the first real answer is the read, and a model that fails or times out is reported as failed — <b>silence is never
+  consent</b>. The keys stay on your disk, are never in a share code, never in the log, and are never printed back at you.</p>
+
+  <h2>4. Pilly on screen</h2>
+  <p>The ball from the site lives on your desktop while the app is open. It is a window of its own — transparent, always on top,
+  skipped in the taskbar, never stealing focus — and it walks, turns at the edge of the screen, naps, reacts when you reach for
+  it, and stays exactly where you drag it, next time too.</p>
+
+  <p><b>Every dial Pilly ever had is in Settings.</b> His name, his colours, his size (¾, 1×, 1.2× — the window is resized with
+  him), how fast he walks, <b>where</b> he walks (across the screen, or along the taskbar line), how often he stops, his resting
+  mood, whether he talks in bubbles and how big they are, how big the letters are, one of six bubble styles, his voice and its
+  volume, whether he may ask things, and a reduce-motion switch that keeps him still. Saving applies the change to the window
+  that is already walking: a new size moves him at once, a new speed is felt in the next tick. Off until you switch him on.</p>
+
+  <p><b>He also has something to say.</b> A bubble of his own — never off the screen, its tail always pointing at him — carries
+  four things, each one a switch: the <b>hot-coin radar</b> (the hottest 5-minute mover in the app's own list, once per coin per
+  half hour, and never a $3K dust coin), a <b>fresh-launch watch</b>, the <b>morning brief</b> (SOL on hand, what the session did),
+  and <b>whale alerts</b> when a wallet you follow opens. His <b>pick of the day</b> comes from the council, and his mood follows
+  your PnL. Every number in every sentence is one the app already has — he never invents one, and he never touches a trade.</p>
+
+  <figure>
+    <img src="../assets/shots/07-pet.png" alt="Pilly, the PillCrew ball, as a desktop pet" style="max-width:240px;margin:0 auto">
+    <figcaption>Pilly, photographed from the app's own pet window. He has no keys, no wallet and no way to touch a trade — he is
+    a companion, not a control. It is one switch in Settings, and off until you ask for it.</figcaption>
+  </figure>
+
+  <figure>
+    <img src="../assets/shots/08-bubble.png" alt="Pilly's speech bubble carrying the morning brief, in the neon style" style="max-width:260px;margin:0 auto">
+    <figcaption>His own bubble, photographed from the packaged app: the morning brief in the neon style at the large text size.
+    The look is yours; the numbers are the app's.</figcaption>
+  </figure>
+
+  <h2>5. What it never does</h2>
+  <table>
+    <tr><th>Never</th><th>Why it matters</th></tr>
+    <tr><td>Ship an API key or a wallet</td><td>The council runs on <b>your</b> keys, the wallet is yours, and there is no account of ours anywhere in the path.</td></tr>
+    <tr><td>Invent a number</td><td>Every figure on screen comes from a transaction that was sent and confirmed, or from the cost model printed before the run.</td></tr>
+    <tr><td>Promise a trend</td><td>Volume is one input among many. A coin with no buyers stays a coin with no buyers, and the app says so.</td></tr>
+    <tr><td>Leave a bag behind silently</td><td>Bags are sold on the way out, the rent is reclaimed, and a wallet that cannot trade is named instead of quietly dropping out.</td></tr>
+    <tr><td>Call a sent transaction a paid one</td><td>A signature means the bytes were accepted. The app waits for the chain, and reports what the chain says.</td></tr>
+  </table>
+
+  <h2>6. Install and start</h2>
+  <ol>
+    <li>Download the installer for your system (Windows <span class="mono">.exe</span>, macOS <span class="mono">.dmg</span>, Linux
+    <span class="mono">.AppImage</span>).</li>
+    <li>Open it, set a wallet password, and press <b>Practice mode</b>. Nothing is real yet.</li>
+    <li>Paste your own RPC endpoint and, if you want the chat, one AI key.</li>
+    <li>When the practice run behaves the way you want, switch to real money, put a small budget in, and read the cost model
+    before pressing Start.</li>
+  </ol>
+  <p class="mute">Windows shows a SmartScreen warning because the build is not code-signed yet: “More info” → “Run anyway”. Every
+  line of the app is ordinary Node.js/Electron, and the installers are built from the same source you can read.</p>
+
+  <h2>7. The numbers the app owns</h2>
+  <figure>
+    <img src="../assets/shots/04-settings.png" alt="PillCrew settings">
+    <figcaption>Settings are the plan: the entry gate, the exit plan, the fees and the mode. A settings code can carry the plan to
+    another machine — and it can never carry a key.</figcaption>
+  </figure>
+  <table>
+    <tr><th>Dial</th><th>Default</th><th>What it means</th></tr>
+    <tr><td>Ticket</td><td class="num">worked out</td><td>Derived from the budget, the length and the pace — the only order in which a small budget is not a slow accident.</td></tr>
+    <tr><td>Buys in one round</td><td class="num">1</td><td>Then one sell of the whole bag; 1–10, or a random count every round.</td></tr>
+    <tr><td>Minimum ticket</td><td class="num">0.0005 SOL</td><td>Below it the fixed costs are a bigger share of the trade than the curve's own fee.</td></tr>
+    <tr><td>Token-account rent</td><td class="num">0.00204 SOL</td><td>Parked per wallet, returned when the account is closed.</td></tr>
+    <tr><td>Jito tip</td><td class="num">0.00001 SOL</td><td>Paid by the trading wallet, only when the bundle lands.</td></tr>
+    <tr><td>Round-trip cost</td><td class="num">~3.5%</td><td>The coin's curve and the trade door, both ways, plus the network fee.</td></tr>
+  </table>
+
+  <h2>8. A post you can copy</h2>
+  <div class="xpost">One app, four jobs: sniper, tape, council — and Pilly on your desktop.
+
+PillCrew runs on your PC (Windows/macOS/Linux). It gates new Pump.fun coins on your numbers, makes a tape on your own coin from wallets it generates itself, asks YOUR AI models before you press anything, and keeps the crew's ball walking around your screen while it works.
+
+No account. No subscription. Your keys never leave your disk.
+
+Practice mode first → github.com/PillCrew/PillCrew · pillcrew.fun</div>
+  <p class="mute">Screenshots in this article were taken from a clean install: no keys, no wallet, no positions. Nothing in them is
+  staged.</p>
+
+  <div class="hr"></div>
+  <footer>
+    <p><b>PillCrew 1.2.0</b> · <a href="https://github.com/PillCrew/PillCrew">github.com/PillCrew/PillCrew</a> · <a href="https://pillcrew.fun/">pillcrew.fun</a> ·
+    <a href="https://x.com/pillcrewsol">@pillcrewsol</a></p>
+    <p class="mute">Nothing here is financial advice. Memecoins are volatile and most of them go to zero; the app is built to be
+    honest about that, not to pretend otherwise.</p>
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pilly joke</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+      cursor: pointer;
+    }
+    .bubble {
+      position: absolute;
+      /* The window is clamped to the screen, so when Pilly parks in a corner the
+         bubble (and its tail) can shift off-centre to keep pointing at him. */
+      left: calc(50% + var(--bx, 0px));
+      bottom: 14px; /* room for the tail so it never clips */
+      transform: translateX(-50%);
+      background: #10150f;
+      border: 1px solid #2c3d31;
+      color: #e8f0e9;
+      font-size: calc(var(--bt, 12px) * var(--bs, 1));
+      line-height: 1.4;
+      padding: calc(7px * var(--bs, 1)) calc(10px * var(--bs, 1));
+      border-radius: calc(10px * var(--bs, 1));
+      /* Never wider than the window - big bubble sizes can't overflow. */
+      max-width: min(calc(170px * var(--bs, 1)), calc(100vw - 24px));
+      /* v1.2.0 (PillCrew): `left: 50%` makes an absolutely positioned box shrink-to-fit the space that is left, i.e. half the
+         window, so the sentence wrapped every twelve characters. The width is the text's own, capped by max-width above. */
+      width: max-content;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+    }
+    .bubble::after {
+      content: "";
+      position: absolute;
+      bottom: -6px;
+      left: calc(50% + var(--tx, 0px));
+      transform: translateX(-50%);
+      border: 7px solid transparent;
+      border-top-color: var(--tail, #10150f);
+      border-bottom: 0;
+    }
+    .bubble.show { opacity: 1; }
+
+    /* ---- Pet bubble styles (settings → body.bs-*) ---- */
+    /* default: dark pill, green-tinted tail */
+    body.bs-default { --tail: #10150f; }
+    body.bs-default .bubble { background: #10150f; border-color: #2c3d31; color: #e8f0e9; }
+
+    /* light: clean white bubble, dark text */
+    body.bs-light { --tail: #f2f7f3; }
+    body.bs-light .bubble { background: #f2f7f3; border-color: #cde5d6; color: #0f1a12; }
+
+    /* glass: frosted, soft glow */
+    body.bs-glass { --tail: rgba(20, 28, 22, 0.55); }
+    body.bs-glass .bubble {
+      background: rgba(20, 28, 22, 0.55);
+      border-color: rgba(34, 197, 94, 0.35);
+      color: #eafff1;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    /* neon: glowing green outline */
+    body.bs-neon { --tail: #08110b; }
+    body.bs-neon .bubble {
+      background: #08110b;
+      border-color: #22c55e;
+      color: #d9ffe6;
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.5), 0 6px 18px rgba(0, 0, 0, 0.5);
+    }
+
+    /* comic: white, bold black outline, classic speech bubble */
+    body.bs-comic { --tail: #ffffff; }
+    body.bs-comic .bubble {
+      background: #ffffff;
+      border: 2px solid #10150f;
+      color: #10150f;
+      border-radius: calc(12px * var(--bs, 1));
+      box-shadow: 3px 3px 0 rgba(16, 21, 15, 0.9);
+      font-weight: 600;
+    }
+    body.bs-comic .bubble::after {
+      border: 8px solid transparent;
+      border-top-color: #10150f;
+      border-bottom: 0;
+      bottom: -9px;
+    }
+    body.bs-comic .bubble::before {
+      content: "";
+      position: absolute;
+      bottom: -5px;
+      left: calc(50% + var(--tx, 0px));
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: #ffffff;
+      border-bottom: 0;
+    }
+
+    /* minimal: just the words, no box */
+    body.bs-minimal { --tail: transparent; }
+    body.bs-minimal .bubble {
+      background: transparent;
+      border: none;
+      color: #eafff1;
+      box-shadow: none;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    }
+    body.bs-minimal .bubble::after { display: none; }
+
+    /* When Pilly sits against the top of the screen there's no room above him,
+       so the bubble flips to sit BELOW him - the tail points up and the text is
+       anchored to the top edge instead of the bottom. */
+    body.flip .bubble { bottom: auto; top: 14px; }
+    body.flip .bubble::after { bottom: auto; top: -6px; border-top: 0; border-bottom: 7px solid var(--tail, #10150f); }
+    body.flip.bs-comic .bubble::after { top: -9px; border: 8px solid transparent; border-top: 0; border-bottom-color: #10150f; }
+    body.flip.bs-comic .bubble::before { top: -5px; bottom: auto; border: 6px solid transparent; border-top: 0; border-bottom-color: #ffffff; }
+
+    /* When Pilly hugs the LEFT edge there's no room to his left, so the bubble
+       sits to his RIGHT - the tail points left at his side. Anchored to the
+       window's left so the tail stays closest to him. */
+    body.side-right .bubble { left: 14px; right: auto; top: calc(50% + var(--by, 0px)); bottom: auto; transform: translateY(-50%); }
+    body.side-right .bubble::after {
+      left: -6px; right: auto; top: calc(50% + var(--ty, 0px)); bottom: auto; transform: translateY(-50%);
+      border: 7px solid transparent; border-right-color: var(--tail, #10150f); border-left: 0;
+    }
+    body.side-right.bs-comic .bubble::after {
+      left: -9px; border: 8px solid transparent; border-right-color: #10150f; border-left: 0;
+    }
+    body.side-right.bs-comic .bubble::before {
+      content: ""; left: -5px; right: auto; top: calc(50% + var(--ty, 0px)); bottom: auto; transform: translateY(-50%);
+      border: 6px solid transparent; border-right-color: #ffffff; border-left: 0;
+    }
+
+    /* Pilly hugging the RIGHT edge: bubble to his LEFT, tail points right. */
+    body.side-left .bubble { right: 14px; left: auto; top: calc(50% + var(--by, 0px)); bottom: auto; transform: translateY(-50%); }
+    body.side-left .bubble::after {
+      right: -6px; left: auto; top: calc(50% + var(--ty, 0px)); bottom: auto; transform: translateY(-50%);
+      border: 7px solid transparent; border-left-color: var(--tail, #10150f); border-right: 0;
+    }
+    body.side-left.bs-comic .bubble::after {
+      right: -9px; border: 8px solid transparent; border-left-color: #10150f; border-right: 0;
+    }
+    body.side-left.bs-comic .bubble::before {
+      content: ""; right: -5px; left: auto; top: calc(50% + var(--ty, 0px)); bottom: auto; transform: translateY(-50%);
+      border: 6px solid transparent; border-left-color: #ffffff; border-right: 0;
+    }
+  </style>
+</head>
+<body class="bs-default">
+  <div class="bubble" id="bubble"></div>
+  <script>
+    const bubble = document.getElementById("bubble");
+    // Current bubble orientation: "above" | "below" | "right" | "left". Set by
+    // the main process depending on which screen edge Pilly sits against.
+    let orient = "above";
+    let styleClass = "bs-default";
+    function orientClass() {
+      return orient === "below" ? " flip" : orient === "right" ? " side-right" : orient === "left" ? " side-left" : "";
+    }
+    function applyBubble(pet) {
+      const s = pet && pet.bubbleSize === "sm" ? 0.85 : pet && pet.bubbleSize === "lg" ? 1.15 : 1;
+      document.documentElement.style.setProperty("--bs", s);
+      // Text size (independent of the bubble padding scale).
+      const ts = pet && pet.bubbleText === "sm" ? 10 : pet && pet.bubbleText === "lg" ? 14 : 12;
+      document.documentElement.style.setProperty("--bt", ts + "px");
+      const style = pet && pet.bubbleStyle ? pet.bubbleStyle : "default";
+      styleClass = "bs-" + style;
+      // Keep the current orientation when re-applying styles (it is set by the
+      // main process depending on where Pilly sits on the screen).
+      document.body.className = styleClass + orientClass();
+      resizeToFit();
+    }
+    // Where the tail should point, relative to the bubble window's centre.
+    // Main sends the pill's head position (or its side, for left/right bubbles)
+    // so the tail can keep pointing at Pilly even when the window is clamped
+    // against a screen corner and the tail can no longer sit under its centre.
+    let tailTarget = { tx: 0, ty: 0 };
+    function setOrient(o) {
+      const next = typeof o === "string" ? o : o && o.o;
+      if (!next) return;
+      if (typeof o === "object" && o.o) tailTarget = { tx: o.tx || 0, ty: o.ty || 0 };
+      const changed = next !== orient;
+      orient = next;
+      document.body.className = styleClass + orientClass();
+      alignTail();
+      // The same orientation comes back on every pet tick while he walks, so
+      // the window size round-trip only runs when the orientation flips.
+      if (changed) resizeToFit();
+    }
+    // Slide the bubble through the spare window space first, then slide the tail
+    // along the bubble's edge, so the tip can reach Pilly wherever he parks.
+    function alignTail() {
+      const side = orient === "right" || orient === "left";
+      const winPx = side ? window.innerHeight : window.innerWidth;
+      const bubblePx = side ? bubble.offsetHeight : bubble.offsetWidth;
+      const want = side ? tailTarget.ty : tailTarget.tx;
+      const bubbleRoom = Math.max(0, (winPx - bubblePx) / 2);
+      const tailRoom = Math.max(0, bubblePx / 2 - 9); // 7px tail half + 2px margin
+      const b = Math.max(-bubbleRoom, Math.min(bubbleRoom, want));
+      const t = Math.max(-tailRoom, Math.min(tailRoom, want - b));
+      const root = document.documentElement.style;
+      if (side) {
+        root.setProperty("--by", b + "px");
+        root.setProperty("--ty", t + "px");
+      } else {
+        root.setProperty("--bx", b + "px");
+        root.setProperty("--tx", t + "px");
+      }
+    }
+    // Grow/shrink the bubble window so the bubble text is NEVER cut off at the
+    // bottom (the window is 160px fixed, so long text used to overflow it).
+    // The anchored edge stays fixed (bottom when above Pilly, top when the
+    // bubble is flipped below him), so the tail keeps pointing at Pilly.
+    function resizeToFit() {
+      let need = Math.ceil(bubble.offsetHeight) + 18; // bubble + 14px anchor + tail room
+      // Safety net: if even the max window (340px) can't fit the text, shrink
+      // the font a notch at a time so the bubble is NEVER clipped.
+      if (need > 320) {
+        for (let i = 0; i < 8 && need > 320; i++) {
+          const bt = parseFloat(document.documentElement.style.getPropertyValue("--bt")) || 12;
+          document.documentElement.style.setProperty("--bt", Math.max(8, bt - 2) + "px");
+          need = Math.ceil(bubble.offsetHeight) + 18;
+        }
+      }
+      if (window.pilly && window.pilly.resizeBubble) window.pilly.resizeBubble(need);
+      alignTail(); // the bubble width just changed - keep the tail on target
+    }
+    if (window.pilly && window.pilly.petSettings) window.pilly.petSettings().then(applyBubble);
+    if (window.pilly && window.pilly.onPetSettings) window.pilly.onPetSettings(applyBubble);
+    if (window.pilly && window.pilly.onPetOrient) window.pilly.onPetOrient(setOrient);
+    if (window.pilly && window.pilly.onPetJoke) {
+      window.pilly.onPetJoke((text) => {
+        bubble.textContent = text;
+        bubble.classList.remove("show");
+        void bubble.offsetWidth; // restart the fade
+        bubble.classList.add("show");
+        resizeToFit();
+      });
+    }
+    // Clicking a bubble (Pilly's question / a hot coin to snipe) opens the chat
+    // so you can answer or check the coin - and dismisses the bubble, so it
+    // cannot keep sitting over Pilly and eating the next clicks.
+    document.addEventListener("click", () => {
+      if (!window.pilly) return;
+      if (window.pilly.closeBubble) window.pilly.closeBubble();
+      window.pilly.openChat();
+    });
+  </script>
+</body>
+</html>

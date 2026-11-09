@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1400px; height: 740px; overflow: hidden; font-family: "Segoe UI", Inter, system-ui, sans-serif;
+    background: radial-gradient(1100px 560px at 78% 18%, #123a2c 0%, #0a1a17 38%, #07060f 72%, #05040a 100%);
+    color: #eef7f2; position: relative; }
+  .glow { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .5; }
+  .g1 { width: 460px; height: 460px; left: -120px; top: -80px; background: #1d8f5f; }
+  .g2 { width: 380px; height: 380px; right: 60px; bottom: -140px; background: #12564a; opacity: .45; }
+  .wrap { position: relative; display: flex; height: 100%; padding: 56px 64px 44px; gap: 44px; }
+  .left { width: 570px; display: flex; flex-direction: column; justify-content: center; }
+  .brand { display: flex; align-items: center; gap: 20px; }
+  .brand img { width: 88px; height: 88px; border-radius: 24px; box-shadow: 0 0 0 1px rgba(53,240,140,.25), 0 24px 60px rgba(0,0,0,.6); }
+  .word { font-size: 60px; font-weight: 800; letter-spacing: -1.6px; line-height: .95; }
+  .word small { display: block; font-size: 15px; letter-spacing: 9px; font-weight: 700; color: #35f08c; margin-top: 8px; }
+  h1 { font-size: 39px; line-height: 1.14; font-weight: 750; letter-spacing: -.8px; margin: 32px 0 14px; }
+  h1 em { font-style: normal; color: #35f08c; }
+  p.sub { font-size: 16.5px; line-height: 1.56; color: #9fb3ad; max-width: 525px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; max-width: 545px; }
+  .chip { font-size: 13px; font-weight: 650; padding: 9px 14px; border-radius: 999px; color: #bfeee0;
+    background: rgba(53,240,140,.09); border: 1px solid rgba(53,240,140,.22); }
+  .plat { margin-top: 26px; font-size: 13px; letter-spacing: 2.4px; text-transform: uppercase; color: #6d857f; font-weight: 700; }
+  .right { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .panel { width: 100%; max-width: 630px; border-radius: 22px; padding: 22px 24px 18px;
+    background: linear-gradient(180deg, rgba(20,32,29,.96), rgba(11,16,20,.96));
+    border: 1px solid rgba(120,255,200,.13); box-shadow: 0 40px 90px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.05); }
+  .panel .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .panel .top b { font-size: 13px; letter-spacing: 1.6px; text-transform: uppercase; color: #7f9a93; }
+  .pill { font-size: 11px; font-weight: 800; letter-spacing: 1px; padding: 5px 11px; border-radius: 999px;
+    background: rgba(53,240,140,.14); color: #35f08c; border: 1px solid rgba(53,240,140,.3); }
+  .row { display: grid; grid-template-columns: 1.4fr .8fr 1.2fr .95fr; gap: 12px; align-items: center;
+    padding: 11px 4px; border-top: 1px solid rgba(255,255,255,.055); font-size: 13px; }
+  .row.head { border-top: 0; color: #647d77; font-size: 10.5px; letter-spacing: 1.4px; text-transform: uppercase; font-weight: 700; padding-bottom: 4px; }
+  .sym { font-weight: 750; }
+  .muted { color: #8ba49d; }
+  .up { color: #35f08c; font-weight: 700; }
+  .bar { display: block; width: 100%; height: 6px; border-radius: 6px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, #12b877, #4dffa8); }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+  .fact { border-radius: 14px; padding: 12px 14px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.06); }
+  .fact b { display: block; font-size: 15px; font-weight: 750; color: #dff7ec; }
+  .fact span { font-size: 10.5px; letter-spacing: 1.1px; text-transform: uppercase; color: #647d77; font-weight: 700; }
+  .fine { position: absolute; left: 64px; bottom: 18px; font-size: 10.5px; color: #4f6660; letter-spacing: .3px; }
+</style></head>
+<body>
+  <div class="glow g1"></div><div class="glow g2"></div>
+  <div class="wrap">
+    <div class="left">
+      <div class="brand">
+        <img src="../renderer/assets/logo.png" alt="">
+        <div class="word">PillCrew<small>SNIPER</small></div>
+      </div>
+      <h1>Trade the whole Pump.fun market <em>from your own desk</em>.</h1>
+      <p class="sub">Watches every new launch, scores each coin, and manages the exit by itself. The wallet is encrypted on your computer. No account, no subscription, no server in the middle.</p>
+      <div class="chips">
+        <span class="chip">Whole market scan</span>
+        <span class="chip">Prices from the curve, every trade</span>
+        <span class="chip">Trailing stop and first target</span>
+        <span class="chip">No API keys needed</span>
+        <span class="chip">Share your settings</span>
+      </div>
+      <div class="plat">Windows &nbsp;·&nbsp; macOS &nbsp;·&nbsp; Linux</div>
+    </div>
+    <div class="right">
+      <div class="panel">
+        <div class="top"><b>Live feed</b><span class="pill">Practice mode</span></div>
+        <div class="row head"><span>Coin</span><span>Found by</span><span>Score</span><span>Status</span></div>
+        <div class="row"><span class="sym">$LAUNCH</span><span class="muted">launch</span><span><span class="bar"><i style="width:94%"></i></span></span><span class="up">Bought</span></div>
+        <div class="row"><span class="sym">$TREND</span><span class="muted">trending</span><span><span class="bar"><i style="width:87%"></i></span></span><span class="up">Bought</span></div>
+        <div class="row"><span class="sym">$BOOST</span><span class="muted">boost</span><span><span class="bar"><i style="width:71%"></i></span></span><span class="muted">Watching</span></div>
+        <div class="row"><span class="sym">$FRESH</span><span class="muted">profile</span><span><span class="bar"><i style="width:58%"></i></span></span><span class="muted">Watching</span></div>
+        <div class="facts">
+          <div class="fact"><b>10 doors</b><span>Market feed</span></div>
+          <div class="fact"><b>11 suites</b><span>Tests that must pass</span></div>
+          <div class="fact"><b>3 systems</b><span>One build</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="fine">Trading meme coins is extremely risky. Nothing here is financial advice. Shown in Practice Mode.</div>
+</body></html>

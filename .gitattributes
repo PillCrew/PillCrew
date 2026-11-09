@@ -1,2 +1,14 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# One checkout on every machine. Line endings are normalised to LF in the repository, so a Windows edit, a macOS
+# edit and a Linux edit produce the same bytes and the same diff.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.icns binary
+
+package-lock.json -diff linguist-generated
+promo/*.png -diff
+screenshots/*.png -diff

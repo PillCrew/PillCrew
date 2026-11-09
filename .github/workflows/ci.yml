@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    # A version tag builds the installers for all three platforms and puts them on a DRAFT release, so nothing reaches
+    # users until a person looks at it and presses Publish.
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        node: [22]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  package:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+          - os: ubuntu-latest
+            script: dist:linux
+          - os: macos-latest
+            script: dist:mac
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installer-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+
+  # The same installers, attached to a DRAFT release for a version tag. The macOS build is universal (Intel and Apple
+  # Silicon in one file), which is why the architecture is asked for explicitly instead of taking the runner's own.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+          - os: ubuntu-latest
+            script: dist:linux
+          - os: macos-latest
+            script: 'dist:mac -- --universal'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Attach the installers to a draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          title="PillCrew ${tag#v}"
+          # `gh release view` fails on a tag with no release yet: that is the signal to create the draft. The notes come
+          # from the commits, because a release page that says nothing is worse than no release page.
+          gh release view "$tag" >/dev/null 2>&1 \
+            || gh release create "$tag" --draft --title "$title" --generate-notes
+          # Only the files this runner actually produced. The list goes through `find` into an array because the macOS
+          # installer name contains a space ("PillCrew Sniper-1.1.1.dmg"), and an unquoted glob would split it in two.
+          files=()
+          while IFS= read -r f; do files+=("$f"); done < <(find dist -maxdepth 1 -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' \) -print)
+          if [ ${#files[@]} -eq 0 ]; then echo "nothing was built"; exit 1; fi
+          printf 'uploading: %s\n' "${files[@]}"
+          gh release upload "$tag" "${files[@]}" --clobber

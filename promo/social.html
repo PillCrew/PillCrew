@@ -1,0 +1,42 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1200px; height: 630px; overflow: hidden; font-family: "Segoe UI", Inter, system-ui, sans-serif;
+    background: radial-gradient(900px 520px at 82% 10%, #123a2c 0%, #0a1a17 40%, #07060f 74%, #05040a 100%);
+    color: #eef7f2; position: relative; }
+  .glow { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .45; }
+  .g1 { width: 420px; height: 420px; left: -140px; bottom: -160px; background: #1d8f5f; }
+  .g2 { width: 300px; height: 300px; right: -60px; top: -100px; background: #12564a; }
+  .wrap { position: relative; height: 100%; padding: 54px 60px 46px; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .brand img { width: 70px; height: 70px; border-radius: 20px; box-shadow: 0 0 0 1px rgba(53,240,140,.25), 0 20px 50px rgba(0,0,0,.6); }
+  .word { font-size: 46px; font-weight: 800; letter-spacing: -1.2px; line-height: .95; }
+  .word small { display: block; font-size: 12px; letter-spacing: 8px; font-weight: 700; color: #35f08c; margin-top: 7px; }
+  h1 { font-size: 46px; line-height: 1.1; font-weight: 780; letter-spacing: -1.2px; margin-top: 40px; max-width: 900px; }
+  h1 em { font-style: normal; color: #35f08c; }
+  p.sub { margin-top: 18px; font-size: 18px; line-height: 1.55; color: #9fb3ad; max-width: 780px; }
+  .row { display: flex; gap: 10px; margin-top: auto; margin-bottom: 26px; flex-wrap: wrap; }
+  .chip { font-size: 13.5px; font-weight: 650; padding: 10px 16px; border-radius: 999px; color: #bfeee0;
+    background: rgba(53,240,140,.09); border: 1px solid rgba(53,240,140,.22); }
+  .plat { position: absolute; right: 60px; bottom: 52px; font-size: 12px; letter-spacing: 2.4px; text-transform: uppercase; color: #6d857f; font-weight: 700; }
+  .fine { position: absolute; left: 60px; bottom: 16px; font-size: 10px; color: #4f6660; }
+</style></head>
+<body>
+  <div class="glow g1"></div><div class="glow g2"></div>
+  <div class="wrap">
+    <div class="brand">
+      <img src="../renderer/assets/logo.png" alt="">
+      <div class="word">PillCrew<small>SNIPER</small></div>
+    </div>
+    <h1>Watches every Pump.fun launch and takes the exits <em>for you</em>.</h1>
+    <p class="sub">A desktop sniper for Solana. Whole market scan, prices straight from the bonding curve, trailing stop, an encrypted local wallet you can back up. It runs on your machine, not on someone else's server.</p>
+    <div class="row">
+      <span class="chip">Windows · macOS · Linux</span>
+      <span class="chip">No API key needed</span>
+      <span class="chip">Practice mode included</span>
+      <span class="chip">Share your settings</span>
+    </div>
+  </div>
+  <div class="plat">pillcrew.fun</div>
+  <div class="fine">Trading meme coins is extremely risky and you can lose everything you put in. Not financial advice.</div>
+</body></html>

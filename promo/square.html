@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1200px; height: 1200px; overflow: hidden; font-family: "Segoe UI", Inter, system-ui, sans-serif;
+    background: radial-gradient(900px 700px at 50% 8%, #123a2c 0%, #0a1a17 42%, #07060f 76%, #05040a 100%);
+    color: #eef7f2; position: relative; display: flex; align-items: center; justify-content: center; }
+  .glow { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .5; }
+  .g1 { width: 620px; height: 620px; left: -180px; top: -140px; background: #1d8f5f; }
+  .g2 { width: 520px; height: 520px; right: -160px; bottom: -180px; background: #12564a; }
+  .card { position: relative; width: 880px; text-align: center; }
+  .logo { width: 250px; height: 250px; border-radius: 60px; box-shadow: 0 0 0 1px rgba(53,240,140,.22), 0 50px 120px rgba(0,0,0,.7); }
+  .word { font-size: 108px; font-weight: 800; letter-spacing: -3px; line-height: .95; margin-top: 44px; }
+  .word small { display: block; font-size: 22px; letter-spacing: 18px; font-weight: 700; color: #35f08c; margin-top: 16px; margin-left: 18px; }
+  .tag { margin-top: 40px; font-size: 30px; line-height: 1.4; color: #cfe8dc; font-weight: 600; }
+  .tag em { font-style: normal; color: #35f08c; }
+  .chips { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 46px; }
+  .chip { font-size: 19px; font-weight: 650; padding: 14px 24px; border-radius: 999px; color: #bfeee0;
+    background: rgba(53,240,140,.09); border: 1px solid rgba(53,240,140,.22); }
+  .plat { margin-top: 44px; font-size: 15px; letter-spacing: 5px; text-transform: uppercase; color: #6d857f; font-weight: 700; }
+  .fine { position: absolute; bottom: 54px; left: 0; right: 0; text-align: center; font-size: 14px; color: #4f6660; }
+</style></head>
+<body>
+  <div class="glow g1"></div><div class="glow g2"></div>
+  <div class="card">
+    <img class="logo" src="../renderer/assets/logo.png" alt="">
+    <div class="word">PillCrew<small>SNIPER</small></div>
+    <div class="tag">The whole Pump.fun market,<br><em>one desk, one wallet.</em></div>
+    <div class="chips">
+      <span class="chip">Whole market scan</span>
+      <span class="chip">Trailing stop</span>
+      <span class="chip">Share your settings</span>
+      <span class="chip">Encrypted wallet</span>
+    </div>
+    <div class="plat">Windows · macOS · Linux</div>
+  </div>
+  <div class="fine">Trading meme coins is extremely risky. Nothing here is financial advice.</div>
+</body></html>

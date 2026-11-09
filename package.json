@@ -1,0 +1,95 @@
+{
+  "name": "pillcrew",
+  "productName": "PillCrew",
+  "version": "1.2.1",
+  "description": "PillCrew - one desktop program for Solana memecoins: a pump.fun sniper, a bump desk of its own wallets, a council of your own AI models, and Pilly on your taskbar.",
+  "homepage": "https://pillcrew.fun",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PillCrew/PillCrew.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PillCrew/PillCrew/issues"
+  },
+  "main": "main.js",
+  "author": {
+    "name": "PillCrew",
+    "email": "hello@pillcrew.fun"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "backtest": "node scripts/backtest.js",
+    "test:ui": "electron test/ui.test.js",
+    "test": "node test/rpc.test.js && node test/chain.test.js && node test/smoke.js && node test/modules.test.js && node test/market.test.js && node test/exits.test.js && node test/guards.test.js && node test/wallet.test.js && node test/share.test.js && node test/jito.test.js && node test/curve.test.js && node test/geyser.test.js && node test/diag.test.js && node test/copy.test.js && node test/jupiter.test.js && node test/ai.test.js && node --test test/petmotion.test.js test/pet.test.js test/pilly.test.js test/pilly-tab.test.js && node test/boot.test.js && node test/bump.test.js && node test/audit.test.js",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "postinstall": "node scripts/vendor.js",
+    "prestart": "node scripts/vendor.js",
+    "predist": "node scripts/vendor.js"
+  },
+  "dependencies": {
+    "@solana/web3.js": "1.98.4",
+    "bs58": "^5.0.0",
+    "three": "^0.170.0",
+    "ws": "^8.18.0"
+  },
+  "overrides": {
+    "rpc-websockets": "9.3.10",
+    "jayson": "5.0.0"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "26.18.1"
+  },
+  "build": {
+    "appId": "fun.pillcrew.desktop",
+    "productName": "PillCrew",
+    "artifactName": "PillCrew-${version}-${os}-${arch}.${ext}",
+    "npmRebuild": false,
+    "files": [
+      "main.js",
+      "preload.js",
+      "pet-preload.js",
+      "src/**",
+      "renderer/**",
+      "package.json",
+      "!node_modules/three/**",
+      "!**/node_modules/utf-8-validate/**",
+      "!**/node_modules/bufferutil/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.finance"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Finance",
+      "maintainer": "PillCrew <hello@pillcrew.fun>",
+      "syncDesktopName": true
+    },
+    "portable": {
+      "artifactName": "PillCrew-${version}-portable-${os}-${arch}.${ext}"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "desktopName": "pillcrew.desktop"
+}
